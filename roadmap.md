@@ -126,10 +126,22 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Found on the way: PHPStan reads one docblock tag per line, so generic declarations cost
   output lines (decision in `generics.md` §11); `Foo::class(...)` is not callable syntax, hence
   `Type::of()`; GoLand rewrites `go.mod`'s module line when it opens the project.
-- Open: `phn migrate` from `@template` docblocks to syntax (needed to dogfood `object-mapper`
-  for real), `--runtime-guards`, Symfony DI warning, `array-key` / shapes as native syntax (M4),
-  descriptor hoisting, translating Phaenon vocabulary inside user docblocks.
-- Target: `tequila/object-mapper` (after migrate support), then `tequila/mongodb-odm`.
+- ✅ `phn migrate` lifts generic docblocks into syntax (`@template` → `<T of B>`, `@extends` /
+  `@implements` → clause arguments, `@param` / `@return` / `@var` → declared types, `T[]` →
+  `array<T>`, `array<K, V>` → `map<K, V>`, `$this` → `static`); a tag is lifted only when its
+  type has a Phaenon spelling and erases to the declared native type, the rest stay with a note.
+  Hyphenated names (`class-string<T>`, `non-empty-string`, `array-key`, `positive-int`, …) became
+  native syntax for it; `@param $x prose` is the prose-only form the emitter fills back in.
+- ✅ Dogfood: `tequila/reflection` (`phaenon-dogfood`) and `tequila/object-mapper`
+  (`phaenon-dogfood`, 51 files) migrated with real generics; both suites, PHPStan and php-cs-fixer
+  pass on the compiled output. The checker inherits a parent's generic signature into an
+  undocumented override, as PHPStan does for docblocks.
+- Open: `--runtime-guards`, Symfony DI warning, `array-key` / shapes as native syntax (M4),
+  descriptor hoisting, translating Phaenon vocabulary inside user docblocks; a constructor-level
+  `@template` used only by a promoted property stays a docblock (it is a class type parameter in
+  disguise — a maintainer's call per class); object-mapper's `tests/` carry 16 pre-existing findings
+  outside PHPStan's `paths` (Symfony container `get()` typing, untyped closure parameters).
+- Next target: `tequila/mongodb-odm`.
 
 ### M4 — Collections and strings
 - `list<T>` / `map<K,V>` as first-class types with literals; `array` as a legacy type that
