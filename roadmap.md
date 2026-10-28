@@ -50,6 +50,10 @@ dogfood target**. Nothing is "done" until the Tequila target's own test-suite pa
 output.
 
 ### M0 — Foundations: parse PHP, print PHP, prove it round-trips
+**Status 2026-10-28: done except the `phn build` deliverable (moved to M1, it is Composer work).**
+Lexer 23,536/23,536 token-identical to PHP 8.5.3; parser 23,226/23,226 PHP-accepted files parse;
+printer round trip 23,393/23,393 token-identical; execution comparison 4,546/4,546 `Zend/tests`
+files behave identically (680 tests that observe line numbers are not run — see M1).
 - `design/language-overview.md`: what stays from PHP, what is removed (tags, `array` as a type —
   demoted to legacy, haystack/needle stdlib…), what is added (generics, `list`/`map`, `type`,
   `is`/`as`, string methods, concurrency). Scope only; details per feature doc.
@@ -64,6 +68,11 @@ output.
 - Deliverable: `phaenon build` turns a `.phn` (= PHP without `<?php`) into byte-equivalent PHP.
 
 ### M1 — First dogfood: a Tequila library in `.phn`
+- `phn build`: `.phn` (= PHP without `<?php`) → byte-stable PHP (the M0 deliverable).
+- **Line-preserving emission**: emit each statement on the line it has in the `.phn` source, so
+  stack traces, `__LINE__`, Xdebug and PHPUnit coverage point at the right line without source
+  maps. The printer reflows today; 680 php-src tests that observe line numbers are skipped by the
+  execution harness until this lands.
 - Composer integration v0: `phaenon build` writes `src-php/` (or in place with `.php` next to
   `.phn`), PSR-4 mapping in `composer.json` points at the output; CI builds before tests.
 - `phaenon migrate` v0: mechanical `.php` → `.phn` (strip tags, nothing else).
