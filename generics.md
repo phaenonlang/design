@@ -669,7 +669,21 @@ kept as written; this section wins where they differ.
 | Diagnostics | `P3001` arity · `P3002` bound · `P3003` erased T used as a value · `P3004` variance · `P3005` reified not inferable / not closed · `P3006` reified not allowed here · `P3007` generic property redeclared · `P3008` class parameter in a static member · `P3009` type arguments on a non-generic callee. | Open question 8: answered. |
 | Docblocks in `.phn` | Passed through untouched; a `map<…>` written in a `@var` in Phaenon source reaches PHPStan as is. Types belong in the syntax in `.phn` files. | Rewriting user prose is a later migration concern. |
 
+### 11.1 Migrating docblock generics (`phn migrate`, 2026-10-28)
+
+| Decision | Choice | Why |
+|---|---|---|
+| What is lifted | `@template[-covariant\|-contravariant] T [of B] [= D]` → `<[out\|in] T of B = D>` on classes, interfaces, traits, functions, methods (constructors included); `@extends` / `@implements` → arguments on the matching clause; `@param`, `@return`, property `@var` → the declared type. `@phpstan-*` / `@psalm-*` variants too. | These are the tags that *are* generics in PHPStan code. `@var` on statements, `@phpstan-type`, `@method`, `@mixin` stay (no Phaenon construct for them yet). |
+| Safety rule | A tag is lifted only when (1) its type has a Phaenon spelling and (2) it **erases to exactly the declared native type**; an untyped parameter accepts only a type that erases to `mixed`; an untyped return is never refined. Everything else stays, with a note on stderr saying why. | The emitted PHP must keep the signature PHP saw before: migrating must not change what overrides, callers or reflection see. |
+| Spelling | `T[]` → `array<T>`; `array<K, V>` → `map<K, V>` (`non-empty-array` → `non-empty-map`); `X\|null` → `?X`; `$this` → `static`; `\Closure(A): R` → `Closure(A): R`; class names resolved through `use` so `\App\Row` and an imported `Row` match. Not spellable: `callable(…)` signatures, shapes, literals, `int<a, b>`, conditional types, optional/variadic closure parameters. | What a human would write in `.phn`. |
+| Hyphenated names | `class-string<T>`, `non-empty-string`, `array-key`, `positive-int`, `key-of<T>`, … are native type syntax: the parser joins `name-name` written without spaces in a type position; `A - B` stays arithmetic. They erase through the resolved type (`string`, `int\|string`, …). | `class-string<T>` is the generic type Tequila uses most; without it the lift would skip half of reflector. |
+| Prose-only `@param` | A lifted `@param T $x prose` becomes `@param $x prose` (the type is in the signature); the emitter fills the type back in on output, and the docblock reader accepts the form. `@return T prose` and `@var T prose` keep their type too (no unambiguous type-less form). | Like TypeScript's JSDoc: prose stays, types are not repeated. |
+| Emptied docblocks | Removed when only the frame is left; blank `*` lines at the edges collapse; generated tags are inserted **before** the first remaining tag, so `@throws` keeps its place after `@return`. | Round-tripping a PHPStan file through migrate + build gives back the same docblock order. |
+| Inheritance | A child method without docblock types inherits the parent's **effective** type when its own native type equals the parent's erasure (`string $x` under `class-string<T> $x`), through `@extends`/`implements` substitution. | PHPStan's implicit `@inheritDoc` applies to the lifted syntax as it did to docblocks; `CachedReflector::reflect(string)` keeps `class-string<ClassType>`. |
+| Promoted properties | A method-level `@template` that a promoted parameter's type mentions stays in the docblock (with its `@param`), noted as "make it a class type parameter". | A property cannot carry a method type parameter; whether the class should become generic is a design decision per class, not a mechanical one. |
+| CLI | `phn migrate` takes `.php` (strip + lift) and `.phn` (lift only, rewritten in place when changed); `--keep-docblocks` is the mechanical v0. Notes print as `file:line: kept @tag …`. | One command for new and already-migrated projects. |
+
 Still open after M3: `--runtime-guards` (§6), the Symfony DI warning (§5.4), monomorphisation
-(§7), `phn migrate` turning `@template` docblocks into syntax, hoisting descriptors out of hot
-paths (`static $__t ??= …`), and a `P3010`-style warning for an erased parameter that nothing
-constrains (§3.4 item 4) — PHPStan is silent there, so the checker is too for now.
+(§7), hoisting descriptors out of hot paths (`static $__t ??= …`), and a `P3010`-style warning
+for an erased parameter that nothing constrains (§3.4 item 4) — PHPStan is silent there, so the
+checker is too for now.

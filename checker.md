@@ -321,7 +321,7 @@ conformance corpus still parses; the checker is where "Phaenon mode" bites.
 3. **Docblock grammar** — a corpus of PHPStan type strings → canonical printing, plus error cases.
 4. **Stub loading** — every embedded stub parses; a few hundred well-known signatures are asserted
    (`strlen`, `array_map`, `ReflectionClass::newInstance`).
-5. **PHPStan parity** (opt-in, `PHAENON_PHPSTAN=1`): for each golden file, write it as `.php`,
+5. **PHPStan parity** (opt-in, `PHAENON_PHPSTAN=/path/to/phpstan`): for each golden file, write it as `.php`,
    run `phpstan analyse --level max --error-format json`, and assert that PHPStan's (line) set
    is covered by ours. Not the other way round: the checker may be stricter. Where PHPStan finds
    something we do not, the test fails and the case is either fixed or allowlisted with a reason.
