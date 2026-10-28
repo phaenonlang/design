@@ -89,15 +89,27 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Open: Phaenon-only syntax is rejected by the emitter until M3; `.phn` tooling (php-cs-fixer,
   editors) reads files without `<?php` as inline HTML — formatting `.phn` needs `phn fmt` (M6).
 
-### M2 — Type checker core (no generics yet)
-- Name resolution, class hierarchy, PHP native types, union/intersection/nullable, literal types,
-  `static`/`self`, property hooks, asymmetric visibility, enums, readonly, attributes.
-- **Vendor reader**: `.php` + docblocks (`@param/@return/@var/@template…`) → types; php-src
-  `*.stub.php` → stdlib signatures.
-- Local bidirectional inference, narrowing (`instanceof`, `is_*`, `===`), flow analysis.
-- Diagnostics families (`P1 syntax / P2 inference / P3 erasure / P4 interop`), LSP-ready positions.
-- Target: PHPStan-level-max parity on `reflection` and `object-mapper` sources (same findings or
-  better; every disagreement is a test case).
+### M2 — Type checker core (no generics syntax yet) — done 2026-10-28
+- ✅ `phn check`: name resolution, class hierarchy (traits, interfaces, enums, hooks, asymmetric
+  visibility, readonly), the PHPStan type lattice (`internal/types`), docblock reader
+  (`internal/docblock`), program model with lazy loaders (`internal/program`): project files,
+  Composer autoload maps, php-src stubs embedded with a Phaenon overlay (`stdlib/`).
+- ✅ Local bidirectional inference with contextual typing of closures; narrowing on `instanceof`,
+  `is_*`, `===`, `isset`, `count`, `in_array`, `array_key_exists`, `assert`, `@phpstan-assert`;
+  loops to a fixed point; try/catch; `match` exhaustiveness.
+- ✅ Docblock generics already: `@template` inference at call sites (fresh identities per call,
+  foreign templates inferred, generic first-class callables, conditional return types).
+- ✅ Diagnostics `P1`/`P2`/`P4` with stable codes, source line + caret, `--json`,
+  `@phpstan-ignore`; `phn build` withholds files with type errors.
+- ✅ Target met: **0 findings on `tequila/reflection` (18 files) and `tequila/object-mapper`
+  `src` (23 files)** — the same result as PHPStan level 10 on both. Golden corpus plus an opt-in
+  PHPStan cross-check (`PHAENON_PHPSTAN=…`) that fails when PHPStan reports something the corpus
+  does not; 0.1–0.5 s per library.
+- Found on the way (see `checker.md` §9): PHPStan keeps property narrowings across calls and
+  infers templates that are not in scope; `switch` must not narrow scalars; bare `Closure` is
+  accepted for any signature; PHPStan crashes (internal error) on a deliberately broken enum.
+- Open: throw analysis (dead catches), purity/unused-result rules, missing-type severity, the
+  LSP (M6). The PHPStan comparison allow-lists those identifiers explicitly.
 
 ### M3 — Generics (per `generics.md`)
 - Syntax, checker (bounds, variance, inference), erasure + docblock emission, override-erasure rule,
