@@ -21,7 +21,7 @@ prerequisite. The first real codebase is Tequila (~50 repos, Symfony, MongoDB, N
 | D5 | Strings stay primitive; method-call syntax on primitives compiles to static calls (`"a"->upper()` → `\Phaenon\Str::upper("a")`) | 95% of the "string object API" win, no value-semantics change | conversation |
 | D6 | Concurrency: structured concurrency over Fibers, **no function colouring** (no `async fn`) | PHP's synchronous readability is the point; Fibers already exist; purely syntax + stdlib loop | conversation; design doc pending |
 | D7 | **Own parser**: hand-written lexer (state machine ported from `zend_language_scanner.l`), recursive-descent + Pratt expressions (precedence from `zend_language_parser.y`), typed AST node families, speculative parse for `<…>(` | z7zmey/php-parser evaluated 2026-10-28: PHP 7.4 only, goyacc LALR (no backtracking, poor recovery), untyped `Vertex` AST, dead since 2021 — nothing to keep. VKCOM/noverify excluded (Russian company) | — |
-| D8 | Extension **`.phn`**, CLI **`phn`** (`phn build\|check\|watch\|fmt\|migrate\|lsp`), project/org/packages **`phaenon`** | short and typeable like `tsc`; `.phn` reads as PHP-family; check `phaenon.dev` + GitHub org before publishing | — |
+| D8 | Extension **`.phn`**, CLI **`phn`** (`phn build\|check\|watch\|fmt\|migrate\|lsp`), project **`phaenon`**, GitHub org **`phaenonlang`** (`phaenon` is taken), Composer vendor `phaenon/*` to be checked on Packagist | short and typeable like `tsc`; `.phn` reads as PHP-family; `phaenon.dev` being bought; org `phaenonlang` | — |
 
 ## 2. Repository layout
 
