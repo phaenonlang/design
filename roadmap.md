@@ -111,10 +111,25 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Open: throw analysis (dead catches), purity/unused-result rules, missing-type severity, the
   LSP (M6). The PHPStan comparison allow-lists those identifiers explicitly.
 
-### M3 — Generics (per `generics.md`)
-- Syntax, checker (bounds, variance, inference), erasure + docblock emission, override-erasure rule,
-  `reified` + `phaenon/runtime` `\Phaenon\Type`, `is`/`as`, binding subclasses, Symfony DI warning.
-- Target: `tequila/object-mapper`, then `tequila/mongodb-odm` (repositories = the reified case).
+### M3 — Generics (per `generics.md`) — ✅ done 2026-10-28
+- ✅ Syntax in the program model: `class Foo<T of Bar>`, `extends Base<T>`, `implements I<T>`,
+  function / method / closure `<T>`, file-level `type` aliases (generic, namespace-scoped), `map<K, V>`.
+- ✅ Checker: arity and bounds of type arguments, `in`/`out` positions, static members, generic
+  property redeclaration, erased-T-as-value rule, `is` narrowing and `as` / `as?`, explicit type
+  arguments at call sites, reified inference with closed-type requirement (`P3001`–`P3009`).
+- ✅ Emitter: erasure to native types + PHPStan docblocks (merged into existing ones),
+  override-erasure for parameters and returns, reified → leading `string|\Phaenon\Type` parameter /
+  `$__T` property / synthesised binding constructors, `is`/`as` lowering (native where PHP can),
+  alias expansion. Golden test compiles `.phn` → `.php`, runs `php -l` and PHPStan level max.
+- ✅ `phaenon/runtime` (`~/labs/phaenon/runtime`, private `phaenonlang/runtime`): `\Phaenon\Type`
+  with 12 PHPUnit tests and PHPStan max clean.
+- Found on the way: PHPStan reads one docblock tag per line, so generic declarations cost
+  output lines (decision in `generics.md` §11); `Foo::class(...)` is not callable syntax, hence
+  `Type::of()`; GoLand rewrites `go.mod`'s module line when it opens the project.
+- Open: `phn migrate` from `@template` docblocks to syntax (needed to dogfood `object-mapper`
+  for real), `--runtime-guards`, Symfony DI warning, `array-key` / shapes as native syntax (M4),
+  descriptor hoisting, translating Phaenon vocabulary inside user docblocks.
+- Target: `tequila/object-mapper` (after migrate support), then `tequila/mongodb-odm`.
 
 ### M4 — Collections and strings
 - `list<T>` / `map<K,V>` as first-class types with literals; `array` as a legacy type that

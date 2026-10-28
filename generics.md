@@ -639,3 +639,37 @@ final class UserRepository extends AggregateRepository
 
 Compare with what Tequila writes by hand today: the same shape, minus the hand-written
 `class-string` plumbing and the docblock duplication — and with `get()` actually checked.
+
+---
+
+## 11. Decisions made while building M3 (2026-10-28)
+
+What the implementation settled that the draft above left open or got wrong. The draft text is
+kept as written; this section wins where they differ.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **Line preservation** | A generic declaration adds lines to the output: its docblock. Everything else stays line-exact. | PHPStan reads one tag per line (`/** @template T @param T $x */` keeps only the first tag — verified against PHPStan 2.2). An inline single-tag docblock would save a line but is not how PHP is written; readable output (goal 2) wins over M1's line-exactness for these declarations. Docblocks that already exist are extended in place; tags already present are not repeated. |
+| Keyed arrays | `map<K, V>` is the native keyword; it erases to `array` and prints as `array<K, V>` in docblocks. `non-empty-map` likewise. | `array<K, V>` in native syntax reads as "PHP array with magic"; `map` says what it is. |
+| `array-key`, shapes | Not native syntax in M3. A bound needs `int\|string`; a shape (`array{a: int}`) can only come from a docblock or an alias body — and it cannot be tested at runtime. | Hyphenated names and `{}` in types are an M4 question (strings/collections). |
+| Type aliases | `type X = …;` is file-level, namespace-scoped, generic (`type Result<T, E = \Throwable> = …`), expanded inline in emitted docblocks (no `@phpstan-type`). | PHPStan has no file-level aliases; inline expansion is what PHPStan sees either way. |
+| `Closure` | Written as `\Closure` in emitted signatures and docblocks. | The checker accepts a bare `Closure` everywhere; PHP in a namespace would resolve it to `App\Closure`. |
+| `is` | Native where PHP has a check — `instanceof`, `is_int()`, `=== null`, `?Foo` and `A\|B` on a simple operand — otherwise `\Phaenon\Type::…->check()`. Deep by default (open question 6: decided). | Zero-cost when PHP can do it; the runtime cost is visible where it exists. |
+| `as` / `as?` | Always the runtime: `->assert()` / `->orNull()`. | One precise `TypeError` message for every shape; the dependency is already there for structural `is`. |
+| `is !T` | Dropped; write `!($x is T)`. | Nothing a negation prefix adds. |
+| Reified call sites | The checker records the final binding of each reified parameter per call site; the emitter turns it into the leading argument (`\App\User::class`, `$T`, `$this->__T` or a descriptor). A binding must be a class type or a reified parameter in scope — `P3005` otherwise. Explicit arguments (`decode<User>()`) and inference from arguments both work. | The emitter never re-infers; one source of truth. |
+| Runtime API | `Type::of(User::class)` not `Type::class(…)` (`Foo::class` is syntax); `from()` accepts `string\|Type`; `orNull()` is `as?`; `classString()` added; `literal()` covers scalars and enum cases; descriptors are interned by their printed name. | |
+| Variance checks | `out` / `in` positions are checked on non-private, non-static members; constructors are exempt; `readonly` properties count as output positions; closures and array keys follow PHPStan. | Parity with PHPStan's template variance rules. |
+| Static members | A static method or property cannot use the class's type parameters (`P3008`); declare the method's own. | Nothing carries the parameter (as in Java/C#). |
+| Where `reified` may appear | Classes, functions, methods. Not interfaces, traits, enums, closures, type aliases (`P3006`). A reified parameter is invariant. | |
+| Override erasure | Implemented for parameters (widen to the parent's erased type) **and** return types (narrow to the parent's when the child's erasure would be wider). | A child's `T` erasing to `mixed` under a parent's `User` return would be a PHP fatal. |
+| Generic properties | A property whose type mentions a class parameter cannot be redeclared in a subclass (`P3007`). | Property types are invariant in PHP; the declaring class fixes the erasure. |
+| Binding subclasses | `final class UserRepository extends Repository<User> {}` gets a synthesised constructor forwarding the parent's parameters with `User::class` first; an explicit constructor must call `parent::__construct(...)`, which gets the argument inserted. Re-exported parameters (`extends Repository<T>`) forward `$this->__T`. | §5.4 as designed. |
+| Closures and reified `$T` | A `function` closure inside a reified function that mentions `T` gets `$T` added to its `use (...)`; arrow functions capture by value anyway; in classes `$this->__T` needs nothing. | |
+| Diagnostics | `P3001` arity · `P3002` bound · `P3003` erased T used as a value · `P3004` variance · `P3005` reified not inferable / not closed · `P3006` reified not allowed here · `P3007` generic property redeclared · `P3008` class parameter in a static member · `P3009` type arguments on a non-generic callee. | Open question 8: answered. |
+| Docblocks in `.phn` | Passed through untouched; a `map<…>` written in a `@var` in Phaenon source reaches PHPStan as is. Types belong in the syntax in `.phn` files. | Rewriting user prose is a later migration concern. |
+
+Still open after M3: `--runtime-guards` (§6), the Symfony DI warning (§5.4), monomorphisation
+(§7), `phn migrate` turning `@template` docblocks into syntax, hoisting descriptors out of hot
+paths (`static $__t ??= …`), and a `P3010`-style warning for an erased parameter that nothing
+constrains (§3.4 item 4) — PHPStan is silent there, so the checker is too for now.
