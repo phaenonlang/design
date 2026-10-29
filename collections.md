@@ -13,7 +13,7 @@ shapes) telling the two apart in docblocks. Phaenon makes the distinction the ty
 runtime** — nothing is boxed, copy-on-write value semantics and every `array_*` function stay
 exactly as they are. `array` remains as the *legacy type*, the honest spelling for "a PHP array I
 know nothing more about", the way `mixed` is for values. On top sit a stdlib with a predictable
-argument order (`\Phaenon\Lists`, `\Phaenon\Maps`) and method-call syntax on collection values
+argument order (`\Phaenon\Seq`, `\Phaenon\Map`) and method-call syntax on collection values
 that compiles to it, so `$users->filter(fn (User $u) => $u->active)` reads like a language with
 collections and runs like PHP.
 
@@ -103,7 +103,7 @@ The checker follows PHPStan, whose rules match what the runtime does:
 | `array_values($xs)`, `array_map`, `array_filter(list)` | `list<T>` · `list<U>` · `map<int, T>` (keys survive `array_filter`) | per the overlay |
 
 A list that lost its shape is still a PHP array, so nothing breaks at runtime; the type just
-tells the truth. `\Phaenon\Lists::values($xs)` (or `array_values`) is how a list is reasserted.
+tells the truth. `\Phaenon\Seq::values($xs)` (or `array_values`) is how a list is reasserted.
 `$xs[$i] = $v` with `$i` provably in `0 .. count($xs)` keeps the list — the checker knows
 `count()` ranges and literal indexes.
 
@@ -119,7 +119,7 @@ tells the truth. `\Phaenon\Lists::values($xs)` (or `array_values`) is how a list
   PHP returns `null` with a warning. Phaenon keeps PHPStan's default: `$list[$i]` is `T`, and
   `$list[$i] ?? $default` is the idiom for "maybe". Revisit after `core` (open question §7).
 
-## 3. The stdlib: `\Phaenon\Lists` and `\Phaenon\Maps`
+## 3. The stdlib: `\Phaenon\Seq` and `\Phaenon\Map`
 
 Written in PHP in the runtime package (`phaenon/runtime`), with full Phaenon signatures in their
 docblocks so the checker types every call precisely; the stub embedded in the compiler is
@@ -131,7 +131,7 @@ Argument order, everywhere: **the collection first, then the operands, callbacks
 ```php
 namespace Phaenon;
 
-final class Lists
+final class Seq
 {
     public static function map<T, U>(list<T> $xs, Closure(T): U $f): list<U>;
     public static function filter<T>(list<T> $xs, Closure(T): bool $keep): list<T>;
@@ -156,7 +156,7 @@ final class Lists
     public static function count(list<mixed> $xs): int;   // alias of count(); exists for the method form
 }
 
-final class Maps
+final class Map
 {
     public static function get<K of int|string, V>(map<K, V> $m, K $key): ?V;
     public static function has<K of int|string>(map<K, mixed> $m, K $key): bool;
@@ -175,7 +175,7 @@ final class Maps
 
 Every function is a thin wrapper over the `array_*` function or loop a PHP developer would have
 written; semantics are PHP's (copy on write, `===` for `contains`, stable sort). The emitter may
-later inline the trivial ones (`Lists::map` → `array_map` with the arguments swapped) — an
+later inline the trivial ones (`Seq::map` → `array_map` with the arguments swapped) — an
 optimisation, not a semantic question, and not in M4.
 
 ### 3.1 Method-call syntax
@@ -185,7 +185,7 @@ A method call on a value whose static type is a `list`, a `map` (or a `string`, 
 
 ```php
 $active = $users->filter(fn (User $u) => $u->active)->map(fn (User $u) => $u->email);
-//  →   \Phaenon\Lists::map(\Phaenon\Lists::filter($users, fn (User $u) => $u->active), fn (User $u) => $u->email)
+//  →   \Phaenon\Seq::map(\Phaenon\Seq::filter($users, fn (User $u) => $u->active), fn (User $u) => $u->email)
 ```
 
 Rules:
@@ -197,7 +197,7 @@ Rules:
 - Only the stdlib's methods exist; there are no user-defined extension methods in M4.
 - The result type is the function's return type, so chains type through.
 
-The method form is sugar, nothing more: `Lists::map($xs, $f)` and `$xs->map($f)` are the same
+The method form is sugar, nothing more: `Seq::map($xs, $f)` and `$xs->map($f)` are the same
 call, and PHP code reads the output as the static call.
 
 ## 4. Interop with PHP code
@@ -223,7 +223,7 @@ call, and PHP code reads the output as the static call.
 
 - A bare `array` with no docblock stays `array` (legacy) and is not a finding.
 - Shapes stay in docblocks (§6).
-- The `array_*` → `Lists::`/`Maps::` codemod is M6's `phn migrate` v1 ("where provable"), not
+- The `array_*` → `Seq::`/`Map::` codemod is M6's `phn migrate` v1 ("where provable"), not
   M4.
 
 Tequila `core`, the M4 target, in numbers (315 files, 19,909 lines in `src/`): 141 docblock
@@ -244,15 +244,17 @@ without the runtime descriptors. The one shape idiom worth a type is the pair (`
 
 ## 7. Open questions (for review)
 
-1. **Pairs and tuples.** `Lists::zip` and `Maps::toList` return `list<array{A, B}>`. A native
+1. **Pairs and tuples.** `Seq::zip` and `Map::toList` return `list<array{A, B}>`. A native
    tuple type (`(A, B)`) is grammar; a `\Phaenon\Pair<A, B>` class is boxing. Proposal: the
    shape, as PHPStan writes it, until shapes are decided.
 2. **`$list[$i]` on an unknown index**: PHPStan's default (`T`) or `?T`? Proposal: PHPStan's.
-3. **Names.** `Lists`/`Maps`/`Strings` after Go's `slices`/`maps`/`strings`, or `Lst`/`Map`/`Str`
-   (roadmap D5 wrote `\Phaenon\Str::upper`)? Proposal: the plural nouns; D5 to be amended.
-4. **`Maps::merge` semantics** — last wins (like `array_replace`) or first wins (like `+`)?
+3. **Names** — decided 2026-10-30: **singular class names**, as PHP idiom wants (`new Str()` would
+   read as nonsense, and so would `Strings`). `\Phaenon\Str` (`String` is reserved), `\Phaenon\Bytes`
+   (a bytes value is one thing), `\Phaenon\Map`. The list class cannot be `List` (reserved);
+   `Seq` is proposed and `Lst` the alternative. The namespace stays `\Phaenon`.
+4. **`Map::merge` semantics** — last wins (like `array_replace`) or first wins (like `+`)?
    Proposal: last wins, since that is what every other language's merge does.
-5. **Method syntax on `array`** (legacy): none, or `Maps`' methods? Proposal: none; a legacy
+5. **Method syntax on `array`** (legacy): none, or `Map`' methods? Proposal: none; a legacy
    array is a value one narrows before using.
 6. **`P2516` as an error**: for parameters only, or for properties and returns too? Proposal: all
    three in `.phn`; `mixed` is one word.
@@ -265,6 +267,6 @@ without the runtime descriptors. The one shape idiom worth a type is the pair (`
   to error, mutation rules of §2.2 where they differ from today, destructuring on lists/maps,
   spreading.
 - Emitter: method form → static call; docblock vocabulary translation (§4).
-- Runtime package: `Lists`, `Maps` with tests; the compiler's embedded stub generated from them.
+- Runtime package: `Seq`, `Map` with tests; the compiler's embedded stub generated from them.
 - Goldens: checker `collections.phn`, emitter `collections.phn` → `.php` under PHPStan max.
 - Dogfood: `tequila/core`.
