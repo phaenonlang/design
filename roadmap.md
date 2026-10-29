@@ -165,9 +165,10 @@ files behave identically (680 tests that observe line numbers are not run — se
   `iterable` against `array|Traversable`, and conditional returns with defaults (`explode`,
   `microtime`, `array_shift`, `array_map`, `preg_replace`). The remaining 41 (39 in `src`) are
   PHPStan's level-9/10 findings on a level-8 library — `mixed` from Symfony config arrays and
-  untyped `array` parameters — so `composer build` passes the new `--emit-on-error`. Open for a
-  maintainer: raise the library to level max on `main`, or a knob for implicit `mixed`
-  (vault `open-items`).
+  untyped `array` parameters. Decided: the library went to level max on `main` (PR #45, merged
+  2026-10-30); rebuilt on it, `phn check` reports **0 errors** after 13 more checker gaps went
+  (`class_exists` proving a class-string, static-method asserts, constant-key paths, `?? null`
+  narrowing, `array_key_first` on non-empty arrays, nested index assignment).
 
 ### M4 — Collections and strings
 - `list<T>` / `map<K,V>` as first-class types with literals; `array` as a legacy type that

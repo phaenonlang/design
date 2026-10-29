@@ -11,7 +11,7 @@ A Phaenon `string` is text: a well-formed UTF-8 sequence, which is what PHP stri
 practice everywhere Tequila runs (UTF-8 source, UTF-8 databases, JSON on the wire). `bytes` is
 the other thing PHP strings are used for — hashes, random bytes, binary protocol frames, file
 contents — and the type system keeps the two apart while the runtime keeps one representation:
-both erase to PHP `string`. Text gets one API, `\Phaenon\Strings`, Unicode-correct by default and
+both erase to PHP `string`. Text gets one API, `\Phaenon\Str`, Unicode-correct by default and
 reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\Phaenon\Bytes`.
 `sprintf`, interpolation, `.` and every `str*`/`mb_*` function stay exactly as they are.
 
@@ -43,7 +43,7 @@ reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\P
 | `non-empty-string`, `numeric-string`, `class-string<T>`, `literal-string` | refinements the checker infers and reads from docblocks, as in M3; `class<T>` is the native spelling of `class-string<T>` | `string` | the refinement |
 
 - `string` and `bytes` are **distinct, unrelated types**: neither is a subtype of the other.
-  Converting is explicit and free at runtime: `$text->bytes()` (`Strings::bytes`, the identity)
+  Converting is explicit and free at runtime: `$text->bytes()` (`Str::bytes`, the identity)
   and `$data->text()` (`Bytes::text`, which **checks** UTF-8 validity and throws
   `\ValueError` otherwise — the one place a conversion costs a scan).
 - A string **literal** is `string`. There is no bytes literal; `Bytes::of("\x00\x01")` or
@@ -75,16 +75,16 @@ the choice of every mainstream language that is not Swift; it is O(n) rather tha
 API's O(n × intl); and it is what `mb_*` already does in every Tequila string function call
 (`mb_strimwidth` is in `core`).
 
-## 4. The API: `\Phaenon\Strings` and `\Phaenon\Bytes`
+## 4. The API: `\Phaenon\Str` and `\Phaenon\Bytes`
 
 Written in PHP in `phaenon/runtime`, Phaenon signatures in docblocks, the compiler's stub
-generated from the package (as for `Lists` and `Maps`, collections.md §3). Receiver first,
+generated from the package (as for `Seq` and `Map`, collections.md §3). Receiver first,
 operands next, callbacks last.
 
 ```php
 namespace Phaenon;
 
-final class Strings
+final class Str
 {
     public static function length(string $s): int;                               // code points
     public static function isEmpty(string $s): bool;
@@ -134,7 +134,7 @@ final class Bytes
 }
 ```
 
-Method syntax, as in collections.md §3.1: `$s->upper()` compiles to `\Phaenon\Strings::upper($s)`
+Method syntax, as in collections.md §3.1: `$s->upper()` compiles to `\Phaenon\Str::upper($s)`
 when the receiver's static type is `string`, to `Bytes::` when it is `bytes`; a receiver typed
 `string|Foo` is an error to narrow (`P2519`). Everything PHP has stays callable: `sprintf`
 (234 calls in `core`), `implode`, `str_contains`, `preg_*`, `mb_*`.
@@ -155,11 +155,8 @@ when the receiver's static type is `string`, to `Bytes::` when it is `bytes`; a 
 
 ## 6. Open questions (for review)
 
-1. **Is `bytes` worth its weight in M4?** Tequila's binary strings are hashes, tokens, BSON
-   `Binary` payloads and crypto. The alternative is to defer `bytes` to the service milestones
-   and ship M4 with `string` methods only. Proposal: ship the type and the overlay now — later
-   is the moment nobody adds a type.
-2. **`Strings::format`** or `sprintf` only? Proposal: `sprintf` only; a wrapper that changes
+1. ~~**Is `bytes` worth its weight in M4?**~~ — decided 2026-10-30: yes, `bytes` ships with M4.
+2. **`Str::format`** or `sprintf` only? Proposal: `sprintf` only; a wrapper that changes
    nothing is noise, and 234 call sites in `core` will not move.
 3. **`file_get_contents` and `fread`**: `bytes` (true) or `string` (what every caller assumes)?
    Proposal: `string|bytes`-free answer — `string`, since text files are the overwhelming case,
@@ -168,15 +165,15 @@ when the receiver's static type is `string`, to `Bytes::` when it is `bytes`; a 
    `null` story for other PHP functions is M6 tooling, not M4.
 5. **The unit question** (§3): code points, or graphemes with a cheap fast path when
    `mb_check_encoding` says ASCII? Proposal: code points.
-6. **Name:** `Strings` (Go) or `Str` (D5)? Proposal: `Strings`, together with `Lists`/`Maps`.
+6. ~~**Name**~~ — decided 2026-10-30: singular, `\Phaenon\Str` and `\Phaenon\Bytes` (collections.md §7.3).
 
 ## 7. Checker and emitter work (once reviewed)
 
 - Lattice: `bytes` as a primitive disjoint from `string`; literal typing; `P2530` for `.` and
   interpolation on `bytes`.
-- Method resolution on `string` / `bytes` receivers → `Strings::` / `Bytes::` (shared with
+- Method resolution on `string` / `bytes` receivers → `Str::` / `Bytes::` (shared with
   collections.md §3.1).
-- Overlay: the binary producers and consumers; `Strings`/`Bytes` stubs generated from the
+- Overlay: the binary producers and consumers; `Str`/`Bytes` stubs generated from the
   runtime package.
 - Runtime package: the two classes with tests, UTF-8 validation path measured.
 - Goldens: checker `strings.phn`, emitter `strings.phn` → `.php` under PHPStan max.
