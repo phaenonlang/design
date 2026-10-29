@@ -184,6 +184,10 @@ files behave identically (680 tests that observe line numbers are not run — se
   the `bytes` primitive. Found on the way: findings inside a loop body were lost whenever the loop
   needed a second pass (the fixed point discarded them, the dedupe set remembered them) — fixed,
   the three dogfood libraries re-checked at 0; `$a?->b->c` short-circuits as PHP does.
+- 2026-10-30, second slice: `bytes` in use — the `(bytes)` cast (erased), `P2530` for `.` and
+  interpolation, `P2305` for `===` against text, the overlay typing PHP's binary producers and
+  consumers, `\Phaenon\Bytes` and `Str::bytes`; `map`'s key bound `P2518` with the implied
+  `K of int|string`; `P2516` an error. Dogfood libraries unchanged at 0.
 
 ### M5 — Concurrency
 - Design doc: structured concurrency over Fibers (`concurrently { }` scopes, awaitables,

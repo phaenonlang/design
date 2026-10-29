@@ -278,3 +278,6 @@ with the `core` numbers after the migration.
 - Runtime package: `Seq`, `Map` with tests; the compiler's embedded stub generated from them.
 - Goldens: checker `collections.phn`, emitter `collections.phn` → `.php` under PHPStan max.
 - Dogfood: `tequila/core`.
+- 2026-10-30: `P2518` with the implied `K of int|string` for an unbounded key parameter
+  (`program.ImplyMapKeyBounds`, functions, methods, classes, aliases and closures), `P2516` an
+  error — done.
