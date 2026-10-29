@@ -46,15 +46,21 @@ reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\P
   Converting is explicit and free at runtime: `$text->bytes()` (`Str::bytes`, the identity)
   and `$data->text()` (`Bytes::text`, which **checks** UTF-8 validity and throws
   `\ValueError` otherwise — the one place a conversion costs a scan).
-- A string **literal** is `string`. There is no bytes literal; `Bytes::of("\x00\x01")` or
-  `Bytes::fromHex('0001')` / `fromBase64(...)` builds one, and the functions that produce binary
-  in PHP are typed `bytes` by the overlay: `random_bytes`, `hash(..., binary: true)`,
-  `hash_hmac(..., binary: true)`, `pack`, `sodium_*`, `openssl_random_pseudo_bytes`,
-  `MongoDB\BSON\Binary::getData`, `fread`/`file_get_contents` (open question §6).
+- A string **literal** is `string`. There is no bytes literal: **`(bytes) $raw` retypes a
+  string as binary data**, free at runtime (the cast disappears from the output), and is how
+  binary that PHP hands over in a `string` enters the type; `Bytes::fromHex('0001')` /
+  `fromBase64(...)` decode text into one. The functions that produce binary in PHP are typed
+  `bytes` by the overlay: `random_bytes`, `hash(..., binary: true)`, `hash_hmac(..., binary:
+  true)`, `md5`/`sha1(..., binary: true)`, `pack`, `hex2bin`, `sodium_*` (the common
+  functions), `openssl_random_pseudo_bytes`, `MongoDB\BSON\Binary::getData`;
+  `fread`/`file_get_contents` stay `string` (§6).
 - Interpolation (`"Hello $name"`) and `.` require `string` operands; a `bytes` operand is an
-  error (`P2530`), as is comparing `string` with `bytes` by `===` (`P2305` already: the types
-  do not overlap). PHP functions typed `string` accept a `string`; passing `bytes` to
-  `strtoupper` is an error — call `Bytes::` methods or convert.
+  error (`P2530`), as is comparing `string` with `bytes` by `===` (`P2305`: both are PHP
+  strings underneath and may even compare equal, the type confusion is the finding). PHP
+  functions typed `string` accept a `string`; passing `bytes` to `strtoupper` is an error —
+  call `Bytes::` methods or convert. **`(string) $data` is the unchecked way back**, for the
+  PHP and vendor APIs that take binary in a `string` parameter (`Uuid::fromBinary`,
+  `new Binary(...)`); `->text()` is the checked one.
 
 ## 3. Unicode: which unit?
 
@@ -77,9 +83,9 @@ API's O(n × intl); and it is what `mb_*` already does in every Tequila string f
 
 ## 4. The API: `\Phaenon\Str` and `\Phaenon\Bytes`
 
-Written in PHP in `phaenon/runtime`, Phaenon signatures in docblocks, the compiler's stub
-generated from the package (as for `Seq` and `Map`, collections.md §3). Receiver first,
-operands next, callbacks last.
+Written in Phaenon (`stdlib/runtime/Str.phn`, `Bytes.phn`), read by the compiler as its own
+declaration and compiled into `phaenon/runtime` (as for `Seq` and `Map`, collections.md §3).
+Receiver first, operands next, callbacks last.
 
 ```php
 namespace Phaenon;
@@ -119,10 +125,10 @@ final class Str
 
 final class Bytes
 {
-    public static function of(string $raw): bytes;                               // the identity, typed
-    public static function fromHex(string $hex): bytes;
-    public static function fromBase64(string $b64): bytes;
+    public static function fromHex(string $hex): bytes;                          // ValueError on bad input
+    public static function fromBase64(string $b64): bytes;                       // standard or URL-safe alphabet
     public static function length(bytes $b): int;
+    public static function isEmpty(bytes $b): bool;
     public static function slice(bytes $b, int $start, ?int $length = null): bytes;
     public static function concat(bytes ...$parts): bytes;
     public static function hex(bytes $b): string;
@@ -167,6 +173,10 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | `indexOf` | `?int`, never `false` | the stdlib is where PHP's `false` returns end |
 | `\Stringable` and `string` | **no implicit conversion in argument position**: a `\Stringable` passed where `string` is declared is the error PHP's strict mode makes it. Interpolation and `.` call `__toString()` as PHP does. The `Str` methods accept `string\|\Stringable` and convert inside, so `$id->startsWith('u-')` works on a value object. The other direction (a string where `\Stringable` is expected) does not exist without boxing and is not added | PHP's own asymmetry; an inserted `->__toString()` would be code the programmer did not write (D9) and the implicit conversion strict mode exists to forbid |
 | Symfony-String-like objects (`u()`) | not needed: `$s->upper()` is `u($s)->upper()` without the object | the method syntax exists because Phaenon can put a method on a string, which PHP cannot |
+| Building a `bytes` value (2026-10-30) | the `(bytes)` cast, Phaenon-only syntax erased from the output; `Bytes::of()` dropped | the stdlib itself needs a primitive (`return $raw;` from `string` to `bytes` is the type error the type exists for); a cast is zero-cost where a static call is not, and `(string)` is its unchecked mirror |
+| `(string) $bytes` | allowed, unchecked, typed `string` | PHP's own cast; vendor APIs take binary in `string` parameters and need an escape hatch that is visible in the code |
+| `$bytes === $string` | `P2305` although both are PHP strings | the comparison is a type confusion even when it is true at runtime |
+| `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
 
 ## 7. Checker and emitter work (once reviewed)
 
@@ -179,3 +189,8 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 - Runtime package: the two classes with tests, UTF-8 validation path measured.
 - Goldens: checker `strings.phn`, emitter `strings.phn` → `.php` under PHPStan max.
 - Dogfood: `tequila/core` with `collections.md`.
+- 2026-10-30: lattice, `(bytes)`, `P2530`, `P2305` on bytes vs text, the overlay
+  (`stdlib/overlay/bytes.php`, `mongodb.php`), `Bytes.phn` and `Str::bytes`, erasure to `string`
+  in signatures and docblocks, goldens (`internal/checker/testdata/bytes.phn`, emit `bytes.phn`
+  under PHPStan max) — done. Left: `Str` methods on a `\Stringable` receiver, `?->` on a
+  primitive receiver, the runtime package built from the `.phn` sources.
