@@ -150,7 +150,23 @@ files behave identically (680 tests that observe line numbers are not run — se
   constructor parameter, an overridden static getter, an attribute-carried class name). The
   hidden parameter fought Symfony DI and made the output read as machine-generated; the PHPStan
   vocabulary was a migration shortcut, not a language decision. `generics.md` §11.2, D9.
-- Next target: `tequila/mongodb-odm`.
+- 2026-10-29, `tequila/mongodb-odm` (124 files, PHPStan level 8): migrated and built on
+  `phaenon-dogfood`; its suite (162 tests), PHPStan and php-cs-fixer pass on the compiled output.
+  The first `phn check` reported 150 findings in `src`; 110 of them were the compiler's and are
+  fixed (`checker.md` §9, 2026-10-29 entries): the classes of ext-mongodb were unknown, so
+  `php`'s loaded extensions are now reflected into stubs; impossibility diagnostics now need the
+  PHP types to agree with the refined ones (`treatPhpDocTypesAsCertain: false`); `@var` narrows
+  instead of being checked for acceptance, retypes above any statement and types a `return`; a
+  promoted property's `@var` reaches the parameter (checker and migrate); a docblock above an
+  attribute reaches the declaration; `$r[$k] = $v` types `$r`; `P3008` lets static methods use
+  class parameters; enum interface properties, callable strings, `new $class` on abstract
+  bounds, by-reference closure uses, `new class (…)` arguments, trait methods through users,
+  `iterable` against `array|Traversable`, and conditional returns with defaults (`explode`,
+  `microtime`, `array_shift`, `array_map`, `preg_replace`). The remaining 41 (39 in `src`) are
+  PHPStan's level-9/10 findings on a level-8 library — `mixed` from Symfony config arrays and
+  untyped `array` parameters — so `composer build` passes the new `--emit-on-error`. Open for a
+  maintainer: raise the library to level max on `main`, or a knob for implicit `mixed`
+  (vault `open-items`).
 
 ### M4 — Collections and strings
 - `list<T>` / `map<K,V>` as first-class types with literals; `array` as a legacy type that

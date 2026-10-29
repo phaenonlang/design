@@ -374,6 +374,45 @@ turned it into a test.
   `non-empty-string` parameter the finding stays, as in PHPStan, and the fix is a guard, not an
   annotation. Development must stay plausible for a person without an assistant; a rule that
   turns typing into a minefield is not adopted because PHPStan has it.
+- **Docblock types are not certain** (2026-10-29, `tequila/mongodb-odm`). A docblock, an
+  inherited generic or a `@var` tag refines what PHP declares; the refined type drives inference
+  and narrowing, the PHP type is what the runtime guarantees. A diagnostic that calls a check
+  impossible — an `instanceof` always true, a `=== null` always false, an `is` that can never
+  hold — requires both to agree. `normalize(object $value)` in a subclass of a generic normaliser
+  is typed `UnitEnum`, and its `if (!$value instanceof UnitEnum) throw` is not dead code, since
+  erasure lets any object in. This is PHPStan's `treatPhpDocTypesAsCertain: false`, Tequila's
+  setting everywhere; the parity harness runs PHPStan with it. The type flow still uses the
+  refined type: a ternary whose condition the refined types decide takes one branch, as in
+  PHPStan.
+- **`@var` narrows, never widens** (2026-10-29). Above an assignment, the tag's type must be a
+  subtype of what PHP declares for the value (PHPStan's `varTag.nativeType`); a literal value must
+  fit the tag instead. Above any other statement, `@var T $x` retypes `$x` for what follows; above
+  a `return`, an unnamed `@var T` types the returned value. A `@var` on a promoted constructor
+  parameter types the parameter and the property (`phn migrate` lifts it into the declaration).
+- **Extensions come from `php`** (2026-10-29). The embedded stubs are php-src's; the classes,
+  functions and constants of every other extension the local `php` has loaded — ext-mongodb,
+  redis, amqp, apcu — are generated from its reflection, once per extension and PHP version,
+  and cached under the user's cache directory (`program.LoadExtensions`; `PHN_PHP` names another
+  binary). `php` is the oracle for what exists. Reflection carries no docblocks, so a generated
+  stub has no generics; the overlay refines what matters. Without a `php` on `PATH` the checker
+  warns once (`P4007`) and knows php-src only.
+- **A trait sees its users.** A method the trait body calls on `$this`, `self` or `static` and
+  the trait does not declare is looked up in the classes using the trait, as PHPStan does by
+  analysing a trait in each user's context.
+- **A general array is accepted for a shape it may well be.** `array<string, string>` passes for
+  `array{spec: string, declared: string}` when its keys and values can be the shape's, as PHPStan
+  accepts it; `array<string, mixed>` still fails against `array<string, int>`.
+- **Static methods may use the class's type parameters** (`P3008` stays for static properties
+  only): late static binding resolves them, which is how the `aggregateClass(): class<T>` idiom
+  works (`generics.md` §11.2).
+- Smaller parity points settled the same day: `$r = []; $r[$k] = $v` types `$r` from its first
+  entry, and an empty literal is not widened in a loop; a `const array M = […]` is typed by its
+  value; `Suit::Hearts->value` is the literal; `UnitEnum::$name` and `BackedEnum::$value` exist;
+  `'strval'` is a callable; `new $class()` on a `class<T>` never fails on `T` being abstract;
+  `null !== ($x = f())` narrows `$x`; a closure's by-reference uses write back; `new class (…)`
+  passes its arguments to the constructor; `iterable<K, V>` is `array<K, V>|Traversable`; a
+  conditional return type sees the defaults of omitted arguments (`explode()`, `microtime()`,
+  `array_shift()`, `array_map()` preserving lists, `preg_replace()`).
 
 ## 10. Open questions
 
