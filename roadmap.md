@@ -16,12 +16,13 @@ prerequisite. The first real codebase is Tequila (~50 repos, Symfony, MongoDB, N
 |---|---|---|---|
 | D1 | Transpile to PHP, not a new runtime | ecosystem is the moat; Hack/HHVM is the cautionary tale; an oracle (`php`) exists for every behaviour | conversation 2026-10-28 |
 | D2 | Compiler written in **Go** | single static binary shipped through a Composer plugin (esbuild-via-npm model); fast watch mode/LSP; frontend reusable by a future native runtime | — |
-| D3 | Generics: real `<T>` syntax, erased by default, `reified` opt-in compiled to the `class-string<T>` idiom; `is`/`as` operators | `generics.md` | |
+| D3 | Generics: real `<T>` syntax, erased; `class<T>` for class names as values; `is`/`as` operators — `reified` removed 2026-10-29 (`generics.md` §11.2) | `generics.md` | |
 | D4 | Emitted PHP carries PHPStan-vocabulary docblocks; PHPStan `level: max` on output is part of compiler CI | output must read as well-typed modern PHP | `generics.md` §4.2, §8.4 |
 | D5 | Strings stay primitive; method-call syntax on primitives compiles to static calls (`"a"->upper()` → `\Phaenon\Str::upper("a")`) | 95% of the "string object API" win, no value-semantics change | conversation |
 | D6 | Concurrency: structured concurrency over Fibers, **no function colouring** (no `async fn`) | PHP's synchronous readability is the point; Fibers already exist; purely syntax + stdlib loop | conversation; design doc pending |
 | D7 | **Own parser**: hand-written lexer (state machine ported from `zend_language_scanner.l`), recursive-descent + Pratt expressions (precedence from `zend_language_parser.y`), typed AST node families, speculative parse for `<…>(` | z7zmey/php-parser evaluated 2026-10-28: PHP 7.4 only, goyacc LALR (no backtracking, poor recovery), untyped `Vertex` AST, dead since 2021 — nothing to keep. VKCOM/noverify excluded (Russian company) | — |
 | D8 | Extension **`.phn`**, CLI **`phn`** (`phn build\|check\|watch\|fmt\|migrate\|lsp`), project **`phaenon`**, GitHub org **`phaenonlang`** (`phaenon` is taken), Composer vendor `phaenon/*` to be checked on Packagist | short and typeable like `tsc`; `.phn` reads as PHP-family; `phaenon.dev` being bought; org `phaenonlang` | — |
+| D9 | **The emitted PHP contains no identifier the programmer did not write**: no hidden parameters, no synthesised members, no renamed locals. The compiler adds only the header line, `declare(strict_types=1)`, docblocks, and `phaenon/runtime` calls where the source used `is` / `as` on a type PHP cannot test | the output must read as PHP a person wrote; `reified`'s hidden constructor parameter broke that and fought Symfony DI (2026-10-29) | `generics.md` §11.2 |
 
 ## 2. Repository layout
 
@@ -139,8 +140,16 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Open: `--runtime-guards`, Symfony DI warning, `array-key` / shapes as native syntax (M4),
   descriptor hoisting, translating Phaenon vocabulary inside user docblocks; a constructor-level
   `@template` used only by a promoted property stays a docblock (it is a class type parameter in
-  disguise — a maintainer's call per class); object-mapper's `tests/` carry 16 pre-existing findings
-  outside PHPStan's `paths` (Symfony container `get()` typing, untyped closure parameters).
+  disguise — a per-class design decision for a maintainer, not a mechanical one); object-mapper's
+  `tests/` carry 16 pre-existing findings outside PHPStan's `paths` (Symfony container `get()`
+  typing, untyped closure parameters).
+- 2026-10-29: `reified` removed (keyword, hidden `string|\Phaenon\Type` parameters, `$__T`,
+  synthesised binding constructors, the planned Symfony DI warning, codes `P3005`/`P3006`), and
+  the hyphenated PHPStan names dropped from the syntax. Replaced by `class<T>`, the type of
+  `T::class`, and by the runtime-generics idioms Tequila already writes by hand (a `class<T>`
+  constructor parameter, an overridden static getter, an attribute-carried class name). The
+  hidden parameter fought Symfony DI and made the output read as machine-generated; the PHPStan
+  vocabulary was a migration shortcut, not a language decision. `generics.md` §11.2, D9.
 - Next target: `tequila/mongodb-odm`.
 
 ### M4 — Collections and strings
@@ -180,8 +189,8 @@ reusable; the backend is a separate decision then.
   (phpt harness). For everything Phaenon adds, golden files + hand-written semantics tests.
 - **Token economy**: mechanical, parallelisable work (phpt classification, stub conversion, codemod
   corpora) goes to subagents; design and checker core stay in the main thread.
-- The maintainers' work: design review and decisions, Tequila-side migrations, the bits of PHP semantics that
-  need a human who has been bitten (and the ones the oracle can't settle: taste).
+- The maintainers' work: design review and decisions, Tequila-side migrations, the bits of PHP
+  semantics that need a person who has been bitten (and the ones the oracle can't settle: taste).
 
 ## 5. First steps (this week)
 

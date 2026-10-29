@@ -20,6 +20,10 @@ structured concurrency — compiled to the PHP you would have written by hand.
 - **Mixed projects are normal**: `.phn` and `.php` files coexist in one Composer package; Phaenon
   code calls PHP code with full type information read from native types and docblocks; PHP calls
   Phaenon code without knowing (§ generics.md §4.4).
+- **Runtime generics are the PHP idiom.** A generic that needs its type parameter at runtime holds
+  a `class<T>` value — a constructor argument you pass, or a static getter you override in the
+  subclass that Symfony wires. The compiler never adds a parameter, a member or a name the
+  programmer did not write (roadmap D9, `generics.md` §11.2).
 
 ## 3. Removed from PHP
 
@@ -41,15 +45,16 @@ emitted PHP never contains them.
 
 `$variables` · classes, interfaces, traits, enums, readonly, property hooks, asymmetric visibility ·
 attributes · closures and arrow functions · `match` · named arguments · union/intersection/DNF
-types · exceptions · generators · Fibers (as the concurrency substrate) · the request-cycle
-execution model · Composer · Symfony · PHPStan vocabulary.
+types · class names as strings (`Foo::class`, typed `class<T>`) · exceptions · generators ·
+Fibers (as the concurrency substrate) · the request-cycle execution model · Composer · Symfony ·
+PHPStan vocabulary (read from docblocks, not written as syntax).
 
 ## 5. Added
 
 | Feature | Doc | Milestone |
 |---|---|---|
 | Type checker: inference, narrowing, flow analysis, diagnostics | `checker.md` (pending) | M2 |
-| Generics: `<T>`, bounds, variance, erased + `reified`, `is`/`as` | `generics.md` | M3 |
+| Generics: `<T>`, bounds, variance, erased; `class<T>` as the type of `T::class`; `is`/`as` | `generics.md` | M3 |
 | `type` aliases | `generics.md` §2.1 | M3 |
 | `list<T>`, `map<K, V>`, literals, `array` as legacy type | `collections.md` (pending) | M4 |
 | String/`bytes` split, method syntax on primitives (`$s->upper()` → `\Phaenon\Str::upper($s)`) | `strings.md` (pending) | M4 |
