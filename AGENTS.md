@@ -17,5 +17,6 @@ commit rules are in the compiler repo: read `../phaenon/AGENTS.md` first.
   differ; the milestone's roadmap entry records ✅ items, *Found on the way*, *Open*, *Target*.
 - Dates are absolute.
 - Nothing to build or test: Markdown only.
-- Commit messages say what changed and why, with no attribution lines and no `Co-Authored-By`: the
-  repository will be public.
+- Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, … with a body that says
+  what changed and why), with no attribution lines and no `Co-Authored-By`: the repository will be
+  public.
