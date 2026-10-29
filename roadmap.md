@@ -178,6 +178,12 @@ files behave identically (680 tests that observe line numbers are not run — se
   Phaenon signatures; string method syntax, `bytes` vs `string`, grapheme-aware unicode API over
   `intl`.
 - Target: `tequila/core` (the heaviest array user).
+- 2026-10-30, first slice (`collections.md`, `strings.md` reviewed the same day): method syntax on
+  `list`, `map` and `string` receivers compiled to `Seq::` / `Map::` / `Str::` static calls with the
+  class imported (D11); the stdlib written in Phaenon and read as stubs; the tuple type `(A, B)`;
+  the `bytes` primitive. Found on the way: findings inside a loop body were lost whenever the loop
+  needed a second pass (the fixed point discarded them, the dedupe set remembered them) — fixed,
+  the three dogfood libraries re-checked at 0; `$a?->b->c` short-circuits as PHP does.
 
 ### M5 — Concurrency
 - Design doc: structured concurrency over Fibers (`concurrently { }` scopes, awaitables,
