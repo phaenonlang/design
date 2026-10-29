@@ -56,8 +56,8 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | Type checker: inference, narrowing, flow analysis, diagnostics | `checker.md` (pending) | M2 |
 | Generics: `<T>`, bounds, variance, erased; `class<T>` as the type of `T::class`; `is`/`as` | `generics.md` | M3 |
 | `type` aliases | `generics.md` §2.1 | M3 |
-| `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (draft 2026-10-29) | M4 |
-| String/`bytes` split, method syntax on primitives (`$s->upper()` → `\Phaenon\Strings::upper($s)`) | `strings.md` (draft 2026-10-29) | M4 |
+| `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (reviewed 2026-10-30) | M4 |
+| String/`bytes` split, method syntax on primitives (`$s->upper()` → `\Phaenon\Strings::upper($s)`) | `strings.md` (reviewed 2026-10-30) | M4 |
 | `\Phaenon\*` stdlib (PHP package `phaenon/runtime`) | `collections.md` §3, `strings.md` §4 | M4 |
 | Structured concurrency over Fibers, no function colouring | `concurrency.md` (pending) | M5 |
 | Tooling: `phn build/check/watch/fmt/migrate/lsp` | `tooling.md` (pending) | M1, M6 |
