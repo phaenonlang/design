@@ -360,13 +360,23 @@ turned it into a test.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
 - **Missing declared types are warnings** (`P2516`) until M4's collections make the
   replacement for untyped arrays available.
+- **The rule set is Phaenon's own list, not a PHPStan level** (2026-10-29). The checks of §5
+  are the specification; PHPStan is the oracle for what each one means on PHP code, not for
+  which ones exist. The parity harness (§8) keeps running PHPStan at level max on the emitted
+  goldens as a quality bar for generated code — cheap, because level 10 adds "no implicit
+  `mixed`", which Phaenon forbids by language rule anyway. The reference profile for what
+  Phaenon deliberately lacks is Tequila's: PHPStan 2.x, level 8 in the 22 service repositories
+  (`core`, `iam`, `mongodb-odm` among them), level 10 in the 17 libraries,
+  `treatPhpDocTypesAsCertain: false` everywhere, no `phpstan-strict-rules`. Refinement types
+  (`non-empty-string`, `positive-int`, `int<0, max>`, …) are inferred and narrowed —
+  `$s !== ''` gives `non-empty-string` — but never required in source, since they cannot be
+  written as native types (`generics.md` §11.2): where a declared `string` flows into a vendor
+  `non-empty-string` parameter the finding stays, as in PHPStan, and the fix is a guard, not an
+  annotation. Development must stay plausible for a person without an assistant; a rule that
+  turns typing into a minefield is not adopted because PHPStan has it.
 
 ## 10. Open questions
 
-- **Which rule set is "level max"?** PHPStan's levels 0–10 mix strictness knobs; Phaenon has one
-  mode. The mapping is: everything up to level 9 is an error; level 10's "no `mixed` leaks"
-  rules are errors too, since Phaenon's position is that `mixed` must be written. `bleedingEdge`
-  rules are case by case.
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
   M4 decides whether shapes survive as a language feature.

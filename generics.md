@@ -74,6 +74,7 @@ private readonly map<string, list<Event<T>>> $streams;
 public function get(Uuid $id): ?T;
 public function all(): iterable<T>;
 public function with(Closure(T, int): bool $pred): static;
+public function __construct(private readonly class<T> $aggregateClass) {}  // the type of T::class (§11.2)
 ```
 
 PHP's grammar never puts an *expression* in a type position, so `<`/`>` here are unambiguous.
@@ -278,6 +279,8 @@ it would any vendor code. **No hidden parameters, no runtime dependency, no wrap
 ---
 
 ## 5. Runtime generics: `reified`
+
+*Superseded 2026-10-29: `reified` was removed, see §11.2. The text below is the draft as written.*
 
 ### 5.1 The idea
 
@@ -492,6 +495,9 @@ Guards never change behaviour of correct programs, and the output with `off` has
 It is the only option that keeps goal 4 (zero cost by default) and goal 5 (interop) while giving
 a *real* `instanceof T` where it is asked for.
 
+*Superseded 2026-10-29: the idiom stays, the opt-in does not — a `class<T>` value the programmer
+writes replaces the compiled hidden parameter, see §11.2.*
+
 ---
 
 ## 8. Interop details
@@ -683,7 +689,21 @@ kept as written; this section wins where they differ.
 | Promoted properties | A method-level `@template` that a promoted parameter's type mentions stays in the docblock (with its `@param`), noted as "make it a class type parameter". | A property cannot carry a method type parameter; whether the class should become generic is a design decision per class, not a mechanical one. |
 | CLI | `phn migrate` takes `.php` (strip + lift) and `.phn` (lift only, rewritten in place when changed); `--keep-docblocks` is the mechanical v0. Notes print as `file:line: kept @tag …`. | One command for new and already-migrated projects. |
 
-Still open after M3: `--runtime-guards` (§6), the Symfony DI warning (§5.4), monomorphisation
-(§7), hoisting descriptors out of hot paths (`static $__t ??= …`), and a `P3010`-style warning
-for an erased parameter that nothing constrains (§3.4 item 4) — PHPStan is silent there, so the
-checker is too for now.
+Still open after M3: `--runtime-guards` (§6), monomorphisation (§7), hoisting descriptors out
+of hot paths (`static $__t ??= …`), and a `P3010`-style warning for an erased parameter that
+nothing constrains (§3.4 item 4) — PHPStan is silent there, so the checker is too for now. The
+Symfony DI warning of §5.4 went with `reified` (§11.2).
+
+### 11.2 `class<T>`, and the end of `reified` (2026-10-29)
+
+Settled after the migrate step, when the compiled output of reflector and object-mapper was read
+as a PHP developer would read it. Where this table and §11.1 differ, this one wins.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **`reified` is removed** | No keyword, no hidden leading parameters, no `$__T` property, no synthesised or rewritten constructors, no binding subclasses (§5.4), no Symfony DI warning. Codes `P3005` and `P3006` are retired and reserved, never reused. `P3003` (erased type parameter used as a value) stays; its message now points to `class<T>`. | The hidden parameter fought Symfony DI — constructors are the wiring surface — and made the output read as machine-generated (`string\|\Phaenon\Type $T`, `$this->__T->check()`). Tequila already carries `T` at runtime by hand, in three string-typed, DI-transparent idioms (next row), and `reified` compiled to one of them anyway. Across Tequila's 51 `src/` trees (4,963 files): `instanceof $x` on 24 lines, `new $x` on 13, `is_a()` on 37, `is_subclass_of()` on 25 — every one with the class string already in hand; `::class` on 1,932 lines in 721 files. Not one site needs a hidden type parameter. |
+| **Runtime generics are written, not synthesised** | A generic that needs `T` at runtime holds a `class<T>` value, in one of the idioms PHP already uses: (a) a constructor parameter `class<T> $aggregateClass` (Tequila `core`'s `InMemoryAggregateRepository`); (b) an abstract static getter `aggregateClass(): class<T>` overridden by the concrete subclass, which is the DI service (`core`'s `AbstractEventSourcedRepository`); (c) a class name carried by an attribute and read by a factory that does `new $repositoryClass(...)` (`mongodb-odm`'s `AttributeBasedRepositoryFactory`). The checker types all three precisely; the language introduction (phaenon.dev) shows them. | The PHP idiom is readable, autowirable and already understood by every PHP developer and by PHPStan; the compiler has nothing to add to it but types. |
+| **`class<T>`** | A native type: the type of the expression `T::class`, a subtype of `string`. Bare `class` is any class name (`class<object>`). Erases to `string`; prints in emitted docblocks as `class-string<T>`. Parsed from the `class` keyword in a type position (Phaenon mode), so no name-joining rule exists. With `$c` of type `class<T>`, the checker narrows `$x instanceof $c` to `T`, types `new $c(...)` as `T` and checks `$c::method()` against `T` — as it already did for `class-string<T>` read from docblocks. | Rejected: a runtime class object (Python-style) — breaks attribute arguments (constant expressions only), `services.yaml` strings and `===` at every PHP boundary. Rejected: keeping `class-string<T>` as the one hyphenated exception — a special parser rule for a single name. `class<T>` reads as "a class of T" and mirrors `T::class`. |
+| **Hyphenated PHPStan names are not syntax** | `non-empty-string`, `positive-int`, `array-key`, `non-empty-list`, `int<a, b>`, `key-of<T>`, … are read by the type lattice from docblocks — in `.php` and `.phn` alike, as refinements of a native type, exactly as PHPStan reads them — but cannot be written as native types. The surface stays small on purpose: PHP's native types, `list<T>`, `map<K, V>`, `Closure(A): R`, `class<T>`, type parameters and aliases, plus what M4 adds deliberately. `array-key` is written `int\|string`; M4 decides the key bound of `map`. `phn migrate` lifts `class-string<T>` to `class<T>` and keeps the other hyphenated tags in docblocks with a note. Supersedes the "Hyphenated names" row of §11.1. | PHPStan is a tool's vocabulary, not a type-system design; the Go rule applies — the general type unless the use case demands otherwise — or the number of types explodes. Tequila's own `src/` writes `list<…>` on 2,007 lines against 22 `non-empty-string`, 17 `positive-int`, 67 `array-key` and 4 for all the rest combined. The §11.1 row was justified by the migration (reflector's lift), not by the language. |
+| **`\Phaenon\Type` narrowed** | The runtime serves structural `is` / `as` only (`$m is list<int>`), where PHP has no check of its own. It never appears in a signature. `Type::from()` and `Type::instantiate()` are removed. | What is left is an honest library call at the site that asked for a deep check; nothing hidden. |
+| **Emitter principle** | Roadmap D9: the emitted PHP contains no identifier the programmer did not write — no hidden parameters, no synthesised members, no renamed locals. The compiler adds only the header line, `declare(strict_types=1)`, docblocks, and `phaenon/runtime` calls where the source used `is` / `as` on a type PHP cannot test. | The output must read as PHP a person wrote; "generated-looking" PHP would be the complaint that follows Phaenon forever. |
