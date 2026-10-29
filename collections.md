@@ -1,8 +1,8 @@
 # Collections: `list<T>`, `map<K, V>` and the legacy `array` — M4 design (draft)
 
-Status: **draft for review**, 2026-10-29. Nothing here is implemented beyond what M3 already
-has (the keywords `list` and `map` in type positions, their erasure to `array`, the lattice's
-array types). The decisions are proposals until they move into a *Decisions* section.
+Status: **reviewed 2026-10-30**; §9 holds the decisions, the body is the design they settle.
+Nothing is implemented yet beyond what M3 already has (the keywords `list` and `map` in type
+positions, their erasure to `array`, the lattice's array types).
 
 ## 0. One paragraph
 
@@ -119,6 +119,17 @@ tells the truth. `\Phaenon\Seq::values($xs)` (or `array_values`) is how a list i
   PHP returns `null` with a warning. Phaenon keeps PHPStan's default: `$list[$i]` is `T`, and
   `$list[$i] ?? $default` is the idiom for "maybe". Revisit after `core` (open question §7).
 
+### 2.4 Tuples
+
+`(A, B)` is a **tuple type**: a positional, fixed-length list whose elements have their own types.
+It is spelled with parentheses in any type position (`list<(string, int)>`, `(User, bool)`,
+`?(int, int)`), built with an array literal (`[$name, $age]`), read by destructuring
+(`[$name, $age] = $pair`) or by index (`$pair[0]`), and erases to the shape PHPStan writes:
+`array{string, int}` in docblocks, `array` natively. In the lattice it *is* the sealed positional
+shape `array{0: A, 1: B}`, which the checker already has, so `zip`, `toList` and every PHP API
+that returns a pair-shaped array interoperate without conversion. A tuple is at least two
+elements long; `(A)` is a parenthesised type.
+
 ## 3. The stdlib: `\Phaenon\Seq` and `\Phaenon\Map`
 
 Written in PHP in the runtime package (`phaenon/runtime`), with full Phaenon signatures in their
@@ -148,7 +159,7 @@ final class Seq
     public static function unique<T of int|string>(list<T> $xs): list<T>;
     public static function flatten<T>(list<list<T>> $xs): list<T>;
     public static function chunk<T>(list<T> $xs, int $size): list<list<T>>;
-    public static function zip<A, B>(list<A> $as, list<B> $bs): list<array{A, B}>;   // or a Pair class — §7
+    public static function zip<A, B>(list<A> $as, list<B> $bs): list<(A, B)>;        // a tuple, §2.4
     public static function keyBy<T, K of int|string>(list<T> $xs, Closure(T): K $key): map<K, T>;
     public static function groupBy<T, K of int|string>(list<T> $xs, Closure(T): K $key): map<K, list<T>>;
     public static function values<T>(map<int|string, T> $xs): list<T>;   // the way back from a map
@@ -167,8 +178,8 @@ final class Map
     public static function merge<K of int|string, V>(map<K, V> ...$maps): map<K, V>;   // later keys win, as `+` reversed
     public static function with<K of int|string, V>(map<K, V> $m, K $key, V $value): map<K, V>;
     public static function without<K of int|string, V>(map<K, V> $m, K ...$keys): map<K, V>;
-    public static function toList<K of int|string, V>(map<K, V> $m): list<array{K, V}>;
-    public static function fromList<K of int|string, V>(list<array{K, V}> $pairs): map<K, V>;
+    public static function toList<K of int|string, V>(map<K, V> $m): list<(K, V)>;
+    public static function fromList<K of int|string, V>(list<(K, V)> $pairs): map<K, V>;
     public static function isEmpty(map<int|string, mixed> $m): bool;
 }
 ```
@@ -185,7 +196,8 @@ A method call on a value whose static type is a `list`, a `map` (or a `string`, 
 
 ```php
 $active = $users->filter(fn (User $u) => $u->active)->map(fn (User $u) => $u->email);
-//  →   \Phaenon\Seq::map(\Phaenon\Seq::filter($users, fn (User $u) => $u->active), fn (User $u) => $u->email)
+//  →   Seq::map(Seq::filter($users, fn (User $u) => $u->active), fn (User $u) => $u->email)
+//      with `use Phaenon\Seq;` imported by the compiler (roadmap D11)
 ```
 
 Rules:
@@ -238,28 +250,24 @@ data provider rows. Proposal for M4: **shapes stay docblock vocabulary**, read i
 `.php`, and are not given native syntax yet. Reasons: a shape is usually a class that has not
 been written (checker.md §10, *shapes vs classes*); native syntax would be the single largest
 grammar addition of M4 for the smallest number of sites; and a shape cannot be tested at runtime
-without the runtime descriptors. The one shape idiom worth a type is the pair (`zip`,
-`toList`); §7 asks whether `array{K, V}` or a `Pair<K, V>` class carries it. Revisit with the
-`core` numbers after the migration.
+without the runtime descriptors. The one shape idiom worth a type is the pair, and it has one:
+the tuple `(K, V)` of §2.4, a positional shape with its own spelling. Named shapes are revisited
+with the `core` numbers after the migration.
 
-## 7. Open questions (for review)
+## 7. Decisions (reviewed 2026-10-30)
 
-1. **Pairs and tuples.** `Seq::zip` and `Map::toList` return `list<array{A, B}>`. A native
-   tuple type (`(A, B)`) is grammar; a `\Phaenon\Pair<A, B>` class is boxing. Proposal: the
-   shape, as PHPStan writes it, until shapes are decided.
-2. **`$list[$i]` on an unknown index**: PHPStan's default (`T`) or `?T`? Proposal: PHPStan's.
-3. **Names** — decided 2026-10-30: **singular class names**, as PHP idiom wants (`new Str()` would
-   read as nonsense, and so would `Strings`). `\Phaenon\Str` (`String` is reserved), `\Phaenon\Bytes`
-   (a bytes value is one thing), `\Phaenon\Map`. The list class cannot be `List` (reserved);
-   `Seq` is proposed and `Lst` the alternative. The namespace stays `\Phaenon`.
-4. **`Map::merge` semantics** — last wins (like `array_replace`) or first wins (like `+`)?
-   Proposal: last wins, since that is what every other language's merge does.
-5. **Method syntax on `array`** (legacy): none, or `Map`' methods? Proposal: none; a legacy
-   array is a value one narrows before using.
-6. **`P2516` as an error**: for parameters only, or for properties and returns too? Proposal: all
-   three in `.phn`; `mixed` is one word.
-7. **Sorting**: in place (PHP's `sort()` by reference) or returning a copy? Proposal: a copy; the
-   by-reference `sort()` stays callable.
+| Question | Decision | Why |
+|---|---|---|
+| Pairs and tuples | A tuple type `(A, B)` (§2.4), erasing to the positional shape `array{A, B}` | the spelling people want, at the cost of nothing: it *is* the shape PHPStan already writes, destructuring already reads it, no boxing |
+| `$list[$i]` on an unknown index | `T`, PHPStan's default; `$list[$i] ?? $default` is the idiom for "maybe" | Tequila does not enable `reportPossiblyNonexistentGeneralArrayOffset`; a warning on every index would turn typing into a minefield |
+| Names | **Singular** class names, as PHP idiom wants: `\Phaenon\Seq` (`List` is reserved), `\Phaenon\Map`, `\Phaenon\Str` (`String` is reserved), `\Phaenon\Bytes`; namespace `\Phaenon`. Amends roadmap D5's `Str` spelling (unchanged) and the plural first draft | `new Strings()` reads as nonsense; the class name appears in generated PHP and in static calls |
+| `Map::merge` | last wins, like `array_replace` | what every other language's merge does |
+| Method syntax on `array` (legacy) | none; narrow to `list` or `map` first | a legacy array is a value one narrows before using |
+| `P2516` (missing declared type) | an error in `.phn` for parameters, properties and returns | `mixed` is one word; "never inferred silently" (language-overview.md §3) |
+| Sorting | returns a copy; PHP's by-reference `sort()` stays callable | value semantics all the way through the stdlib |
+| Generated code | imports and short names (`Seq::map`), roadmap D11 | reads as PHP a person wrote |
+| Wrapper objects (`make()` over ext-ds, Symfony-String-like objects) | not adopted; method syntax on the native types gives the chain, a lazy pipeline object can come later as a library | `Ds\*` has reference semantics and is a PECL dependency; wrapping at every boundary would copy O(n) per call, invisibly |
+| Editor support | the PhpStorm plugin must complete and resolve the methods on `list`, `map`, `string` and `bytes` receivers in the same milestone | a method syntax nobody's editor knows is not shipped |
 
 ## 8. Checker and emitter work (once reviewed)
 

@@ -1,9 +1,9 @@
 # Strings: text, `bytes` and method syntax — M4 design (draft)
 
-Status: **draft for review**, 2026-10-29. Roadmap D5 decided the mechanism (method-call syntax
-on primitives compiles to static calls, strings stay primitive); this document fills in what the
-methods are, what `bytes` is, and where Unicode draws its lines. Proposals until they move into a
-*Decisions* section.
+Status: **reviewed 2026-10-30**; §6 holds the decisions, the body is the design they settle.
+Roadmap D5 decided the mechanism (method-call syntax on primitives compiles to static calls,
+strings stay primitive); this document fills in what the methods are, what `bytes` is, and where
+Unicode draws its lines.
 
 ## 0. One paragraph
 
@@ -66,7 +66,7 @@ Three units exist, and languages differ:
 | code points | `mb_strlen`, `mb_substr` | Python, Rust (`chars()`), Java (nearly) |
 | grapheme clusters | `grapheme_strlen`, `grapheme_substr` (ext-intl) | Swift (`count`), and nothing else, because it is slow |
 
-Proposal: **code points are the unit of `string`.** `->length()`, `->slice()`, `->indexOf()`,
+Decision (2026-10-30): **code points are the unit of `string`.** `->length()`, `->slice()`, `->indexOf()`,
 `->chars()` count code points (`mb_*`, which PHP ships everywhere and which never splits a
 character). Grapheme clusters are explicit — `->graphemes()`, `->graphemeLength()` — for the
 places that render text to a person (truncating a display name with an ellipsis, cursor
@@ -134,10 +134,12 @@ final class Bytes
 }
 ```
 
-Method syntax, as in collections.md §3.1: `$s->upper()` compiles to `\Phaenon\Str::upper($s)`
-when the receiver's static type is `string`, to `Bytes::` when it is `bytes`; a receiver typed
-`string|Foo` is an error to narrow (`P2519`). Everything PHP has stays callable: `sprintf`
-(234 calls in `core`), `implode`, `str_contains`, `preg_*`, `mb_*`.
+Method syntax, as in collections.md §3.1: `$s->upper()` compiles to `Str::upper($s)` (with
+`use Phaenon\Str;` imported by the compiler, roadmap D11) when the receiver's static type is
+`string`, to `Bytes::` when it is `bytes`; a receiver typed `string|Foo` is an error to narrow
+(`P2519`). A `\Stringable` receiver has the `Str` methods too: they take `string|\Stringable`
+and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 calls in `core`),
+`implode`, `str_contains`, `preg_*`, `mb_*`.
 
 ## 5. Compilation and interop
 
@@ -153,19 +155,18 @@ when the receiver's static type is `string`, to `Bytes::` when it is `bytes`; a 
   (`random_bytes(16)` assigned to a `string` property is the first finding a migration meets —
   open question §6 asks whether that is too noisy).
 
-## 6. Open questions (for review)
+## 6. Decisions (reviewed 2026-10-30)
 
-1. ~~**Is `bytes` worth its weight in M4?**~~ — decided 2026-10-30: yes, `bytes` ships with M4.
-2. **`Str::format`** or `sprintf` only? Proposal: `sprintf` only; a wrapper that changes
-   nothing is noise, and 234 call sites in `core` will not move.
-3. **`file_get_contents` and `fread`**: `bytes` (true) or `string` (what every caller assumes)?
-   Proposal: `string|bytes`-free answer — `string`, since text files are the overwhelming case,
-   and `Bytes::of(file_get_contents(...))` for the rest.
-4. **`indexOf` returning `?int`** instead of `int|false`: yes, and the checker's `false` →
-   `null` story for other PHP functions is M6 tooling, not M4.
-5. **The unit question** (§3): code points, or graphemes with a cheap fast path when
-   `mb_check_encoding` says ASCII? Proposal: code points.
-6. ~~**Name**~~ — decided 2026-10-30: singular, `\Phaenon\Str` and `\Phaenon\Bytes` (collections.md §7.3).
+| Question | Decision | Why |
+|---|---|---|
+| `bytes` in M4 | yes, the type and the overlay ship with M4 | later is the moment nobody adds a type |
+| Unit of `string` | code points by default (`mb_*`); graphemes explicit (`->graphemes()`, `->graphemeLength()`, `->truncate()`), `->bytes()->length()` for bytes | every mainstream language but Swift; never splits a character; O(n) without `intl` |
+| Names | `\Phaenon\Str` (`String` is reserved) and `\Phaenon\Bytes`, singular like `Seq` and `Map` | collections.md §7 |
+| `Str::format` | not added; `sprintf` stays (234 calls in `core`) | a wrapper that changes nothing is noise |
+| `file_get_contents`, `fread` | `string`; `Bytes::of(file_get_contents(…))` for binary files | text files are the overwhelming case |
+| `indexOf` | `?int`, never `false` | the stdlib is where PHP's `false` returns end |
+| `\Stringable` and `string` | **no implicit conversion in argument position**: a `\Stringable` passed where `string` is declared is the error PHP's strict mode makes it. Interpolation and `.` call `__toString()` as PHP does. The `Str` methods accept `string\|\Stringable` and convert inside, so `$id->startsWith('u-')` works on a value object. The other direction (a string where `\Stringable` is expected) does not exist without boxing and is not added | PHP's own asymmetry; an inserted `->__toString()` would be code the programmer did not write (D9) and the implicit conversion strict mode exists to forbid |
+| Symfony-String-like objects (`u()`) | not needed: `$s->upper()` is `u($s)->upper()` without the object | the method syntax exists because Phaenon can put a method on a string, which PHP cannot |
 
 ## 7. Checker and emitter work (once reviewed)
 
