@@ -456,6 +456,13 @@ turned it into a test.
   in a `for` runs the step**, so `for ($i = 1; ; ++$i)` does not loop on `$i = 1`;
   `RecursiveIteratorIterator` forwards unknown methods to the inner iterator (`__call` in the
   overlay).
+- **After the third pass (2026-10-31):** `json_encode()` with `JSON_THROW_ON_ERROR` among its
+  flags (a `|` chain of constants, positional or named) cannot return `false`, as PHPStan's
+  dynamic return type extension knows; `@phpstan-assert[-if-true|-if-false] =T $x` is the
+  **exact** form (the variable becomes `T`, not the part of its type that is a `T`), which the
+  docblock reader rejected with `P4001`; a union absorbs an intersection of one of its members
+  (`T|(T&int)` is `T`, what `is_int($x) ? … : …` on a type parameter produced); `strcmp()` and
+  `strncmp()` are binary-safe and take `string|bytes` (strings.md §6).
 
 ## 10. Open questions
 

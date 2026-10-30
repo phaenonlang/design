@@ -160,6 +160,15 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
   and `bytes` is adopted by hand where the overlay's producers make the checker complain
   (`random_bytes(16)` assigned to a `string` property is the first finding a migration meets —
   open question §6 asks whether that is too noisy).
+- **Open (2026-10-31): `bytes` into a `string` parameter that PHP code declares.** Vendor code and
+  the php-src stubs say `string` because PHP has no other word (`Uuid::fromBinary(string $uid)`,
+  `MessageId::fromBinary(string $bytes)`, `assertStringContainsString()`); `tequila/core` meets
+  twelve such calls, eight of them `Uuid::fromBinary($binary->getData())`. Today each needs
+  `(string)` (the decision below). The alternative is to read a `string` declared in a PHP-mode
+  file as PHP's string, text or binary, so `bytes` passes there without a cast, while a `string`
+  declared in Phaenon code stays text: the rule would follow this section's first bullet ("a PHP
+  caller sees `string`") and cost the check that `strtoupper($bytes)` is a confusion. The
+  maintainers decide; the overlay's `string|bytes` widenings stay either way.
 
 ## 6. Decisions (reviewed 2026-10-30)
 
@@ -176,7 +185,7 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | Building a `bytes` value (2026-10-30) | the `(bytes)` cast, Phaenon-only syntax erased from the output; `Bytes::of()` dropped | the stdlib itself needs a primitive (`return $raw;` from `string` to `bytes` is the type error the type exists for); a cast is zero-cost where a static call is not, and `(string)` is its unchecked mirror |
 | `(string) $bytes` | allowed, unchecked, typed `string` | PHP's own cast; vendor APIs take binary in `string` parameters and need an escape hatch that is visible in the code |
 | `$bytes === $string` | `P2305` although both are PHP strings | the comparison is a type confusion even when it is true at runtime |
-| `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
+| `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `strcmp`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
 
 ## 7. Checker and emitter work (once reviewed)
 
