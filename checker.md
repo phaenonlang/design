@@ -446,6 +446,16 @@ turned it into a test.
   as well as through the body's end. Overlay `spl.php`: `Traversable`, `Iterator`,
   `IteratorAggregate`, `ArrayAccess`, `ArrayObject`, `ArrayIterator` and `Generator` with PHPStan's
   template parameters, so lifted `@implements IteratorAggregate<K, V>` is syntax that resolves.
+- **Third pass** (502 → 363 on 775 files, the analyser fixture directories excluded with the new
+  `--exclude`): a **typed constant keeps its literal** (`const int VERSION = 1` as a default is
+  `1`, so `@param positive-int` accepts it); **`[$this, 'method']` is a callable** array where a
+  `callable` is expected, as PHPStan accepts the shape; `match ($this)` in an enum is exhaustive
+  over its cases; a property is found on any member of an intersection (`Refusal&UnitEnum`'s
+  `$name`); a trait's body may use the protected members of its users' ancestors
+  (`static::getContainer()` in a trait every user of which extends `KernelTestCase`); **`continue`
+  in a `for` runs the step**, so `for ($i = 1; ; ++$i)` does not loop on `$i = 1`;
+  `RecursiveIteratorIterator` forwards unknown methods to the inner iterator (`__call` in the
+  overlay).
 
 ## 10. Open questions
 
