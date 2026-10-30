@@ -463,6 +463,43 @@ turned it into a test.
   docblock reader rejected with `P4001`; a union absorbs an intersection of one of its members
   (`T|(T&int)` is `T`, what `is_int($x) ? … : …` on a type parameter produced); `strcmp()` and
   `strncmp()` are binary-safe and take `string|bytes` (strings.md §6).
+- **Fourth and fifth pass (2026-10-31, 175 → 11 on 774 files, with `main` at PHPStan level max):**
+  every finding was traced to a rule PHPStan applies, and the fixtures `inference.phn` and
+  `aliases.phn` pin them against PHPStan. **Closures:** a parameter's declared type is narrowed
+  by what the caller passes (`fn (array $row)` over `list<array{id: int}>` reads an int) and a
+  declared return type is refined by what the body returns; a callable string is the function it
+  names; `array_map` over several arrays gives its callback one value of each; `array_filter`
+  keeps what its callback's condition (or a predicate such as `is_string(...)`) narrows to.
+  **Narrowing:** `is_string($data[$field] ?? null)` with `$field` one of a few literals narrows
+  each offset; destructuring reads narrowed offsets; a method or static call with constant or
+  variable arguments is a path (`assertNotNull($e->last(X::class))`), `$events[$i]` too, dropped
+  when the variable is assigned; `assertTrue($cond)` applies the condition; a `/** @var */`
+  before any statement retypes the variable; a by-reference closure use is also what the body
+  assigns to it. **Types:** `mixed` is accepted for an unbounded type parameter; a class with
+  `__invoke()` is callable; `new self()` satisfies `static` in a final class; `static` on a
+  `class-string<T>` receiver is `T`; conditional types resolve however deep; a class yields what
+  the `Traversable<K, V>` it inherits says; a shape with more keys than the parameter names is
+  accepted; a shape `is_array()` made of a callable stays callable; `min()`/`max()` give ranges,
+  `sprintf()` with text a non-empty string, `filter_var()` what its filter validates,
+  `preg_match()` with `PREG_OFFSET_CAPTURE` pairs. **Type parameters:** a constructor's
+  `@template T` kept on a promoted property stays open so a call through the property infers it
+  (the odm's `ReflectorInterface<ClassType, UnitType> $reflector`), but is its bound when the
+  property is passed on as a value, as PHPStan reads it; such foreign parameters get fresh
+  identities per call so a caller's `T` and a constructor's `T` never meet by name; a signature
+  inherited from a parent or an interface brings its templates into scope; a parameter left to
+  its default binds its template to the default's type (`B $behavior = self::EXCEPTION` decides
+  `B is 0|1`); `self::`/`static::`/`parent::` are told apart by what is written, so
+  `parent::method()` maps the parent's parameters; `ReflectionClass` is covariant and
+  `isSubclassOf(Foo::class)` makes it `ReflectionClass<Foo>`. **Program:** php-src's `UNKNOWN`
+  constants carry the values PHP defines (`stdlib/constants.php`, the extension loader for the
+  rest), the machine-dependent ones typed, not valued, as PHPStan's `dynamicConstantNames`;
+  `class_alias()` at the top level makes the old name the class and the `if (false)` declaration
+  is not checked; PSR-4 lazy loading finds `Foo.phn`; a type written with type arguments is not
+  refined by a `@var` beside it; `?string $x = null` keeps its null under a `@param string`.
+  **Deliberately not matched** (vault `open-items`): PHPStan's regex analysis (a `preg_match`
+  subject becoming `non-empty-string`), `Closure::call()` rebinding `$this`, expression-level
+  throw points in `try`, parameter unions over a union receiver, phpredis's `multi()` chain,
+  `@template B of self::*_REFERENCE`.
 
 ## 10. Open questions
 
