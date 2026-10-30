@@ -413,6 +413,22 @@ turned it into a test.
   passes its arguments to the constructor; `iterable<K, V>` is `array<K, V>|Traversable`; a
   conditional return type sees the defaults of omitted arguments (`explode()`, `microtime()`,
   `array_shift()`, `array_map()` preserving lists, `preg_replace()`).
+- **What the `tequila/core` dogfood taught (2026-10-30**, first pass over the plain PHP sources,
+  754 → 538 findings on 810 files, PHPStan parity kept): PHPStan's **object shapes**
+  (`Logger&object{records: list<string>}`) are a type, matched against a class's declared
+  properties; **a method call without arguments is a narrowable path** (`assertInstanceOf(…,
+  $e->getPrevious())`), dropped as soon as another method is called on the same receiver;
+  `match ($event::class) { Opened::class => … }` narrows `$event`; a **typed by-reference
+  parameter retypes its argument** (`?Context &$seen`) and what it writes is not certain
+  (checker.md's native rule) — so `is_string($out)` after an out parameter is not dead; `$x !==
+  $y` with `$y` one of several values learns nothing in the else branch; `??` is reported as
+  never-null only for a certain variable, never for a property or offset (uninitialised, missing:
+  PHPStan's `isset` reading); a callable returning `mixed` takes a `void` closure; `(array)` is
+  typed per member; a mixed array key is reported on write, as PHPStan does at level max; a
+  spread argument binds to the variadic parameter and is checked as its elements; `[]` has no
+  keys or values (`never`), so `array_push` and a loop over writes type the array by what was
+  added. Overlay: `hrtime`, `parse_url`, `array_push`/`array_unshift`, `mb_substitute_character`,
+  `STDIN`/`STDOUT`/`STDERR`, `PHP_INT_SIZE` as `4|8`.
 
 ## 10. Open questions
 
