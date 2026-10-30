@@ -160,15 +160,15 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
   and `bytes` is adopted by hand where the overlay's producers make the checker complain
   (`random_bytes(16)` assigned to a `string` property is the first finding a migration meets —
   open question §6 asks whether that is too noisy).
-- **Open (2026-10-31): `bytes` into a `string` parameter that PHP code declares.** Vendor code and
-  the php-src stubs say `string` because PHP has no other word (`Uuid::fromBinary(string $uid)`,
-  `MessageId::fromBinary(string $bytes)`, `assertStringContainsString()`); `tequila/core` meets
-  twelve such calls, eight of them `Uuid::fromBinary($binary->getData())`. Today each needs
-  `(string)` (the decision below). The alternative is to read a `string` declared in a PHP-mode
-  file as PHP's string, text or binary, so `bytes` passes there without a cast, while a `string`
-  declared in Phaenon code stays text: the rule would follow this section's first bullet ("a PHP
-  caller sees `string`") and cost the check that `strtoupper($bytes)` is a confusion. The
-  maintainers decide; the overlay's `string|bytes` widenings stay either way.
+- **Decided 2026-10-31: `bytes` into a `string` parameter that PHP code declares takes an explicit
+  `(string)`.** Vendor code and the php-src stubs say `string` because PHP has no other word
+  (`Uuid::fromBinary(string $uid)`, `MessageId::fromBinary(string $bytes)`,
+  `assertStringContainsString()`); `tequila/core` met twelve such calls, eight of them
+  `Uuid::fromBinary($binary->getData())`. The alternative, reading a `string` declared in a
+  PHP-mode file as text-or-binary so `bytes` passes without a cast, was weighed and not taken:
+  the conversion is a boundary worth seeing in the code, and `bytes` values are few enough for
+  the cast to be bearable. The overlay keeps widening the binary-safe PHP functions to
+  `string|bytes` so the cast is written only where a PHP API genuinely takes binary as text.
 
 ## 6. Decisions (reviewed 2026-10-30)
 
