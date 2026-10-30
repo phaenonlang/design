@@ -192,5 +192,6 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 - 2026-10-30: lattice, `(bytes)`, `P2530`, `P2305` on bytes vs text, the overlay
   (`stdlib/overlay/bytes.php`, `mongodb.php`), `Bytes.phn` and `Str::bytes`, erasure to `string`
   in signatures and docblocks, goldens (`internal/checker/testdata/bytes.phn`, emit `bytes.phn`
-  under PHPStan max) — done. Left: `Str` methods on a `\Stringable` receiver, `?->` on a
-  primitive receiver, the runtime package built from the `.phn` sources.
+  under PHPStan max) — done. Later the same day: `Str` methods on a `\Stringable` receiver,
+  `?->` on a string / bytes receiver (collections.md §3.1), `phn stdlib` writing the compiled
+  classes for the runtime package.

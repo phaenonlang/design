@@ -208,6 +208,16 @@ Rules:
   (`P2519`): narrow first. `array` (legacy) has no methods: say `list` or `map`.
 - Only the stdlib's methods exist; there are no user-defined extension methods in M4.
 - The result type is the function's return type, so chains type through.
+- **A receiver that may be null** — `$s?->length()`, or `$u?->name->upper()` where PHP would
+  skip the whole chain — compiles to a guard: `null === $s ? null : Str::length($s)` (in the
+  else branch the chain's `?->` are plain `->`, it is known non-null there). The receiver is
+  written twice, so it must be a path with no side effects: a variable, a property or constant
+  path, an index by a literal or a variable. A call in the receiver is `P2519`: assign it to a
+  variable first. (Decided 2026-10-30: a hidden temporary would be a variable the programmer did
+  not write, D9; the guard reads as PHP a person writes.)
+- A `\Stringable` receiver has the `Str` methods after its own: `$id->startsWith('u-')` compiles
+  to `Str::startsWith($id, 'u-')` (the `Str` functions take `string|\Stringable`) when the class
+  declares neither `startsWith()` nor `__call()`. A `string|Id` union is a string receiver.
 
 The method form is sugar, nothing more: `Seq::map($xs, $f)` and `$xs->map($f)` are the same
 call, and PHP code reads the output as the static call.
@@ -278,6 +288,11 @@ with the `core` numbers after the migration.
 - Runtime package: `Seq`, `Map` with tests; the compiler's embedded stub generated from them.
 - Goldens: checker `collections.phn`, emitter `collections.phn` → `.php` under PHPStan max.
 - Dogfood: `tequila/core`.
+- 2026-10-30, later: `?->` and short-circuited chains guarded (above), `\Stringable` receivers,
+  `phn migrate` lifting `array{A, B}` to `(A, B)`; `phn build --no-types` removed (method syntax
+  needs types; `--emit-on-error` is the way to build a file with findings). Found on the way:
+  `phn build` reparsed the source instead of compiling the checked tree, so no method call had
+  ever been lowered by the CLI; the goldens now compile through the CLI's path.
 - 2026-10-30: `P2518` with the implied `K of int|string` for an unbounded key parameter
   (`program.ImplyMapKeyBounds`, functions, methods, classes, aliases and closures), `P2516` an
   error — done.

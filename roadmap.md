@@ -188,6 +188,11 @@ files behave identically (680 tests that observe line numbers are not run — se
   interpolation, `P2305` for `===` against text, the overlay typing PHP's binary producers and
   consumers, `\Phaenon\Bytes` and `Str::bytes`; `map`'s key bound `P2518` with the implied
   `K of int|string`; `P2516` an error. Dogfood libraries unchanged at 0.
+- 2026-10-30, third slice: a null receiver (`?->`, a short-circuited chain) compiles to a guarded
+  static call when the receiver is a side-effect-free path, else `P2519`; `\Stringable`
+  receivers get the `Str` methods; `phn migrate` lifts `array{A, B}` to `(A, B)`; `phn stdlib`
+  materialises the compiled stdlib for the runtime package; `phn build --no-types` is gone.
+  Fixed: `phn build` compiled a reparsed tree, so the CLI had never lowered method syntax.
 
 ### M5 — Concurrency
 - Design doc: structured concurrency over Fibers (`concurrently { }` scopes, awaitables,
