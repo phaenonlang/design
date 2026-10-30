@@ -429,6 +429,23 @@ turned it into a test.
   keys or values (`never`), so `array_push` and a loop over writes type the array by what was
   added. Overlay: `hrtime`, `parse_url`, `array_push`/`array_unshift`, `mb_substitute_character`,
   `STDIN`/`STDOUT`/`STDERR`, `PHP_INT_SIZE` as `4|8`.
+- **Second pass the same day** (538 → 502 on the migrated `.phn` tree, 388 outside the PHPStan and
+  Rector tooling directories): a **by-reference parameter follows PHPStan's functionMap
+  distinction** — php-src's are read-write (`sort`, `end`, `ksort` leave the type) unless the
+  overlay says `@param-out`, user code's are writes (the parameter's type, `mixed` when untyped);
+  **passing a value as an argument drops the narrowed method-call paths** under it (`render($event)`
+  may change `$event->getResponse()`); `is_array($callable)` is the callable array `array{0:
+  object|string, 1: string}`, `is_string` the callable string; `'' !== $s` leaves
+  `non-empty-string`; a range comparison (`$n < 1`) is dead only when both operands are certain
+  (`@param positive-int` over `int` is not); `self<T>` and `static<T>` in a generic class check
+  against its parameters; a tuple may start with a nullable element, `(?T, string)`; **`new Bag()`
+  infers the class's type arguments from the expected type** (`$this->bag = new Bag()` with the
+  property typed) and generalises inferred literals (`new ArrayObject(['a'])` is
+  `ArrayObject<int, string>`, as PHPStan does); a `never` type argument fits any invariant
+  parameter (`new ArrayObject([])`); a `foreach` over a non-empty array exits through a `continue`
+  as well as through the body's end. Overlay `spl.php`: `Traversable`, `Iterator`,
+  `IteratorAggregate`, `ArrayAccess`, `ArrayObject`, `ArrayIterator` and `Generator` with PHPStan's
+  template parameters, so lifted `@implements IteratorAggregate<K, V>` is syntax that resolves.
 
 ## 10. Open questions
 
