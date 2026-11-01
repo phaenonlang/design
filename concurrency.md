@@ -207,9 +207,9 @@ completeness; whether v1 ships it is an open question (§14).
   for a long CPU loop that has no wait of its own; `Scope::cancelled(): bool` asks without
   throwing.
 - A deadline is the block's `timeout:`; on expiry the scope is cancelled and the block throws
-  amp's `TimeoutException` (what a `TimeoutCancellation` reports). No Phaenon exception types:
-  `CancelledException` and `TimeoutException` are amp's, and a `catch` written for amp code
-  keeps working.
+  what amp's `TimeoutCancellation` reports: a `CancelledException` whose previous exception is
+  the `TimeoutException`. No Phaenon exception types: both are amp's, and a `catch` written for
+  amp code keeps working.
 
 ## 5. Semantics
 
@@ -218,7 +218,7 @@ completeness; whether v1 ships it is an open question (§14).
 | The body returned (or ran out) | The scope awaits every task not yet awaited. If all succeeded, the block yields the body's value |
 | A task failed, before or after the body finished | The scope is **failed**: every other task is cancelled, the body is cancelled at its next scope-aware wait (`->await()` of a sibling, `Scope::sleep`, `Scope::all`, an amp call given `Scope::cancellation()`), the scope waits until every task has finished, then throws the **first** failure. A later failure that is not a `CancelledException` is chained as `previous`; the siblings' `CancelledException`s are dropped |
 | The body threw | Every task is cancelled and awaited; the body's exception is rethrown, task failures chained as above |
-| The deadline passed, or the given `cancellation` fired | As a failure, with amp's `TimeoutException` / `CancelledException` |
+| The deadline passed, or the given `cancellation` fired | As a failure, with amp's `CancelledException` (its previous exception the `TimeoutException` for a deadline) |
 
 Rules that follow:
 
@@ -304,12 +304,16 @@ Proposed codes, in the `P2xxx` family (types and flow) as a new hundred:
 | `P2601` | `spawn` outside a `concurrently` block | lexical: not inside a block (nested closures count as inside) |
 | `P2602` | a task handle leaves its block | the block's value type contains `Future` that a `spawn` in the block produced; a `spawn` result assigned to a by-reference captured variable, a property, or a static |
 | `P2603` | control flow crosses a `concurrently` or `spawn` block | `break`/`continue` to a loop outside, `yield`, `goto` in or out; a `return` with a value in a statement block, whose value nobody reads (§14 asks whether this last case stays an error) |
-| `P2604` | a write to an outer variable from a `spawn` body | `spawn { $count++; }`: the body is a by-value closure in a different fiber; return the value instead |
-| `P2605` | blocking sleep inside a block | `sleep`, `usleep`, `time_nanosleep`, `time_sleep_until`, `Fiber::suspend` in a block or spawn body; `Scope::sleep` instead |
-| `P4xxx` (interop) | `phaenon/concurrent` is not installed | the program model does not find `Phaenon\Concurrent\Scope` in the project's vendor; the message names the package |
+| `P2604` | a `spawn` body mutates a variable of the enclosing scope | `spawn { $count++; }`, `$total += …`, `$rows[] = …`, `$x = $x . 'y'`: the body is a by-value closure in another fiber and changes a copy; return the value instead. A plain `$x = …` to a name that exists outside is a local of the task, as in any closure |
+| `P2605` | blocking sleep inside a block | `sleep`, `usleep`, `time_nanosleep`, `time_sleep_until` in a block or spawn body, nested closures included; `Scope::sleep` instead |
+| `P2606` | a bad block option | an unnamed option, an unknown one, `timeout:` that is not `int\|float`, `cancellation:` that is not an `Amp\Cancellation` |
 
-`P2603`'s `return`-without-use case: a statement block whose body says `return $x;` computes a
-value nobody reads. It is a warning in spirit; Phaenon has only errors, so §14 asks.
+`P2603`'s `return`-with-a-value case: a statement block whose body says `return $x;` computes a
+value nobody reads, and is most likely a programmer who meant to return from the method (C7).
+A `return;` without a value leaves the block early and is fine. The compiler knows the amp API
+through its own embedded declarations (`stdlib/concurrent/amp/`), so a project that forgot to
+require `phaenon/concurrent` fails at runtime, not at `phn check`; a check against the
+project's `composer.json` is an open item.
 
 Type rules: `spawn e : Future<T>` for `e : T`, `Future<void>` for a `void` call (PHPStan infers the same from the lowered arrow function); `concurrently { … } :
 R` for the join of the block's `return` types, `void` without one; `timeout:` is `float|int`,
@@ -349,9 +353,11 @@ wraps amp's `async()` so that the child fiber starts with the parent scope on it
 scope records the handle; each scope owns a `DeferredCancellation` composed
 (`CompositeCancellation`) with its parent's and, with a `timeout:`, a `TimeoutCancellation`;
 joining iterates the handles in completion order (`Future::iterate`) so that a failure is seen
-as early as it happens, cancels the rest and drains them. The class is written in Phaenon
-(`stdlib/runtime/Scope.phn`, compiled into the package like `Seq`), which makes it the first
-dogfood of its own syntax.
+as early as it happens, cancels the rest and drains them; the scope keeps every handle it ever
+spawned, so that an abort during a join still waits for the tasks of that round. The class is
+written in Phaenon (`stdlib/concurrent/Scope.phn`, compiled into the package like `Seq`), which
+makes it the first dogfood of its own syntax; its semantics are tested against the real amp and
+Revolt in the package's PHPUnit suite.
 
 ## 9. Interop
 
