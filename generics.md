@@ -75,9 +75,16 @@ public function get(Uuid $id): ?T;
 public function all(): iterable<T>;
 public function with(Closure(T, int): bool $pred): static;
 public function __construct(private readonly class<T> $aggregateClass) {}  // the type of T::class (§11.2)
+private readonly Closure(string, string...): (int, string) $kubectl;      // a variadic parameter, a tuple result
+private readonly Closure(string, int=): void $log;                       // an optional parameter (§11.3)
 ```
 
 PHP's grammar never puts an *expression* in a type position, so `<`/`>` here are unambiguous.
+
+A closure type's parameters are types, never names: `T=` marks an optional parameter, `T...` the
+variadic one (last, at most one), as PHPStan spells them in `callable(…)` and `Closure(…)`; after
+an optional parameter every parameter is optional or variadic. By-reference parameters have no
+spelling and stay in a docblock (§11.3).
 
 ### 2.3 Call site — explicit type arguments
 
@@ -219,6 +226,7 @@ erasure honest instead of surprising.
 | `iterable<X>` | `iterable` | `iterable<X>` |
 | `Collection<X>` | `Collection` | `Collection<X>` |
 | `Closure(A): R` | `Closure` | `Closure(A): R` |
+| `Closure(A, B=, C...): R` | `Closure` | `Closure(A, B=, C...): R` — PHPStan's own markers, read unchanged (§11.3) |
 | `class-string<T>` | `string` | `class-string<T>` |
 | `static` / `self` / `$this` | same | `static` … |
 | type alias | the alias expanded | `@phpstan-type` emitted once + used by name |
@@ -681,7 +689,7 @@ kept as written; this section wins where they differ.
 |---|---|---|
 | What is lifted | `@template[-covariant\|-contravariant] T [of B] [= D]` → `<[out\|in] T of B = D>` on classes, interfaces, traits, functions, methods (constructors included); `@extends` / `@implements` → arguments on the matching clause; `@param`, `@return`, property `@var` → the declared type. `@phpstan-*` / `@psalm-*` variants too. | These are the tags that *are* generics in PHPStan code. `@var` on statements, `@phpstan-type`, `@method`, `@mixin` stay (no Phaenon construct for them yet). |
 | Safety rule | A tag is lifted only when (1) its type has a Phaenon spelling and (2) it **erases to exactly the declared native type**; an untyped parameter accepts only a type that erases to `mixed`; an untyped return is never refined. Everything else stays, with a note on stderr saying why. | The emitted PHP must keep the signature PHP saw before: migrating must not change what overrides, callers or reflection see. |
-| Spelling | `T[]` → `array<T>`; `array<K, V>` → `map<K, V>` (`non-empty-array` → `non-empty-map`); `X\|null` → `?X`; `$this` → `static`; `\Closure(A): R` → `Closure(A): R`; class names resolved through `use` so `\App\Row` and an imported `Row` match. Not spellable: `callable(…)` signatures, shapes, literals, `int<a, b>`, conditional types, optional/variadic closure parameters. | What a human would write in `.phn`. |
+| Spelling | `T[]` → `array<T>`; `array<K, V>` → `map<K, V>` (`non-empty-array` → `non-empty-map`); `X\|null` → `?X`; `$this` → `static`; `\Closure(A): R` → `Closure(A): R`, its `T=` and `T...` parameters kept, its parameter names dropped (§11.3); class names resolved through `use` so `\App\Row` and an imported `Row` match. Not spellable: `callable(…)` signatures, named shapes, literals, `int<a, b>`, conditional types, by-reference closure parameters. | What a human would write in `.phn`. |
 | Hyphenated names | `class-string<T>`, `non-empty-string`, `array-key`, `positive-int`, `key-of<T>`, … are native type syntax: the parser joins `name-name` written without spaces in a type position; `A - B` stays arithmetic. They erase through the resolved type (`string`, `int\|string`, …). | `class-string<T>` is the generic type Tequila uses most; without it the lift would skip half of reflector. |
 | Prose-only `@param` | A lifted `@param T $x prose` becomes `@param $x prose` (the type is in the signature); the emitter fills the type back in on output, and the docblock reader accepts the form. `@return T prose` and `@var T prose` keep their type too (no unambiguous type-less form). | Like TypeScript's JSDoc: prose stays, types are not repeated. |
 | Emptied docblocks | Removed when only the frame is left; blank `*` lines at the edges collapse; generated tags are inserted **before** the first remaining tag, so `@throws` keeps its place after `@return`. | Round-tripping a PHPStan file through migrate + build gives back the same docblock order. |
@@ -708,3 +716,13 @@ as a PHP developer would read it. Where this table and §11.1 differ, this one w
 | **Hyphenated PHPStan names are not syntax** | `non-empty-string`, `positive-int`, `array-key`, `non-empty-list`, `int<a, b>`, `key-of<T>`, … are read by the type lattice from docblocks — in `.php` and `.phn` alike, as refinements of a native type, exactly as PHPStan reads them — but cannot be written as native types. The surface stays small on purpose: PHP's native types, `list<T>`, `map<K, V>`, `Closure(A): R`, `class<T>`, type parameters and aliases, plus what M4 adds deliberately. `array-key` is written `int\|string`; M4 decides the key bound of `map`. `phn migrate` lifts `class-string<T>` to `class<T>` and keeps the other hyphenated tags in docblocks with a note. Supersedes the "Hyphenated names" row of §11.1. | PHPStan is a tool's vocabulary, not a type-system design; the Go rule applies — the general type unless the use case demands otherwise — or the number of types explodes. Tequila's own `src/` writes `list<…>` on 2,007 lines against 22 `non-empty-string`, 17 `positive-int`, 67 `array-key` and 4 for all the rest combined. The §11.1 row was justified by the migration (reflector's lift), not by the language. |
 | **`\Phaenon\Type` narrowed** | The runtime serves structural `is` / `as` only (`$m is list<int>`), where PHP has no check of its own. It never appears in a signature. `Type::from()` and `Type::instantiate()` are removed. | What is left is an honest library call at the site that asked for a deep check; nothing hidden. |
 | **Emitter principle** | Roadmap D9: the emitted PHP contains no identifier the programmer did not write — no hidden parameters, no synthesised members, no renamed locals. The compiler adds only the header line, `declare(strict_types=1)`, docblocks, and `phaenon/runtime` calls where the source used `is` / `as` on a type PHP cannot test. | The output must read as PHP a person wrote; "generated-looking" PHP would be the complaint that follows Phaenon forever. |
+
+### 11.3 Optional and variadic closure parameters (2026-11-01)
+
+Settled on the tq-cli dogfood, where `phn migrate` left `@var \Closure(string ...$args): array{int,
+string}` docblocks over `\Closure` properties because a closure type's parameters were types only.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **`T=` and `T...` in a closure type** | `Closure(string, int=): void` has an optional second parameter, `Closure(string, string...): (int, string)` a variadic last one. A variadic parameter is last and at most one; after an optional parameter every parameter is optional or variadic (the parser rejects the rest). The type erases to `\Closure` with the signature spelled the same way in the docblock: `@var \Closure(string, string...): array{int, string}`. The checker treats a call on such a value as a call on a function with those parameters (`()` on `Closure(string, string...)` is P2101, an optional parameter may be omitted) and checks a closure literal against the type parameter by parameter: a variadic or optional parameter of the type is satisfied only by a variadic parameter or one with a default, as PHPStan rules (`Closure(string...)` does not accept `fn (string $s)`, which cannot be called with no argument). `phn migrate` lifts them; a by-reference parameter keeps the docblock, as before. | These are PHPStan's own markers for `callable(…)` and `Closure(…)` docblock types, so the erased docblock is read by PHPStan unchanged and `phn migrate` lifts the forms Tequila writes: tq-cli's eleven `Closure(string ...$args)` kubectl signatures and the `bool=` of its http boundary. By-reference closure parameters are rare enough (none in Tequila's sources) not to deserve syntax. |
+| **No parameter names** | `Closure(string $stdin, string ...$args)` is not Phaenon; the lift drops the names. | Phaenon's closure type never had them, and in a type they add nothing a checker or a reader needs: the closure literal names its own parameters. PHPStan accepts the nameless form. |
