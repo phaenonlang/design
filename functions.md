@@ -26,6 +26,13 @@ fun helper(int $x): int           // function helper(int $x): int, outside a cla
   `abstract`, `final`, `static`, `public`, `protected`, `private` — are allowed before `fun`.
 - **No visibility means `public`.** That is PHP's own rule for a method written without one;
   `fun` makes it the normal spelling. `public fun` is allowed and means the same.
+- **A class constant without visibility is public too**: `const int LIMIT = 10` compiles to
+  `public const int LIMIT = 10`, and `phn migrate` drops the `public`. `private const`,
+  `protected const` and `final const` are written as in PHP.
+- **The same rule holds for asymmetric visibility**: `private(set) int $x` and a promoted
+  `private(set) string $id` are public, as PHP 8.4 already allows when the main visibility is
+  omitted; the emitter writes `public private(set)` so the output satisfies PSR-12 tooling, and
+  `phn migrate` drops the `public`.
 - `function` remains valid everywhere it is today, and is the only spelling of a closure:
   `function () {}` and `fn () => …` are unchanged. `fun` is for declarations with a name.
 - `fun` is a **contextual keyword**: it is a keyword when the next token is a name (or `&` and
@@ -115,7 +122,8 @@ the kind D9 asks for, and the checker's rule is PHP's rule stated before the fil
 
 PhpStorm reads `fun` as the `function` keyword (the plugin's lexer hands its parser a
 `function` token with the text `fun`); a method without visibility is public to PhpStorm as to
-PHP, and its "missing visibility" inspection is filtered on `.phn` files. Completion offers
+PHP, and its "missing visibility" inspection is filtered on `.phn` files for methods, constants
+and `private(set)` members alike. Completion offers
 `fun` where a member or statement may start. A closure in an attribute is checked against the
 PHP 8.5 rule by the compiler, not the editor.
 
@@ -123,7 +131,7 @@ PHP 8.5 rule by the compiler, not the editor.
 
 | # | Decision | Why |
 |---|---|---|
-| F1 | `fun` declares named functions and methods; absent visibility is `public`; `function` stays valid | §1.4 |
+| F1 | `fun` declares named functions and methods; absent visibility is `public`, on constants and `private(set)` members as well; `function` stays valid | §1.4 |
 | F2 | `fun` is contextual, never reserved | §1.1 |
 | F3 | Closures in constant expressions are written as `fn` / `function` and lowered to `static function`; `$this` and `use` are `P2531` | §2 |
 | F4 | `phn migrate` writes `fun` and drops a sole `public`, `--keep-public` keeps it | §1.3 |
