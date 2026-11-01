@@ -458,10 +458,13 @@ limitations list gets the entry.
 
 ## 15. Decisions
 
-Recorded after the review; until then the draft above is the proposal. Each decision taken
-moves into this table with its reason, and `roadmap.md` §1 gets D6 revised and a new row for
-whatever changes the language's shape.
+Taken at the review of 2026-11-01; the questions of §14 still open are 3, 6, 7, 8, 9 and 10.
+When they close, `roadmap.md` §1 gets D6 revised and a new row for what changes the language's
+shape.
 
 | # | Decision | Why |
 |---|---|---|
-| | | |
+| C1 | The runtime is amp v3 over Revolt; Phaenon ships no event loop. Revises D6's "stdlib loop" (2026-11-01) | §1, §13: a second loop cannot share socket waits with amp's libraries |
+| C2 | The handle is `Amp\Future<T>` and waiting is its method, `->await()`; no `await` keyword (2026-11-01) | A method on a value the programmer holds reads as PHP and shows its type in the editor; a keyword would read as colouring |
+| C3 | Blocks are expressions: `return concurrently { … };`, in the shape of `return match (…) { … };` (2026-11-01) | §14 q5: the result comes out as a value with its own type, no by-reference captures in the output |
+| C4 | A second package `phaenon/concurrent` requires `amphp/amp`; `phaenon/runtime` stays dependency-free (2026-11-01) | §8: `core` uses `Seq::map` on every page and has no reason to install an event loop |
