@@ -175,7 +175,7 @@ files behave identically (680 tests that observe line numbers are not run — se
   (`class_exists` proving a class-string, static-method asserts, constant-key paths, `?? null`
   narrowing, `array_key_first` on non-empty arrays, nested index assignment).
 
-### M4 — Collections and strings
+### M4 — Collections and strings — ✅ done 2026-11-01
 - `list<T>` / `map<K,V>` as first-class types with literals; `array` as a legacy type that
   interoperates (design doc: migration ergonomics for the array-as-both-things codebase).
 - `\Phaenon\*` stdlib with consistent argument order, written in PHP (runtime package) with
@@ -200,6 +200,22 @@ files behave identically (680 tests that observe line numbers are not run — se
 - 2026-11-01, fourth slice (`functions.md`): `fun` as the spelling of a named function or method,
   `public` implied; closures in constant expressions lowered to the `static function` PHP 8.5
   takes; `phn migrate` writes `fun`. Decided before M5 so that no later migration is redone.
+- **Closed 2026-11-01.** ✅ `list<T>` / `map<K, V>` with literals and `array` as the legacy type,
+  the tuple type `(A, B)`, `bytes`; ✅ the stdlib in Phaenon (`Seq`, `Map`, `Str`, `Bytes`,
+  `phaenon/runtime` with 95 tests) behind method syntax on `list`, `map`, `string`, `bytes` and
+  `\Stringable` receivers; ✅ `fun`, implied `public` (methods, constants, `private(set)`
+  members), closures in constant expressions (D15); ✅ `phaenon.json` and the sibling output
+  layout (D12), sources-only libraries (D13), docblock prose spellings (D14); ✅ the PhpStorm
+  plugin parses every construct, with navigation, completion, find-usages and rename inside
+  erased types. *Target:* `tequila/core` at 812 `.phn` on a `main` at PHPStan level max — suite
+  (1188 tests), PHPStan max and cs green on the output, `phn check` at 11 findings, all PHPStan
+  rules deliberately not matched; the three earlier libraries respelled with identical output.
+  *Found on the way:* findings inside loop bodies lost to the fixed point; `phn build` compiling
+  a reparsed tree; PhpStorm's docblock token outside its comment set; PhpStorm reading a bare
+  `@param $x prose` as a type (D14); `[...$a][0]` unparsed by PhpStorm 2025.1. *Open:* the
+  checker items in the vault's `open-items` (regex narrowing, `Closure::call`, the 11 core
+  findings), the Composer plugin (M6), moving the three earlier dogfood branches to the sibling
+  layout.
 
 ### M5 — Concurrency
 - Design doc: structured concurrency over Fibers (`concurrently { }` scopes, awaitables,
