@@ -60,7 +60,7 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | String/`bytes` split, method syntax on primitives (`$s->upper()` → `\Phaenon\Strings::upper($s)`) | `strings.md` (reviewed 2026-10-30) | M4 |
 | `\Phaenon\*` stdlib (PHP package `phaenon/runtime`) | `collections.md` §3, `strings.md` §4 | M4 |
 | `fun` for named functions and methods (absent visibility is `public`); closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4 |
-| Structured concurrency over Fibers, no function colouring | `concurrency.md` (pending) | M5 |
+| Structured concurrency: `concurrently { }` blocks and `spawn` over amp v3 / Revolt, `Future<T>` handles, no function colouring | `concurrency.md` (reviewed 2026-11-01) | M5 |
 | Tooling: `phn build/check/watch/fmt/migrate/lsp` | `tooling.md` (pending) | M1, M6 |
 
 ## 6. Files and build

@@ -1,11 +1,10 @@
 # Phaenon — Concurrency design (draft 0.1)
 
-Status: **draft for review** · 2026-11-01 · M5. Companion: `language-overview.md` §4–5,
+Status: **reviewed 2026-11-01** (decisions §15) · M5. Companion: `language-overview.md` §4–5,
 `roadmap.md` D6 and §3 (M5), `functions.md` (closures and their lowering), `collections.md`
 (method syntax, the stdlib written in Phaenon).
 
-This document proposes the design. Nothing in it is implemented; §14 lists what a review has to
-decide, §15 records the decisions once taken. Where it departs from what the roadmap assumed
+This document is the design. §14 lists the questions the review settled, §15 the decisions. Where it departs from what the roadmap assumed
 (D6's "stdlib loop", `tequila/nats` as the first adopter) it says so and why.
 
 ---
@@ -458,9 +457,9 @@ limitations list gets the entry.
 
 ## 15. Decisions
 
-Taken at the review of 2026-11-01; the questions of §14 still open are 3, 6, 7, 8, 9 and 10.
-When they close, `roadmap.md` §1 gets D6 revised and a new row for what changes the language's
-shape.
+Taken at the review of 2026-11-01, which closed every question of §14. `roadmap.md` §1 has D6
+revised accordingly and D16 for the block. Where the draft above and this table differ, the
+table wins.
 
 | # | Decision | Why |
 |---|---|---|
@@ -468,3 +467,9 @@ shape.
 | C2 | The handle is `Amp\Future<T>` and waiting is its method, `->await()`; no `await` keyword (2026-11-01) | A method on a value the programmer holds reads as PHP and shows its type in the editor; a keyword would read as colouring |
 | C3 | Blocks are expressions: `return concurrently { … };`, in the shape of `return match (…) { … };` (2026-11-01) | §14 q5: the result comes out as a value with its own type, no by-reference captures in the output |
 | C4 | A second package `phaenon/concurrent` requires `amphp/amp`; `phaenon/runtime` stays dependency-free (2026-11-01) | §8: `core` uses `Seq::map` on every page and has no reason to install an event loop |
+| C5 | A task's failure fails its block, whether or not the body awaited the handle and caught the exception; a failure that is an answer is caught inside the task (2026-11-01) | Exceptions are never lost (Trio, Kotlin, and Java's finalized `StructuredTaskScope.open()` with `awaitAllSuccessfulOrThrow`); "fails unless observed" would need a Phaenon handle type, since `Amp\Future` is final and `await()` gives the scope no hook. A `Scope::settle()` that returns results and failures side by side can be added as a library helper when a use site asks |
+| C6 | No `Scope::first` in v1; amp's `awaitFirst` and `awaitAny` stay callable inside a block (2026-11-01) | Two meanings (first to complete, first to succeed), losers that run until their next cancellation-aware wait, and no use site in Tequila |
+| C7 | `return;` leaves a block early; `return expr;` in a block whose value nobody reads is `P2603` (2026-11-01) | The one place closure semantics can surprise: a programmer who meant to return from the method |
+| C8 | Dogfood order: `tq-cli` first (the twelve fan-outs, suite and PHPStan on the output), then `tequila/nats` with the `RevoltTransport` and the single-reader change to `Connection`, inside M5 (2026-11-01) | tq-cli is where the design meets real amp code; the nats part is a Tequila design change that tq-cli's result may inform |
+| C9 | The FrankenPHP worker-mode check of §9.2 comes first, time-boxed (2026-11-01) | If Revolt's loop misbehaves between requests, §9.2 and the runtime change; better known before the emitter exists |
+| C10 | Diagnostics are `P26xx`, a new hundred in the types-and-flow family (2026-11-01) | Every rule is a flow or structure rule; a fifth family for six codes is noise |
