@@ -54,8 +54,14 @@ reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\P
   true)`, `md5`/`sha1(..., binary: true)`, `pack`, `hex2bin`, `sodium_*` (the common
   functions), `openssl_random_pseudo_bytes`, `MongoDB\BSON\Binary::getData`;
   `fread`/`file_get_contents` stay `string` (§6).
-- Interpolation (`"Hello $name"`) and `.` require `string` operands; a `bytes` operand is an
-  error (`P2530`), as is comparing `string` with `bytes` by `===` (`P2305`: both are PHP
+- Interpolation (`"Hello $name"`) requires `string` operands; a `bytes` operand is an error
+  (`P2530`). **`.` joins two values of the same kind**: `string . string` is `string`,
+  `bytes . bytes` is `bytes`, and `$buf .= $chunk` keeps a `bytes` variable, element or
+  property `bytes` when `$chunk` is `bytes` (2026-11-02, §6); PHP's `.` is byte
+  concatenation already, so it erases unchanged. Mixing the two — `bytes . string`,
+  `string . bytes`, a `bytes` buffer started from a `''` literal — is `P2530`: a builder of
+  binary data starts from `(bytes) ''`. Comparing `string` with `bytes` by `===` is an error
+  too (`P2305`: both are PHP
   strings underneath and may even compare equal, the type confusion is the finding). PHP
   functions typed `string` accept a `string`; passing `bytes` to `strtoupper` is an error —
   call `Bytes::` methods or convert. **`(string) $data` is the unchecked way back**, for the
@@ -151,7 +157,12 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 
 - `bytes` erases to `string` in signatures and to `string` in docblocks: PHPStan has no notion
   of binary strings and `@param bytes` would be an unknown type. The distinction is Phaenon's
-  own, like `map` vs `list` is PHPStan's own. A PHP caller sees `string`.
+  own, like `map` vs `list` is PHPStan's own. A PHP caller sees `string`. That holds for the
+  docblock tags a `.phn` writes by hand as well as for the ones the compiler generates
+  (2026-11-02): `/** @return bytes */`, `@var list<bytes>`, `@param bytes $x` come out with
+  `string` in the type, every other character of the comment as written. Left alone, the
+  word would reach PHPStan as a class name, and with `use Phaenon\Bytes;` in the file it
+  resolves to that class.
 - The overlay types PHP's binary producers and consumers (`random_bytes(): bytes`,
   `bin2hex(bytes): string`, `hash(..., binary: true): bytes`, `base64_encode(bytes)`) so a `.phn`
   program gets `bytes` where it should without annotations. Where PHP's signature is the same
@@ -178,7 +189,7 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | Unit of `string` | code points by default (`mb_*`); graphemes explicit (`->graphemes()`, `->graphemeLength()`, `->truncate()`), `->bytes()->length()` for bytes | every mainstream language but Swift; never splits a character; O(n) without `intl` |
 | Names | `\Phaenon\Str` (`String` is reserved) and `\Phaenon\Bytes`, singular like `Seq` and `Map` | collections.md §7 |
 | `Str::format` | not added; `sprintf` stays (234 calls in `core`) | a wrapper that changes nothing is noise |
-| `file_get_contents`, `fread` | `string`; `Bytes::of(file_get_contents(…))` for binary files | text files are the overwhelming case |
+| `file_get_contents`, `fread` | `string`; `(bytes) file_get_contents(…)` for binary files | text files are the overwhelming case |
 | `indexOf` | `?int`, never `false` | the stdlib is where PHP's `false` returns end |
 | `\Stringable` and `string` | **no implicit conversion in argument position**: a `\Stringable` passed where `string` is declared is the error PHP's strict mode makes it. Interpolation and `.` call `__toString()` as PHP does. The `Str` methods accept `string\|\Stringable` and convert inside, so `$id->startsWith('u-')` works on a value object. The other direction (a string where `\Stringable` is expected) does not exist without boxing and is not added | PHP's own asymmetry; an inserted `->__toString()` would be code the programmer did not write (D9) and the implicit conversion strict mode exists to forbid |
 | Symfony-String-like objects (`u()`) | not needed: `$s->upper()` is `u($s)->upper()` without the object | the method syntax exists because Phaenon can put a method on a string, which PHP cannot |
@@ -186,11 +197,12 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | `(string) $bytes` | allowed, unchecked, typed `string` | PHP's own cast; vendor APIs take binary in `string` parameters and need an escape hatch that is visible in the code |
 | `$bytes === $string` | `P2305` although both are PHP strings | the comparison is a type confusion even when it is true at runtime |
 | `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `strcmp`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
+| `.` and `.=` on `bytes` (2026-11-02) | `bytes . bytes` is `bytes`; `.=` with a `bytes` operand keeps a `bytes` variable, array element or property `bytes`. `bytes . string` and `string . bytes` stay `P2530`, interpolation stays text-only, a string literal is still `string` (a binary buffer starts from `(bytes) ''`) | PHP's `.` is byte concatenation already, so the operator erases unchanged; what the type exists to catch is binary mixed into text, not binary joined to binary. Without it, every builder of frames, archives or zip entries became a `list<bytes>` and `Bytes::concat()` (tq-cli's dogfood). Python draws the same line: `b'a' + b'b'` works, `b'a' + 'a'` is a `TypeError` |
 
 ## 7. Checker and emitter work (once reviewed)
 
-- Lattice: `bytes` as a primitive disjoint from `string`; literal typing; `P2530` for `.` and
-  interpolation on `bytes`.
+- Lattice: `bytes` as a primitive disjoint from `string`; literal typing; `P2530` for
+  interpolation on `bytes` and for `.` between `bytes` and text.
 - Method resolution on `string` / `bytes` receivers → `Str::` / `Bytes::` (shared with
   collections.md §3.1).
 - Overlay: the binary producers and consumers; `Str`/`Bytes` stubs generated from the
