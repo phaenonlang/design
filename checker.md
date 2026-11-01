@@ -500,6 +500,31 @@ turned it into a test.
   subject becoming `non-empty-string`), `Closure::call()` rebinding `$this`, expression-level
   throw points in `try`, parameter unions over a union receiver, phpredis's `multi()` chain,
   `@template B of self::*_REFERENCE`.
+- **A key whose type is known to be numeric is an int key** (2026-11-02, tq-cli's `Val::map()`).
+  PHP stores a string that is a canonical decimal integer as an int key (`'123'`, `'-7'` become
+  ints; `'0123'`, `'1.5'`, `' 1'`, `'1e3'`, `'-0'` and anything beyond `PHP_INT_MAX` stay
+  strings: `ZEND_HANDLE_NUMERIC_STR`), and under `strict_types` such a key handed on to a
+  `string` parameter throws `TypeError`. The checker applies the conversion wherever the key's
+  type proves it: a literal (`$b['42'] = 1` is `array{42: 1}`, as in PHPStan); a
+  `decimal-int-string`, PHPStan's name for a canonical integer string and what `(string)` of an
+  `int` is typed (an `int` literal casts to its literal); the int part of a `numeric-string`
+  key, `int|numeric-string`, as PHPStan has it. A `(string)` cast written as the key is looked
+  through member by member, before a union absorbs the decimal string into `string`:
+  `$out[(string) $k] = $v` with `$k: int|string` writes an `int|string` key, so a helper that
+  declares `map<string, mixed>` while building its result that way gets the finding at its own
+  `return`, where the declaration is untrue, not at its callers. Reads (`$a[(string) $id]`
+  reads the int key), array literals with computed keys, and the array types built by
+  substituting a template into a key position (`array_combine`, `array_fill_keys`,
+  `array_flip` over decimal strings) follow the same rule. PHPStan applies it to constants
+  and to `decimal-int-string` keys it writes, but loses the int part of `(string) (int|string)`
+  and keeps a `decimal-int-string` key after template substitution: there the checker is
+  stricter. **A general `string` key stays a `string` key** — the residual hole, kept on
+  purpose: full soundness would make every `$out[$name] = …` produce `int|string` keys, so a
+  `map<string, …>` could hardly be built from anything but literals. Hack closed the hole with
+  a `dict` that never converts its keys, which PHP's arrays cannot be; TypeScript documents a
+  hole of the same kind for index access. A string key read back from an array (`foreach`,
+  `array_keys`) is never a decimal integer, so the common re-keying loops are sound as they
+  are; a later analysis rule (M6) may flag string keys that come from input if the hole bites.
 
 ## 10. Open questions
 
