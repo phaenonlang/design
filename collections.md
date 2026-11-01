@@ -60,6 +60,12 @@ Decisions proposed with the table:
   generic declaration means `K of int|string`; `map<bool, V>` is a type error (`P2518`). PHP
   would cast the key; Phaenon refuses the type. `array-key` stays docblock vocabulary and is
   written `int|string` when a key type is meant generically (generics.md §11.2).
+- **A key whose type is known to be numeric is an int key** (2026-11-02, checker.md §9): PHP
+  stores `'42'` as `42`, so a literal integer string, a `decimal-int-string` (what `(string)` of
+  an `int` is) and the int part of a `numeric-string` are int keys, in writes, reads, literals
+  and `array_combine`-style results; `$out[(string) $k] = $v` with `$k: int|string` builds a
+  `map<int|string, …>`. A general `string` key stays a `string` key, a hole kept on purpose
+  for the reasons checker.md §9 gives.
 - **Subtyping.** `list<T> <: map<int, T> <: array`; `list<T>` is covariant in `T`; `map<K, V>` is
   covariant in **both** `K` and `V`. Arrays are values (copy-on-write), there is no aliasing
   through which a covariant key could be abused, so `map<'a'|'b', Admin> <: map<string, User>`
