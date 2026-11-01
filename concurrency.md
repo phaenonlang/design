@@ -484,3 +484,19 @@ table wins.
 | C8 | Dogfood order: `tq-cli` first (the twelve fan-outs, suite and PHPStan on the output), then `tequila/nats` with the `RevoltTransport` and the single-reader change to `Connection`, inside M5 (2026-11-01) | tq-cli is where the design meets real amp code; the nats part is a Tequila design change that tq-cli's result may inform |
 | C9 | The FrankenPHP worker-mode check of §9.2 comes first, time-boxed (2026-11-01) | If Revolt's loop misbehaves between requests, §9.2 and the runtime change; better known before the emitter exists |
 | C10 | Diagnostics are `P26xx`, a new hundred in the types-and-flow family (2026-11-01) | Every rule is a flow or structure rule; a fifth family for six codes is noise |
+
+## 16. Decisions made while building M5
+
+Taken between the review and the close of M5 (2026-11-01). Where the text above differs, this
+table wins.
+
+| Topic | Decision | Why |
+|---|---|---|
+| Deadlines | A block that times out throws what amp's `TimeoutCancellation` reports: an `Amp\CancelledException` whose previous exception is the `Amp\TimeoutException` | A Phaenon-specific exception would be one more type to catch around amp code that already handles amp's |
+| `P2604` | Only a mutation of an outer variable inside a `spawn` body is reported (`++`, compound assignment, an element write, `$x = $x …`); a plain rebinding that shadows it is allowed | The first golden reported `$n = …` inside a task, which is a new local in the closure the task compiles to, not a race |
+| `P2606` | A block's options are named only: `timeout:` (int or float seconds) and `cancellation:` (`Amp\Cancellation`) | The options map one to one onto `Scope::run`'s parameters; positional options would read as a call |
+| The `use` clause | The emitter captures by value what the body reads before writing and the scope defines before the block; by reference what the body assigns and the scope reads first after it; arrow-function parameters shadow | The first rule (everything mentioned, by reference) produced `&$path`, `&$repo` on loop variables in tq-cli; the refined one writes what a person writes |
+| The runtime's source | `phaenon/concurrent`'s `Scope` is written in Phaenon (`stdlib/concurrent/Scope.phn`, with a `concurrently` block inside) and compiled into the package; the compiler reads the same file as the API's declaration | The class is the first dogfood of its own syntax, and the declaration cannot drift from the code |
+| amp declarations | The compiler embeds the amp 3.1 and Revolt 1.0 signatures it relies on and loads them ahead of a project's vendor copy | The checker must know `Future<T>` in a project whose vendor directory is not installed yet; a missing method is a declaration to add |
+| `tequila/nats` | The connection has one socket reader at a time (the pump lease), and an opt-in reader task per connection is the lease with a permanent holder; `RevoltTransport` is a suggested dependency (tequila/nats#13, the ADR amended in tequila/platform#255) | C8 named a "single-reader change"; the lease keeps worker mode's "nothing runs between requests" by default, and the reader task serves long-running amp processes without a second code path |
+| Editor | The PhpStorm plugin approximates blocks at the token level: a statement block parses as a block, `spawn expr` as `expr`; the expression forms wait for a PSI element (M6) | The plugin erases Phaenon syntax in front of PhpStorm's parser; a block that yields a value has no PHP shape to erase to |
