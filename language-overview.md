@@ -44,7 +44,7 @@ emitted PHP never contains them.
 ## 4. Kept from PHP (deliberately)
 
 `$variables` · classes, interfaces, traits, enums, readonly, property hooks, asymmetric visibility ·
-attributes · closures and arrow functions · `match` · named arguments · union/intersection/DNF
+attributes · closures and arrow functions (`fun` is the spelling of a *named* function, `functions.md`) · `match` · named arguments · union/intersection/DNF
 types · class names as strings (`Foo::class`, typed `class<T>`) · exceptions · generators ·
 Fibers (as the concurrency substrate) · the request-cycle execution model · Composer · Symfony ·
 PHPStan vocabulary (read from docblocks, not written as syntax).
@@ -59,6 +59,7 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (reviewed 2026-10-30) | M4 |
 | String/`bytes` split, method syntax on primitives (`$s->upper()` → `\Phaenon\Strings::upper($s)`) | `strings.md` (reviewed 2026-10-30) | M4 |
 | `\Phaenon\*` stdlib (PHP package `phaenon/runtime`) | `collections.md` §3, `strings.md` §4 | M4 |
+| `fun` for named functions and methods (absent visibility is `public`); closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4 |
 | Structured concurrency over Fibers, no function colouring | `concurrency.md` (pending) | M5 |
 | Tooling: `phn build/check/watch/fmt/migrate/lsp` | `tooling.md` (pending) | M1, M6 |
 
