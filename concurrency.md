@@ -366,10 +366,15 @@ checker does not pretend otherwise: `P2602` is about `spawn` results).
 
 Entry is synchronous (§3): a console command or a request handler calls a method that fans out
 inside and gets a value or an exception. Revolt's driver is a process-global that survives
-across FrankenPHP worker-mode requests, as the NATS connection does; **that this is sound under
-FrankenPHP — a Revolt loop idling between requests, resumed by the next request's first wait —
-is the one claim here no Tequila code has yet exercised** and is M5's first thing to verify
-(`tq-cli` is a CLI). Messenger handlers are plain calls.
+across FrankenPHP worker-mode requests, as the NATS connection does. **Verified 2026-11-01**
+(C9): a worker script (`frankenphp_handle_request` in a loop, two worker threads, FrankenPHP
+1.2.2 / PHP 8.3.10, amp 3.1.3) whose handler ran four tasks per request — three `delay()`s of
+5–15 ms and a socket connect to the server itself — joined with `Future\await`, under 400
+requests at concurrency 8: 400 correct answers, a median of 16.6 ms per request (the longest
+delay, so the tasks ran concurrently), the loop's registered-callback count flat at 1, a
+loop-level `EventLoop::repeat` timer ticking on across requests (1 → 66), memory flat, the
+handler in the main fiber. The driver persists between requests and the next request's first
+wait resumes it. Messenger handlers are plain calls.
 
 ### 9.3 `tequila/nats`
 
