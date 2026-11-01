@@ -500,7 +500,7 @@ turned it into a test.
   subject becoming `non-empty-string`), `Closure::call()` rebinding `$this`, expression-level
   throw points in `try`, parameter unions over a union receiver, phpredis's `multi()` chain,
   `@template B of self::*_REFERENCE`.
-- **A key whose type is known to be numeric is an int key** (2026-11-02, tq-cli's `Val::map()`).
+- **A key whose type is known to be numeric is an int key** (2026-11-01, tq-cli's `Val::map()`).
   PHP stores a string that is a canonical decimal integer as an int key (`'123'`, `'-7'` become
   ints; `'0123'`, `'1.5'`, `' 1'`, `'1e3'`, `'-0'` and anything beyond `PHP_INT_MAX` stay
   strings: `ZEND_HANDLE_NUMERIC_STR`), and under `strict_types` such a key handed on to a

@@ -57,7 +57,7 @@ reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\P
 - Interpolation (`"Hello $name"`) requires `string` operands; a `bytes` operand is an error
   (`P2530`). **`.` joins two values of the same kind**: `string . string` is `string`,
   `bytes . bytes` is `bytes`, and `$buf .= $chunk` keeps a `bytes` variable, element or
-  property `bytes` when `$chunk` is `bytes` (2026-11-02, §6); PHP's `.` is byte
+  property `bytes` when `$chunk` is `bytes` (2026-11-01, §6); PHP's `.` is byte
   concatenation already, so it erases unchanged. Mixing the two — `bytes . string`,
   `string . bytes`, a `bytes` buffer started from a `''` literal — is `P2530`: a builder of
   binary data starts from `(bytes) ''`. Comparing `string` with `bytes` by `===` is an error
@@ -159,7 +159,7 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
   of binary strings and `@param bytes` would be an unknown type. The distinction is Phaenon's
   own, like `map` vs `list` is PHPStan's own. A PHP caller sees `string`. That holds for the
   docblock tags a `.phn` writes by hand as well as for the ones the compiler generates
-  (2026-11-02): `/** @return bytes */`, `@var list<bytes>`, `@param bytes $x` come out with
+  (2026-11-01): `/** @return bytes */`, `@var list<bytes>`, `@param bytes $x` come out with
   `string` in the type, every other character of the comment as written. Left alone, the
   word would reach PHPStan as a class name, and with `use Phaenon\Bytes;` in the file it
   resolves to that class.
@@ -197,7 +197,7 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | `(string) $bytes` | allowed, unchecked, typed `string` | PHP's own cast; vendor APIs take binary in `string` parameters and need an escape hatch that is visible in the code |
 | `$bytes === $string` | `P2305` although both are PHP strings | the comparison is a type confusion even when it is true at runtime |
 | `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `strcmp`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
-| `.` and `.=` on `bytes` (2026-11-02) | `bytes . bytes` is `bytes`; `.=` with a `bytes` operand keeps a `bytes` variable, array element or property `bytes`. `bytes . string` and `string . bytes` stay `P2530`, interpolation stays text-only, a string literal is still `string` (a binary buffer starts from `(bytes) ''`) | PHP's `.` is byte concatenation already, so the operator erases unchanged; what the type exists to catch is binary mixed into text, not binary joined to binary. Without it, every builder of frames, archives or zip entries became a `list<bytes>` and `Bytes::concat()` (tq-cli's dogfood). Python draws the same line: `b'a' + b'b'` works, `b'a' + 'a'` is a `TypeError` |
+| `.` and `.=` on `bytes` (2026-11-01) | `bytes . bytes` is `bytes`; `.=` with a `bytes` operand keeps a `bytes` variable, array element or property `bytes`. `bytes . string` and `string . bytes` stay `P2530`, interpolation stays text-only, a string literal is still `string` (a binary buffer starts from `(bytes) ''`) | PHP's `.` is byte concatenation already, so the operator erases unchanged; what the type exists to catch is binary mixed into text, not binary joined to binary. Without it, every builder of frames, archives or zip entries became a `list<bytes>` and `Bytes::concat()` (tq-cli's dogfood). Python draws the same line: `b'a' + b'b'` works, `b'a' + 'a'` is a `TypeError` |
 
 ## 7. Checker and emitter work (once reviewed)
 
