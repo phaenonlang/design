@@ -224,10 +224,14 @@ files behave identically (680 tests that observe line numbers are not run — se
   package `phaenon/concurrent`, checker codes `P26xx`.
 - Order: the FrankenPHP worker-mode check of Revolt between requests (time-boxed), goldens,
   checker, emitter, the runtime package.
-- Target: `tq-cli` first (its twelve `Api::concurrently` fan-outs on amp already; suite, PHPStan
+- Target: `tq-cli` first (its fifteen `Api::concurrently` fan-outs on amp already; suite, PHPStan
   and cs on the compiled output), then `tequila/nats` with a `RevoltTransport` and the
   single-reader change to `Connection`. The roadmap's original order (nats first) was reversed
   at the review: nats is synchronous by its own ADR and has no fan-out to express.
+- 2026-11-02: ✅ syntax, checker (`P2601`–`P2606`), emitter, `phaenon/concurrent` (14 tests on the
+  real amp), the FrankenPHP check; ✅ `tq-cli` compiled from 859 `.phn` with the fan-outs as
+  blocks — 2045 tests green on the output, PHPStan 10 and cs clean. Open: the nats transport,
+  the plugin, the package's GitHub repository, tq-cli's 378 checker findings.
 
 ### M6 — Tooling and distribution
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
