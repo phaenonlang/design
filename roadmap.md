@@ -218,7 +218,7 @@ files behave identically (680 tests that observe line numbers are not run — se
   findings), the Composer plugin (M6), moving the three earlier dogfood branches to the sibling
   layout.
 
-### M5 — Concurrency
+### M5 — Concurrency — ✅ done 2026-11-01
 - Design: `concurrency.md` (reviewed 2026-11-01): `concurrently { }` blocks and `spawn` over
   amp v3 / Revolt, `Amp\Future<T>` handles, cooperative cancellation and `timeout:`, a second
   package `phaenon/concurrent`, checker codes `P26xx`.
@@ -228,10 +228,24 @@ files behave identically (680 tests that observe line numbers are not run — se
   and cs on the compiled output), then `tequila/nats` with a `RevoltTransport` and the
   single-reader change to `Connection`. The roadmap's original order (nats first) was reversed
   at the review: nats is synchronous by its own ADR and has no fan-out to express.
-- 2026-11-01: ✅ syntax, checker (`P2601`–`P2606`), emitter, `phaenon/concurrent` (14 tests on the
-  real amp), the FrankenPHP check; ✅ `tq-cli` compiled from 859 `.phn` with the fan-outs as
-  blocks — 2045 tests green on the output, PHPStan 10 and cs clean. Open: the nats transport,
-  the plugin, the package's GitHub repository, tq-cli's 378 checker findings.
+- **Closed 2026-11-01.** ✅ `concurrently (opts) { … }` as expression and statement, `spawn expr`
+  and `spawn { … }`, checker `P2601`–`P2606`, the emitter's `Scope::run` / `Scope::spawn` with a
+  computed `use` clause; ✅ `phaenon/concurrent` (`phaenonlang/concurrent`), compiled from
+  `Scope.phn`, 14 tests on the real amp, PHPStan max; ✅ the FrankenPHP worker-mode check (400
+  requests, the loop persisting between them); ✅ the plugin's token-level approximation.
+  *Target:* `tq-cli` compiled from 859 `.phn` with its fifteen fan-outs as blocks — 2052 tests
+  green on the output, PHPStan 10 and cs clean, `phn check` at 0 over `src` and `tests` (378 at
+  the first build: checker gaps closed in three merges, real findings fixed in tq-cli);
+  `tequila/nats` with `RevoltTransport`, the pump lease and an opt-in reader task, 175 tests
+  against the server (tequila/nats#13, the ADR amended in tequila/platform#255). *Found on the
+  way:* `?(A, B)` did not parse; the first capture rule wrote `&$path` on loop variables; closure
+  types gained `T...` and `T=` (`generics.md` §11.3); numeric string keys are int keys
+  (`checker.md` §9); `.` joins two `bytes` (`strings.md` §6); the plugin's stubs went stale on
+  every upgrade, its first suspend function hung on Kotlin 2.3 metadata, and PhpStorm's Optimize
+  Imports removed imports only erased constructs used — all fixed. *Open:* the plugin's
+  expression forms (a PSI element, M6), `phn check` against `composer.json` for a missing
+  `phaenon/concurrent`, `Scope::first` / `Scope::settle` when a use site asks, the checker's two
+  parity gaps found on tq-cli's tests (vault `open-items`), a formatter for `.phn` in PhpStorm.
 
 ### M6 — Tooling and distribution
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
