@@ -30,6 +30,7 @@ prerequisite. The first real codebase is Tequila (~50 repos, Symfony, MongoDB, N
 | D14 | **Docblock prose without a type**: a parameter description is written `@param $x - prose` (the dash, as in JSDoc), a property's `@var T prose` becomes the property's docblock `/** prose */`; `phn migrate` writes both forms and the emitter puts the types back and drops the dash (2026-11-01) | Types live in the signature, so a docblock type is redundant and drifts. `@param $x prose` is valid PSR-19 and phpdoc-parser (`TypelessParamTagValueNode`), but PhpStorm reads the first word of the prose as the type (an undefined class, a wrong-type warning, and `prose|string` as the parameter's type); the dash is the one spelling every tool reads the same way | `README` § migrate |
 | D15 | **`fun` declares a named function or method, and a method without visibility is public**: `fun id(): T` compiles to `public function id(): T`, `protected fun` to `protected function`; `function` stays valid (every PHP file is a Phaenon file) and `phn migrate` rewrites it, dropping a sole `public` unless `--keep-public`. In a constant expression — an attribute argument, a constant, a default — a closure is written `fn (…) => …` or `function (…) {…}` and compiled to the `static function` PHP 8.5 accepts there; `$this` or `use` in one is `P2531` (2026-11-01) | The declaration Phaenon's code consists of mostly is `public function`, two words that say nothing the reader did not assume; the implicit `public` is PHP's own rule, and the emitter writes it out so the output stays PSR-12. PHP 8.5 admits only `static function` closures in constant expressions because arrow functions capture implicitly; at class level there is nothing to capture, so the spelling is a restriction of syntax the compiler can lift while the checker keeps PHP's rule | `functions.md` |
 | D16 | **`concurrently { … }` and `spawn`**: a block owns the tasks spawned inside it and cannot be left while one runs; the first failure cancels the siblings and is rethrown at the block's end; blocks are expressions (`return concurrently { … };`); the handle is `Amp\Future<T>`, awaited with `->await()`; the block lowers to `Scope::run(function () use (…) { … })` on a second package `phaenon/concurrent` (2026-11-01) | Structure is what amp lacks (`await(array_map(async(...), $jobs))` leaks the siblings of a failed job); every identifier in the output is the programmer's (D9) because the block is a closure in the output and the scope is ambient | `concurrency.md` §15 |
+| D17 | **Phaenon follows PHP, and a project compiles for a target.** A PHP release's syntax and library are Phaenon's from the release on; each release is a milestone named after it. The target is `phaenon.json`'s `"php"`, otherwise the lowest version composer.json's `require.php` admits; `phn migrate --php X.Y` writes it. A construct newer than the target is lowered when the lowered PHP is exact and idiomatic and refused otherwise; a library symbol newer than the target is reported; deprecations are reported whatever the target. PHP 8.5 stays the floor at least until it leaves active support (2027-12-31); the floor is revisited before the repositories are published | Every PHP file is a Phaenon file, so holding back what PHP ships would make Phaenon a dialect of an old PHP. The target lives in `phaenon.json` first because migrating to Phaenon and to a newer PHP is often one move, and falls back to composer.json because that is where a project already says which PHP it runs on. Keeping 8.5 lets Tequila build while its images move to 8.6 and lets a project adopt Phaenon without upgrading PHP first; the lowerings it costs are few | `php-versions.md` |
 
 ## 2. Repository layout
 
@@ -246,6 +247,17 @@ files behave identically (680 tests that observe line numbers are not run — se
   expression forms (a PSI element, M6), `phn check` against `composer.json` for a missing
   `phaenon/concurrent`, `Scope::first` / `Scope::settle` when a use site asks, the checker's two
   parity gaps found on tq-cli's tests (vault `open-items`), a formatter for `.phn` in PhpStorm.
+
+### PHP 8.6 — the first release milestone (started 2026-11-02)
+- Design: `php-versions.md`: the target (D17), lowering or refusing what is newer than it, partial
+  function application typed and lowered, pipe diagnostics, readonly defaults, `#[\Override]` on
+  constants, the 8.6 deprecations, a library that knows each symbol's version, and `is` kept a
+  superset of PHP's coming pattern match.
+- Order: the target and the 8.6 grammar (lexer, parser, printer, conformance against the
+  `PHP-8.6` corpus under PHP 8.6); the library by version and the non-PFA checker items; partial
+  application in the checker and the emitter; the plugin.
+- Target: before PHP 8.6's release (2026-11-19). The Tequila trees stay on target 8.5 and
+  exercise the lowering; tq-cli also builds with `"php": "8.6"` and its suite runs on PHP 8.6.
 
 ### M6 — Tooling and distribution
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
