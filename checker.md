@@ -525,6 +525,30 @@ turned it into a test.
   hole of the same kind for index access. A string key read back from an array (`foreach`,
   `array_keys`) is never a decimal integer, so the common re-keying loops are sound as they
   are; a later analysis rule (M6) may flag string keys that come from input if the hole bites.
+- **Offsets and iteration on what may have neither** (2026-11-02, tq-cli's tests). An offset
+  read, write, append or `unset` on `mixed`, and an offset read on `object`, `iterable` or a
+  type parameter bounded by nothing, `mixed` or `object`, is `P2302`; destructuring `mixed` is
+  `P2302`; a `foreach` over `mixed`, `object` or such a type parameter is `P2303`. PHPStan
+  reports each at level max (`offsetAccess.nonOffsetAccessible`, `offsetAccess.nonArray`,
+  `foreach.nonIterable`; the `object` and `iterable` reads already at level 7), inside
+  `isset()`, `??` and `empty()` too: those forgive a missing key, not a value without keys. A
+  narrowed path is never reported — `is_array($m)`, `isset($m['k'])` for that same offset,
+  `array_key_exists('k', $m)` (which narrows `mixed` to an array with the key), and `$a[$k]`
+  with `$k` one of a few literals after a check narrowed those offsets one by one — nor is an
+  undefined variable under `isset()` or on the left of a nested write, where PHP creates the
+  array. A chain reports every level that may be refused: `$m['a']['b']` is two findings, as in
+  PHPStan and as `$x = $m['a']; $x['b']` is, because guarding `$m` leaves `$m['a']` mixed.
+  Where PHPStan is silent and PHP is not, the checker stays stricter: an append to an `object`
+  is reported as before. Not matched: PHPStan reports `$r = []; $r['a']['b'] = 1` (the offset
+  of `array{}` read as mixed), which PHP runs without complaint.
+- **A variadic is a map inside its function** (2026-11-02). `T ...$xs` holds
+  `array<int<0, max>|string, T>`, not `list<T>`: since PHP 8.0 named arguments collect under
+  their names (`f(a: 'x')` hands the body `['a' => 'x']`), and PHPStan types the parameter so
+  on PHP ≥ 8.0 (2.2 and 2.3; `list<T>` with `phpVersion` below 8.0; 2.1 says
+  `array<int|string, T>`). Handing it to a `list<…>` parameter is a finding; `array_values($xs)`
+  is the list, and method syntax on a variadic is `Map`'s (`$xs->values()`). What a caller
+  passes is unchanged — `T` values, or a spread of any iterable of `T` — and the same holds in
+  closures, including a closure literal checked against `Closure(T...)`.
 
 ## 10. Open questions
 
