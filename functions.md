@@ -212,23 +212,27 @@ declaration, invisible to every tool but Phaenon's.
 
 ### 5.1 The canonical style
 
-- **The opening brace of a class, interface, trait, enum, function or method stands on the
-  declaration's line**, as it does for control structures in PSR-12 already, and in Kotlin,
-  Swift, Go, Rust, TypeScript and Java.
+- **The opening brace of a function or method stands on the declaration's line**, as it does
+  for control structures in PSR-12 already, and in Kotlin, Swift, Go, Rust, TypeScript and Java.
+- **The opening brace of a class, interface, trait or enum keeps its own line** (2026-11-02,
+  `line-map.md` §7): a class costs one brace line per file, and its header — generic parameters
+  with bounds, an `implements` list with type arguments — is the file's longest line, where a
+  trailing brace is hard to see.
 - **A docblock with one line of content is one line**: `/** The aggregate, or null. */`.
 - This is a style, not syntax: the PSR-12 placement stays valid Phaenon. The style is what the
   PhpStorm plugin's code style for `.phn`, `phn migrate` and later `phn fmt` (M6) write.
 
 ### 5.2 Compilation
 
-The emitter keeps the source's layout (the line invariant), so compiled output carries the
-style too, and needs php-cs-fixer's brace-placement rule off, with the docblock-span rule where
-a project configures one: the same kind of exception as D12's line-1 rules, listed with them in
-the README's Composer section.
+Until 2026-11-02 the emitter kept the source's layout (the line rule), so compiled output carried
+the style and needed php-cs-fixer's brace rules off. Since D19 (`line-map.md` §2) the emitter puts
+the braces of named functions, methods and class-likes where PSR-12 wants them and expands an
+expression body into a PSR-12 body; the line map keeps every position pointing into the `.phn`.
 
 ### 5.3 Migration
 
-`phn migrate` moves the opening brace of a declaration up to its line, collapses a docblock with
+`phn migrate` moves the opening brace of a function or method up to its line and a class-like's
+back down to its own line where an earlier run moved it up, collapses a docblock with
 one line of content, and turns a body that is a single `return expr;` (or a single expression
 statement under `void`) into `=> expr;`, wrapped after the arrow when the line would pass 120
 columns. A body with a comment inside stays a block. `--keep-layout` keeps braces, docblocks and
@@ -241,7 +245,7 @@ reading aid: PSR-12 itself puts control-structure braces on the line. With `fun`
 `throws`, a typical accessor shrinks from six lines to one; the brace rule decides whether the
 remaining blocks keep paying a line each. The cost — a php-cs-fixer exception on output and a
 one-time reformatting of every migrated tree (a `.git-blame-ignore-revs` entry keeps `git blame`
-useful) — is paid once.
+useful) — is paid once. The php-cs-fixer exception went with the line rule (D19).
 
 ## 6. Editor
 
