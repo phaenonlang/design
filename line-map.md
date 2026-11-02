@@ -100,7 +100,9 @@ Every file `phn build` compiles ends with one comment line:
   a reader does not know — has no mapping: readers leave its positions as they are.
 - Validity: tokens are separated by single spaces; the first entry starts at output line 1;
   entries ascend, never overlap, and the entry after a hold `O-P=S` starts at `P+1`; every number
-  is at least 1.
+  is at least 1 and written in decimal without leading zeros; `%20` and `%25` are the path's only
+  escapes, and any other `%` makes the map malformed. A reader strips one trailing `\r` from the
+  map's line before parsing it.
 
 ### 3.2 Lookups
 
