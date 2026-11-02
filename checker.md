@@ -538,9 +538,10 @@ turned it into a test.
   undefined variable under `isset()` or on the left of a nested write, where PHP creates the
   array. A chain reports every level that may be refused: `$m['a']['b']` is two findings, as in
   PHPStan and as `$x = $m['a']; $x['b']` is, because guarding `$m` leaves `$m['a']` mixed.
-  Where PHPStan is silent and PHP is not, the checker stays stricter: an append to an `object`
-  is reported as before. Not matched: PHPStan reports `$r = []; $r['a']['b'] = 1` (the offset
-  of `array{}` read as mixed), which PHP runs without complaint.
+  Not matched: PHPStan reports `$r = []; $r['a']['b'] = 1` (the offset of `array{}` read as
+  mixed), which PHP runs without complaint. (An append to an `object` that seemed to be a
+  PHPStan silence on the first probe is reported by it too; the probe had written an offset of
+  the same variable before, which PHPStan then trusts.)
 - **A variadic is a map inside its function** (2026-11-02). `T ...$xs` holds
   `array<int<0, max>|string, T>`, not `list<T>`: since PHP 8.0 named arguments collect under
   their names (`f(a: 'x')` hands the body `['a' => 'x']`), and PHPStan types the parameter so
@@ -549,6 +550,35 @@ turned it into a test.
   is the list, and method syntax on a variadic is `Map`'s (`$xs->values()`). What a caller
   passes is unchanged — `T` values, or a spread of any iterable of `T` — and the same holds in
   closures, including a closure literal checked against `Closure(T...)`.
+- **The rest of the family: members, spreads, destructuring, `unset`** (2026-11-02, PHPStan
+  2.2.5 at level max). A method call, a property (read, write, under `isset()` and `??` too) or
+  a static member through `$x::` on `mixed` is `P2105` (`method.nonObject`,
+  `property.nonObject`, `staticMethod.nonObject`, `classConstant.nonObject`,
+  `staticProperty.nonObject`); a method or property of `object` is `P2006` / `P2005`
+  (`method.notFound`, `property.notFound`; outside `isset()` and `??`, where PHPStan is silent
+  on `object`), unless `method_exists()` / `property_exists()` on the same path proved the
+  member (PHPStan's `hasMethod` / `hasProperty`). Spreading `mixed`, `object` or an open type
+  parameter is `P2303` (`arrayUnpacking.nonIterable`, `argument.unpackNonIterable`), and the
+  spread's elements are then not checked again. Destructuring anything but an array or an
+  `ArrayAccess` is `P2302` with the whole type in the message — a scalar, a string, `null`,
+  `array|false`, `?array`, `iterable`, `Traversable`, `object` (`offsetAccess.nonArray`).
+  `unset()` of an offset reports what reading it would on an object type, and on a type made
+  only of scalars, strings and `null`, where PHP throws, says so (`unset.offset`); PHPStan stays
+  silent on `int|string`, the checker does not. An offset on an interface or abstract class that
+  is no `ArrayAccess` is `P2302` like any other class — the exemption of 2026-10-30 believed
+  PHPStan silent there; 2.2.5 reports it — and on any class under `isset()`, `??` and `empty()`
+  too (scalars stay silent there, as in PHPStan); an intersection with one `ArrayAccess` member
+  has offsets. A member or offset of a value already reported (an unknown property, `$this` in
+  a static context) has the error type, so a chain reports its first mistake only.
+- **A static variable is what its `@var` says, `mixed` without one** (2026-11-02), as PHPStan
+  types it. Its value outlives the call, so the initialiser describes the first call only:
+  `static $cache = []` then `$cache[$k] = …` holds entries on every later call, which the
+  initialiser's `array{}` denied (the checker used it until now). Inferring the union of the
+  initialiser and every value the body leaves behind would be sound and more precise, but needs a
+  fixpoint over the whole body for a construct none of the 1,800 dogfood files uses; PHP leaves
+  a static variable no native type, so the `@var` tag is its declaration, in line with the rule
+  that declarations carry types (`P2516`). The findings an undeclared static variable then gets
+  where it is used say that its declaration is missing, which is true; PHPStan's are the same.
 
 ## 10. Open questions
 
