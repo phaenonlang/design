@@ -218,6 +218,9 @@ declaration, invisible to every tool but Phaenon's.
   `line-map.md` §7): a class costs one brace line per file, and its header — generic parameters
   with bounds, an `implements` list with type arguments — is the file's longest line, where a
   trailing brace is hard to see.
+- **An empty function or method body is `{}` on the declaration's line** (2026-11-02), as PER-CS
+  2.0 allows: `fun __construct(private EventStoreFactory $factory) {}`. A constructor that only
+  promotes its parameters is the common case.
 - **A docblock with one line of content is one line**: `/** The aggregate, or null. */`.
 - This is a style, not syntax: the PSR-12 placement stays valid Phaenon. The style is what the
   PhpStorm plugin's code style for `.phn`, `phn migrate` and later `phn fmt` (M6) write.
@@ -232,7 +235,8 @@ expression body into a PSR-12 body; the line map keeps every position pointing i
 ### 5.3 Migration
 
 `phn migrate` moves the opening brace of a function or method up to its line and a class-like's
-back down to its own line where an earlier run moved it up, collapses a docblock with
+back down to its own line where an earlier run moved it up, writes an empty function or method body
+(no statement, no comment) as `{}`, collapses a docblock with
 one line of content, and turns a body that is a single `return expr;` (or a single expression
 statement under `void`) into `=> expr;`, wrapped after the arrow when the line would pass 120
 columns. A body with a comment inside stays a block. `--keep-layout` keeps braces, docblocks and
