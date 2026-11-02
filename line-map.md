@@ -95,8 +95,12 @@ Every file `phn build` compiles ends with one comment line:
   run, or its hold.
 - A file that ends outside PHP mode (inline HTML after `?>`) ends with
   `<?php // phaenon-map …` instead, which outputs nothing. A file that uses
-  `__halt_compiler()` carries the map on the line before that statement. A file without a map
-  (hand-written PHP copied by `phn build`, output of an older `phn`) maps every line to itself.
+  `__halt_compiler()` carries the map on the line before that statement.
+- A file without a valid map — hand-written PHP that `phn build` copies, or a map whose version
+  a reader does not know — has no mapping: readers leave its positions as they are.
+- Validity: tokens are separated by single spaces; the first entry starts at output line 1;
+  entries ascend, never overlap, and the entry after a hold `O-P=S` starts at `P+1`; every number
+  is at least 1.
 
 ### 3.2 Lookups
 
