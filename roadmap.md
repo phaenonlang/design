@@ -258,6 +258,9 @@ files behave identically (680 tests that observe line numbers are not run — se
   application in the checker and the emitter; the plugin.
 - Target: before PHP 8.6's release (2026-11-19). The Tequila trees stay on target 8.5 and
   exercise the lowering; tq-cli also builds with `"php": "8.6"` and its suite runs on PHP 8.6.
+- Closes on PHP 8.6.0's release day, once the plugin handles the 8.6 syntax:
+  - `stdlib/constants.php` regenerated from the released build;
+  - the conformance suites run once more against it.
 
 ### M6 — Tooling and distribution
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
