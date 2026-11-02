@@ -15,6 +15,8 @@ structured concurrency — compiled to the PHP you would have written by hand.
   programmer did not spell out.
 - **PHP 8.5 is the baseline**: the output targets PHP ≥ 8.5 and uses its features (property hooks,
   asymmetric visibility, pipe operator, `clone with`) directly instead of lowering them.
+  *Amended 2026-11-02 (roadmap D17, `php-versions.md`): each project compiles for a target, 8.5 or
+  newer; a feature newer than the target is lowered when that is exact, refused otherwise.*
 - **The PHP subset round-trips**: a `.phn` file that uses only PHP syntax compiles to an
   equivalent PHP file (formatting aside). This is what the php-src `.phpt` corpus tests.
 - **Mixed projects are normal**: `.phn` and `.php` files coexist in one Composer package; Phaenon
