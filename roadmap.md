@@ -265,6 +265,10 @@ files behave identically (680 tests that observe line numbers are not run — se
   - the conformance suites run once more against it.
 
 ### M6 — Tooling and distribution
+- Design: `tooling.md` (draft 2026-11-02, for review): `phaenon/phn` as one Composer package with
+  the plugin and checksum-pinned binaries (amends D13), builds at `dump-autoload`, `phn fix`
+  carrying the edits of PHP's rewriting tools back into the source, `phn fmt`, `phn lsp` for
+  PhpStorm's diagnostics and VS Code, CI formats; order and questions in its §11 and §13.
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
   (codemods: arrays → list/map where provable, string functions → methods).
 - Composer plugin (D13: builds every installed package with a `phaenon.json` on install, `phn`

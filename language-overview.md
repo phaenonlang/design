@@ -63,7 +63,7 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | `\Phaenon\*` stdlib (PHP package `phaenon/runtime`) | `collections.md` §3, `strings.md` §4 | M4 |
 | `fun` for named functions and methods (absent visibility is `public`); closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4 |
 | Structured concurrency: `concurrently { }` blocks and `spawn` over amp v3 / Revolt, `Future<T>` handles, no function colouring | `concurrency.md` (reviewed 2026-11-01) | M5 |
-| Tooling: `phn build/check/watch/fmt/migrate/lsp` | `tooling.md` (pending) | M1, M6 |
+| Tooling: `phn build/check/watch/fmt/migrate/lsp`, the Composer plugin, editors, CI | `tooling.md` (draft 2026-11-02) | M1, M6 |
 
 ## 6. Files and build
 
