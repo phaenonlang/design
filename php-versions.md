@@ -190,8 +190,8 @@ Not adopted:
 - first-argument insertion (Elixir's `|> f(1)` meaning `f($x, 1)`).
 
 Either would make Phaenon's `|>` mean something other than PHP's, and partial application covers
-the uses of both. For lists and strings, the method syntax (`$users->filter(…)->map(…)`,
-`collections.md`) remains the left-to-right form; pipes serve free functions and static helpers.
+the uses of both. Since D20 pipes are the left-to-right form for every value, lists and strings
+included — the method syntax is gone — and `phn migrate` writes them (`tooling.md` §8).
 
 ## 6. The library across versions
 
