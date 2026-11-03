@@ -152,7 +152,7 @@ arguments (`pipe_optimization_009`).
 
 | Form | Lowered to | Exact because |
 |---|---|---|
-| `A \|> f(B, ?, C)`, with `B` and `C` literals or constants | `f(B, A, C)` | nothing is evaluated out of order |
+| `A \|> f(B, ?, C)` or `A \|> f(...)` that folds (below) | `f(B, A, C)`, `f(A)`; a run of them as nested calls | nothing is evaluated out of order |
 | `A \|> f(B, ?, C)`, otherwise | `A \|> (fn (T $p) => f(B, $p, C))` | the closure is called at once, so `B` and `C` run after `A`, as in 8.6 |
 | `f(B, ?)` outside a pipe, with every bound argument a literal, a constant or a variable | `fn (T $p) => f(B, $p)` | an arrow function captures variables by value when it is created |
 | `f(B, ?)` outside a pipe, with another bound argument (a call, a property, an operator) | refused: "assign it to a variable first, or target PHP 8.6" | lowering would call it at each invocation, or need a name the programmer did not write |
@@ -162,6 +162,33 @@ arguments (`pipe_optimization_009`).
 `$p` stands for the called function's parameter name (§3), and `T` for its declared type, written
 so that the closure rejects what the partial application would reject; a by-reference parameter
 keeps its `&`.
+
+**A pipe folds** when PHP evaluates it as the call it makes: `A` goes by value, and the callee and
+the arguments written before the placeholder compute the same before `A` as after it. An argument
+does when it is a literal, a constant, a variable `A` does not write, a closure that captures none
+of those by value, or a first-class callable of a named function; a callee when it is a named
+function (not `compact()`, `extract()`, `func_get_args()` or `assert()`), a static method of a named
+class, or a method of `$this` or of a variable `A` does not write. `A` writes a variable by
+assigning it, capturing it by reference, or passing it to a parameter the checker cannot show to
+be by value. Arguments after the placeholder are evaluated after `A` either way. The checker
+decides it for every pipe (the same rule the `pipes` codemod applies in the other direction,
+`tooling.md` §8.1) and the emitter writes what it decided:
+
+```php
+$users |> array_map(fn (User $u) => $u->email, ?) |> array_filter(...) |> array_values(...)
+// 8.5 →
+array_values(array_filter(array_map(fn (User $u) => $u->email, $users)))
+```
+
+- **A method of a property does not fold**: 8.6 reads the property after `A`, and a call in `A`
+  may assign it. `implode(', ', $rows) |> $this->log->line(...)` stays a pipe on 8.5.
+- **A first-class callable after a pipe that stays one stays a stage** too — PHP 8.5 runs it as
+  written, and `A |> (fn ($x) => …) |> f(...)` reads better than `f(A |> (fn ($x) => …))`.
+- **Layout.** A folded run goes on one line when that fits in 120 columns (a closure over several
+  lines keeping its lines), otherwise one argument per line with a trailing comma, PSR-12's
+  multi-line argument list. Its lines map to the pipeline's first line (`line-map.md`).
+- **A run that cannot move stays a pipeline**: a comment between its stages or arguments, or a
+  multi-line string that would move sideways.
 
 ### 5.4 Pipes
 
