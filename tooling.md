@@ -477,9 +477,16 @@ $emails = $users
   pipe: `sprintf('%d items', count($xs))`, `max(0, min(10, $x))`.
 
 **How it is written.**
+- **A pipeline follows the data.** A stage takes the piped value into its first parameter, or into
+  the data parameter of PHP's functions that take it after their other arguments: `array_map`,
+  `implode`/`join`, `explode`, `mb_split`, the `preg_` functions, `str_replace`/`str_ireplace`,
+  `in_array`, `array_search`, `array_key_exists`. A call that takes the value anywhere else ends
+  the chain there: `sprintf('%d items', count($xs))` and `self::assertSame($expected, f($x))` stay
+  calls, as does `max($width, strlen($s))`.
 - **The head.** It is the innermost call's subject when that call has exactly one argument other
-  than literals, constants and closures (`array_map(fn …, $users)` → `$users |> array_map(fn …, ?)`,
-  `trim($s)` → `$s |> trim(...)`). Otherwise the head is the innermost call itself.
+  than literals, constants and closures, and the call may take it from a pipe (`array_map(fn …,
+  $users)` → `$users |> array_map(fn …, ?)`, `trim($s)` → `$s |> trim(...)`). Otherwise the head
+  is the innermost call itself.
 - **A stage that takes only the piped value** is a first-class callable, `f(...)`.
 - **Any other stage** is a partial application with `?` where the piped value stood: positional,
   or `name: ?` where the call names its arguments.
@@ -489,9 +496,13 @@ $emails = $users
 **When a chain is left alone.** It is not rewritten when the rewrite would not be exact:
 - **The order of evaluation would change.** A pipeline evaluates the piped value before a stage's
   other arguments and before a method's receiver; the nested call evaluated them in source order.
-  So every argument written before the nested one, and the receiver of a method stage, must be a
-  literal, a constant, a variable, `$this`, or a closure that captures no variable the inner calls
-  assign.
+  So every argument written before the nested one must be a literal, a constant, a variable the
+  inner calls do not assign, or a closure that captures none by value. The receiver of a method
+  stage must be `$this`, such a variable, or a property of either that its class declares without
+  hooks and the inner calls do not assign (`… |> $this->output->writeln(...)`). A method the
+  inner calls run could still reassign that property: the codemod takes it as not happening, and
+  the compiler, which stays exact, keeps such a stage a pipe stage on 8.5 (`php-versions.md`
+  §5.3).
 - **The piped parameter is by reference** (`sort`, `preg_match`'s `$matches`): PHP refuses
   `|>` there.
 - **The nested argument is spread or unpacked**, or follows a spread.
@@ -500,13 +511,26 @@ $emails = $users
 
 **What PHP makes of it.** A pipeline stage that is a first-class callable or a partial application
 compiles to a direct call (php-src's `pipe_optimization_*` tests), so stack traces gain no closure
-frames. For an 8.5 target the partial applications are lowered as `php-versions.md` §5.3 says: to
-the direct call when the bound arguments are literals or constants, otherwise to an arrow function
-called at once.
+frames. For an 8.5 target a pipe that PHP evaluates as the call it makes is written as that call,
+a run of them as the nested calls (`php-versions.md` §5.3): every pipeline the codemod writes
+compiles back to the calls it was written from, except at a property receiver, which stays a pipe
+stage.
 
-**Measured before it is applied.** The slice measures the rewrite on core and tq-cli, both of which
-target 8.5: the number of chains rewritten and left alone (and why), a sample of the `.phn` and of
-the compiled 8.5 output, and both suites green on the result.
+**Measured and applied (2026-11-03).** The `.phn` of the five dogfood trees, the compiler's `exclude`
+left out:
+
+| Tree | Pipelines | Left as calls | Most frequent reasons |
+|---|---|---|---|
+| reflector | 0 | 6 | not the data parameter |
+| object-mapper | 0 | 0 | |
+| mongodb-odm | 4 | 28 | not the data parameter 18, evaluation order 10 |
+| core | 72 | 214 | not the data parameter 103, evaluation order 73 |
+| tq-cli | 594 | 716 | not the data parameter 429, evaluation order 114, operand of an operator 71 |
+
+None was undone by the check, `phn check` reports the same findings, and every tree's suite,
+PHPStan and php-cs-fixer pass on the compiled output. In the 8.5 output the only pipes left are at
+property receivers, in 3 files of core and 19 of tq-cli, each stage a first-class callable such as
+`… |> $this->output->writeln(...)` except one arrow function in core.
 
 ### 8.2 `list-types`, `map-types` — opt-in
 
@@ -647,3 +671,6 @@ Reviewed 2026-11-03.
 | T8 | Throw analysis in M6, unused private members if cheap, purity later (§9) | `throws` is Phaenon syntax and the editor will show it |
 | T9 | **D20**: no method syntax on values that are not objects. §8's `pipes` rule is on by default (three calls or more, `--pipes=2`, `--keep-calls`) and ships before the first slice; the `list-methods` and `string-methods` rules of the draft are gone with the method syntax | `roadmap.md` D20 |
 | T10 | Roadmap M6's "GitHub Action" is CI formats plus Tequila's reusable workflows (§7.2), its "Docker base image update" no base-image change (§7.3) | the plugin brings the binary wherever Composer runs |
+| T11 | **For an 8.5 target a pipe that PHP evaluates as the call it makes is written as that call**, a run of them as nested calls; any other pipe stays one, its partial applications arrow functions called at once (`php-versions.md` §5.3) | a pipeline the codemod wrote compiles back to the code it was written from; the arrow functions, the closures with an inline `@var` a `list` parameter needed and the closure each of them created at every call are gone from the 8.5 output |
+| T12 | A method stage's receiver may be a property its class declares without hooks, when the inner calls do not assign it (§8.1); the 8.5 lowering keeps such a stage a pipe stage | `… \|> $this->output->writeln(...)` ends most of tq-cli's pipelines (92 of the 239 chains the order rule refused); that a method the inner calls run reassigns the property is the codemod's assumption, not the compiler's |
+| T13 | A stage takes the piped value only into its first parameter or into the data parameter of PHP's functions that take it last (§8.1) | a pipeline follows the data: `count($xs) \|> sprintf('%d items', ?)` and `actual \|> … \|> self::assertSame(expected, ?)` read worse than the calls |
