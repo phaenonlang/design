@@ -1,6 +1,13 @@
 # Strings: text, `bytes` and method syntax — M4 design (draft)
 
 Status: **reviewed 2026-10-30**; §6 holds the decisions, the body is the design they settle.
+**Superseded in part by D20 (2026-11-03)**: the method syntax and `\Phaenon\Str` (§4, and the rows
+of §6 about methods, the unit of the methods, `Str` and `u()`) are gone. `string` and `bytes`, the
+overlay, `(bytes)`, `.` on `bytes`, `P2530` and `P2305` stand. `\Phaenon\Bytes` keeps the checked
+conversions — `text()`, `textLossy()`, `fromHex()`, `fromBase64()`, `hex()`, `base64()` — and the
+rest is PHP's functions, which the overlay types for `bytes` (`strlen`, `substr`, `ord`,
+`hash_equals`). Text by code points is `mb_*`; graphemes are `grapheme_*` or symfony/string's
+`UnicodeString`.
 Roadmap D5 decided the mechanism (method-call syntax on primitives compiles to static calls,
 strings stay primitive); this document fills in what the methods are, what `bytes` is, and where
 Unicode draws its lines.

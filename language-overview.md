@@ -59,11 +59,11 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | Generics: `<T>`, bounds, variance, erased; `class<T>` as the type of `T::class`; `is`/`as` | `generics.md` | M3 |
 | `type` aliases | `generics.md` §2.1 | M3 |
 | `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (reviewed 2026-10-30) | M4 |
-| String/`bytes` split, method syntax on primitives (`$s->upper()` → `\Phaenon\Strings::upper($s)`) | `strings.md` (reviewed 2026-10-30) | M4 |
-| `\Phaenon\*` stdlib (PHP package `phaenon/runtime`) | `collections.md` §3, `strings.md` §4 | M4 |
+| String/`bytes` split; method syntax on primitives removed by D20 (pipes with partial application instead) | `strings.md` (reviewed 2026-10-30), `roadmap.md` D20 | M4 |
+| `phaenon/runtime`: what compiled code calls (`Type`, `Debug`) and `Bytes`' conversions; `Seq`, `Map`, `Str` removed by D20 | `collections.md` §3, `strings.md` §4, `roadmap.md` D20 | M4 |
 | `fun` for named functions and methods (absent visibility is `public`); closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4 |
 | Structured concurrency: `concurrently { }` blocks and `spawn` over amp v3 / Revolt, `Future<T>` handles, no function colouring | `concurrency.md` (reviewed 2026-11-01) | M5 |
-| Tooling: `phn build/check/watch/fmt/migrate/lsp`, the Composer plugin, editors, CI | `tooling.md` (draft 2026-11-02) | M1, M6 |
+| Tooling: `phn build/check/watch/fmt/migrate/lsp`, the Composer plugin, editors, CI | `tooling.md` (reviewed 2026-11-03) | M1, M6 |
 
 ## 6. Files and build
 

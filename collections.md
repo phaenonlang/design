@@ -1,6 +1,10 @@
 # Collections: `list<T>`, `map<K, V>` and the legacy `array` — M4 design (draft)
 
 Status: **reviewed 2026-10-30**; §9 holds the decisions, the body is the design they settle.
+**Superseded in part by D20 (2026-11-03)**: the stdlib `\Phaenon\Seq` / `\Phaenon\Map` (§3) and
+the method-call syntax (§3.1) are gone from the language. The types, literals, tuples, interop,
+migration and shapes (§2, §4–§6) stand; lists and maps are transformed with PHP's functions and
+chained with pipes and partial application (`roadmap.md` D20, `php-versions.md` §5.4).
 Nothing is implemented yet beyond what M3 already has (the keywords `list` and `map` in type
 positions, their erasure to `array`, the lattice's array types).
 

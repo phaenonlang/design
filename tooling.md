@@ -1,6 +1,6 @@
 # Phaenon — Tooling and distribution (draft 0.1)
 
-Status: **reviewed 2026-11-03** except §8, which waits on the method-syntax question (§14, T9) · M6. Companion: `roadmap.md` D2, D8, D10, D12, D13,
+Status: **reviewed 2026-11-03** (decisions §14) · M6. Companion: `roadmap.md` D2, D8, D10, D12, D13,
 D17, D19 and §3 (M6); `line-map.md` (positions in compiled code); `functions.md` §5 (the canonical
 source layout).
 
@@ -338,7 +338,7 @@ A project without a fixer gets the first layer only.
 | Hover | the type in Phaenon's spelling, and the docblock |
 | Go to definition | into `.phn`, vendor `.php` and the stubs |
 | Document symbols | the file's outline |
-| Completion | members, including method syntax on `list`, `map`, `string` and `bytes`; names in scope; classes with their import |
+| Completion | members; names in scope; classes with their import; after `\|>`, the functions whose first parameter takes the left side's type, inserted as `f(?, …)` |
 | Signature help | the parameters of the call being typed |
 | Formatting | §5's first layer |
 | Build on save | see below |
@@ -351,8 +351,9 @@ one by one against the declarations.
 **Build on save.** When the editor asks for it (a setting, on by default in the plugin), the server
 writes the outputs after each save, as `phn build` would:
 - **The whole project is built, but only changed outputs are written.** A file's output depends on
-  other files' types, through method syntax and the override-erasure rule, so building one file
-  alone would be wrong.
+  other files' declarations — a parent's signature for the override-erasure rule, a called
+  function's parameters for a partial application lowered for 8.5 — so building one file alone
+  would be wrong.
 - **Files with errors are withheld** (D10).
 
 So a PHPUnit run from the IDE, or a FrankenPHP worker in dev, sees the source that was just saved.
@@ -452,22 +453,70 @@ A `setup-phn` action waits until a project runs `phn` without Composer. **(Amend
 
 ## 8. `phn migrate` v1: codemods
 
-**How a codemod runs:**
-- **Opt-in, by name.** Each codemod is a rule you name (`phn migrate --codemod list-types,string-methods
-  src`), and it runs on `.php` and `.phn` alike.
-- **Only where the checker proves its condition.**
-- **The file is checked again afterwards.** If a rewrite changes a type the checker infers anywhere
-  in the file, or adds a finding, it is undone for that file and reported.
+Each codemod is a named rule. A rule rewrites only where its condition is proven, runs on `.php`
+and `.phn` alike, and is checked afterwards: if a rewrite changes a type the checker infers
+anywhere in the file, or adds a finding, it is undone for that file and reported.
 
-| Rule | Rewrites | Condition |
-|---|---|---|
-| `list-types`, `map-types` | an `array` declaration with no docblock type → `list<T>` / `map<K, V>` | every value it can hold provably is one: a private property (all writes are in the class), a private or final method's return (all its `return`s), a private method's parameter (all calls are in the class). It erases to the same `array`, so the PHP signature does not move |
-| `list-methods` | `array_map($f, $xs)` → `$xs->map($f)`; `array_values(array_filter($xs, $f))` → `$xs->filter($f)`; `in_array($x, $xs, true)` → `$xs->contains($x)`; `implode($sep, $xs)` → `$xs->join($sep)` | `$xs` is a `list<T>`, and the rule's table holds exact pairs only. `array_filter` alone keeps the keys, so it is not `filter()` |
-| `string-methods` | `str_contains($s, $n)` → `$s->contains($n)`; `str_starts_with` → `startsWith`; `str_ends_with` → `endsWith` | `$s` is a `string`, not a `?string`, and only exact equivalents qualify. `strlen` counts bytes where `->length()` counts code points, and `strtolower` folds ASCII where `->lower()` folds Unicode (`strings.md` §3, §4), so neither is rewritten |
+### 8.1 `pipes` — on by default (D20)
 
-**Each rule's table is reviewed with its slice.** The rule is then run on core and tq-cli; its
-measure is the number of rewrites, both suites green, and output that differs only in the lowered
-static calls. Whether the dogfood trees keep the rewrites is Q9.
+Nested calls become a pipeline, PHP 8.5's `|>` with PHP 8.6's partial application:
+
+```php
+$emails = array_values(array_filter(array_map(fn (User $u) => $u->email, $users), fn (?string $e) => $e !== null));
+// →
+$emails = $users
+    |> array_map(fn (User $u) => $u->email, ?)
+    |> array_filter(?, fn (?string $e) => $e !== null)
+    |> array_values(...);
+```
+
+**What is a chain.** A call, a call in one of its arguments, a call in one of that one's, and so on.
+- **Length.** It must be at least three calls long; `--pipes=2` lowers that to two, and
+  `--keep-calls` turns the rule off.
+- **Why three.** Two calls with an outer call that does not transform the data read worse as a
+  pipe: `sprintf('%d items', count($xs))`, `max(0, min(10, $x))`.
+
+**How it is written.**
+- **The head.** It is the innermost call's subject when that call has exactly one argument other
+  than literals, constants and closures (`array_map(fn …, $users)` → `$users |> array_map(fn …, ?)`,
+  `trim($s)` → `$s |> trim(...)`). Otherwise the head is the innermost call itself.
+- **A stage that takes only the piped value** is a first-class callable, `f(...)`.
+- **Any other stage** is a partial application with `?` where the piped value stood: positional,
+  or `name: ?` where the call names its arguments.
+- **Layout.** Three or more stages, or a line that would pass 120 columns, put one stage per line,
+  `|>` first, one level in. A shorter pipeline stays on one line.
+
+**When a chain is left alone.** It is not rewritten when the rewrite would not be exact:
+- **The order of evaluation would change.** A pipeline evaluates the piped value before a stage's
+  other arguments and before a method's receiver; the nested call evaluated them in source order.
+  So every argument written before the nested one, and the receiver of a method stage, must be a
+  literal, a constant, a variable, `$this`, or a closure that captures no variable the inner calls
+  assign.
+- **The piped parameter is by reference** (`sort`, `preg_match`'s `$matches`): PHP refuses
+  `|>` there.
+- **The nested argument is spread or unpacked**, or follows a spread.
+- **The chain is in a constant expression**, or a call in it is `compact()`, `extract()` or
+  `func_get_args()`.
+
+**What PHP makes of it.** A pipeline stage that is a first-class callable or a partial application
+compiles to a direct call (php-src's `pipe_optimization_*` tests), so stack traces gain no closure
+frames. For an 8.5 target the partial applications are lowered as `php-versions.md` §5.3 says: to
+the direct call when the bound arguments are literals or constants, otherwise to an arrow function
+called at once.
+
+**Measured before it is applied.** The slice measures the rewrite on core and tq-cli, both of which
+target 8.5: the number of chains rewritten and left alone (and why), a sample of the `.phn` and of
+the compiled 8.5 output, and both suites green on the result.
+
+### 8.2 `list-types`, `map-types` — opt-in
+
+An `array` declaration with no docblock type becomes `list<T>` or `map<K, V>` when every value it can
+hold provably is one:
+- a private property, whose writes are all in the class;
+- the return of a private or final method, from all its `return`s;
+- a private method's parameter, whose calls are all in the class.
+
+It erases to the same `array`, so the PHP signature does not move.
 
 ## 9. Analysis rules
 
@@ -523,7 +572,7 @@ repositories for that, a maintainer's step when slice 1 gets there.
 | 4 | `phn lsp`, its diagnostics in PhpStorm, build on save; `phn watch` |
 | 5 | The VS Code extension |
 | 6 | Throw analysis (and unused private members, per Q8) |
-| 7 | The codemods, measured on core and tq-cli |
+| 7 | `list-types` and `map-types`, measured on core and tq-cli (`pipes` came with D20) |
 | 8 | The template on `.phn`, `phaenon/*` installed through Tequila's registry |
 
 **Why this order:**
@@ -577,8 +626,8 @@ repositories for that, a maintainer's step when slice 1 gets there.
    and the client is small. The alternative is to defer the extension to M7's public launch.
 8. **Analysis rules** (§9). Recommendation: throw analysis in M6, unused private members if cheap,
    purity later.
-9. **The codemods on the dogfood trees.** Run them on core and tq-cli for measurement, but apply them
-   to the trees (large, mechanical diffs) only on a maintainer's go-ahead per rule. Confirm.
+9. *(T9)* **The codemods on the dogfood trees.** Asked as: run them on core and tq-cli for
+   measurement, apply them only on a maintainer's go-ahead per rule. Answered with D20 instead.
 10. **The roadmap's M6 entry.** "GitHub Action" becomes the CI formats plus Tequila's reusable
     workflows (§7.2), and "Docker base image update" becomes no base-image change (§7.3). Confirm.
 
@@ -596,5 +645,5 @@ Reviewed 2026-11-03.
 | T6 | `phn fmt` is Phaenon's layout plus the project's fixer through `phn fix`, the second layer built once the measure of §4 passes (§5) | the project's php-cs-fixer configuration stays the one authority on PHP style |
 | T7 | VS Code gets a minimal client in M6 (§6.3) | the server is the cost; the client is small |
 | T8 | Throw analysis in M6, unused private members if cheap, purity later (§9) | `throws` is Phaenon syntax and the editor will show it |
-| T9 | *Open*: the method syntax on non-objects, and with it §8's `list-methods` and `string-methods` (roadmap, D20 proposal) | |
+| T9 | **D20**: no method syntax on values that are not objects. §8's `pipes` rule is on by default (three calls or more, `--pipes=2`, `--keep-calls`) and ships before the first slice; the `list-methods` and `string-methods` rules of the draft are gone with the method syntax | `roadmap.md` D20 |
 | T10 | Roadmap M6's "GitHub Action" is CI formats plus Tequila's reusable workflows (§7.2), its "Docker base image update" no base-image change (§7.3) | the plugin brings the binary wherever Composer runs |
