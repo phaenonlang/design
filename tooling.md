@@ -1,10 +1,10 @@
 # Phaenon — Tooling and distribution (draft 0.1)
 
-Status: **draft for review** · 2026-11-02 · M6. Companion: `roadmap.md` D2, D8, D10, D12, D13,
+Status: **reviewed 2026-11-03** except §8, which waits on the method-syntax question (§14, T9) · M6. Companion: `roadmap.md` D2, D8, D10, D12, D13,
 D17, D19 and §3 (M6); `line-map.md` (positions in compiled code); `functions.md` §5 (the canonical
 source layout).
 
-This document is the design. §13 lists the questions for the review. Where it departs from what the
+This document is the design. §13 lists the questions of the review, §14 the decisions. Where it departs from what the
 roadmap assumed (D13's "a Composer package per platform", M6's "GitHub Action" and "Docker base
 image update") it says so and why.
 
@@ -90,8 +90,9 @@ Vendor code is loaded lazily, and nothing is cached between runs.
 - **VS Code has nothing for `.phn`.** Its PHP extensions (Intelephense, PHP Tools) read PHP files
   that start with the open tag.
 
-**Repositories**: `phaenonlang/*` stay private until they are published under MIT. The roadmap
-puts "Public" in M7.
+**Repositories**: `phaenonlang/*` stay private until they are published under MIT, which happens
+once Tequila runs on Phaenon in production (T1). Until then everything in this document reaches its
+users through private channels: Tequila's package registry, a custom plugin repository, a `.vsix`.
 
 ## 2. Goals and non-goals
 
@@ -153,7 +154,9 @@ puts "Public" in M7.
   - `PHN_BINARY=/path/to/phn` replaces the download with another binary, such as a compiler built
     from a checkout (how the dogfood trees use one today, from `PATH`) or a distribution's package.
   - `extra.phaenon.binary-url` in the root `composer.json` names a mirror with the same file names,
-    for builds that cannot reach GitHub.
+    for builds that cannot reach GitHub. While the repositories are private (T1) this is how
+    Tequila's CI and its tenants get the binary: from a mirror Tequila's registry serves, with the
+    Composer credentials they already have. Slice 1 settles which part of the registry serves it.
 
 **Why not a Composer package per platform** (D13's wording)? Composer cannot pick a package by
 platform (§1), so a plugin would have to choose and fetch the binary anyway. On top of that,
@@ -366,9 +369,9 @@ and code actions beyond a diagnostic's own fix.
   same thing, both show for now; the plugin's highlight filter learns the pairs from the dogfood
   trees.
 - **Build on save is on by default**, with a status-bar item for the last build.
-- **Distribution.** The plugin goes to the JetBrains Marketplace once the repositories are public.
-  Until then it is served from a custom plugin repository (an `updatePlugins.xml` URL in PhpStorm's
-  settings), so updates arrive without installing zips by hand (Q1).
+- **Distribution.** A custom plugin repository (an `updatePlugins.xml` URL in PhpStorm's settings),
+  so updates arrive without installing zips by hand; the JetBrains Marketplace once the repositories
+  are public (T1).
 - **The `.php`-beside-`.phn` case** from the vault: in the adoption layout without `phaenon.json`, a
   `FileTypeOverrider` hides from the project a `.php` that has a `.phn` sibling and a `@generated`
   header.
@@ -506,7 +509,9 @@ parity test allow-lists each today:
 3. a local deploy (OrbStack);
 4. an exception thrown in the running service that the Monolog processor logs at its `.phn` line.
 
-**Dependency:** Tequila's CI and the tenants must be able to install `phaenon/*` (Q1).
+**Dependency:** Tequila's CI and the tenants install `phaenon/*` through Tequila's package registry
+and the binary through its mirror (T1, §3.2). The registry needs read access to the `phaenonlang`
+repositories for that, a maintainer's step when slice 1 gets there.
 
 ## 11. Order
 
@@ -519,7 +524,7 @@ parity test allow-lists each today:
 | 5 | The VS Code extension |
 | 6 | Throw analysis (and unused private members, per Q8) |
 | 7 | The codemods, measured on core and tq-cli |
-| 8 | The template on `.phn` |
+| 8 | The template on `.phn`, `phaenon/*` installed through Tequila's registry |
 
 **Why this order:**
 - **Distribution first**, because everything else is consumed through it: the editor's server is the
@@ -528,7 +533,7 @@ parity test allow-lists each today:
 - **Editors after the tools they call.**
 - **Codemods last**: they depend on nothing else and carry the largest risk of churn in the dogfood
   trees.
-- **The template at the end**, since it exercises everything above and waits on Q1.
+- **The template at the end**, since it exercises everything above.
 
 ## 12. Alternatives considered
 
@@ -546,7 +551,7 @@ parity test allow-lists each today:
 
 ## 13. Open questions for the review
 
-1. **When do the `phaenonlang` repositories go public?** Packagist, release assets without tokens,
+1. *(T1)* **When do the `phaenonlang` repositories go public?** Packagist, release assets without tokens,
    and the two editor marketplaces all need public repositories. Tequila's CI reads private GitHub
    repositories only through an App token scoped to its `tequila-gha` mirror.
    - (a) At M6's start.
@@ -579,4 +584,17 @@ parity test allow-lists each today:
 
 ## 14. Decisions
 
-To be filled in at the review.
+Reviewed 2026-11-03.
+
+| # | Decision | Why |
+|---|---|---|
+| T1 | **The repositories stay private until Tequila runs on Phaenon in production**, and possibly Buzok too. Until then `phaenon/*` reach Tequila and its tenants through Tequila's package registry, the binaries through a mirror it serves (§3.2), the PhpStorm plugin through a custom plugin repository, the VS Code extension as a `.vsix` | A language is ready for the public when products have been built and run in production on it, with features delivered on it continuously, not when it first compiles a codebase |
+| T2 | **D13 amended**: one package, `phaenon/phn`, with the binaries as release assets pinned by checksum in the package, fetched through Composer's HTTP client (§3.2) | Composer cannot pick a package by platform, and Packagist hosts no artefacts |
+| T3 | `phaenon/phn` is built from the compiler repository's root (§3.1) | one tag, one version, nothing to keep in step |
+| T4 | The plugin builds the root project at `dump-autoload` too, unless `extra.phaenon.build: false` (§3.3) | `composer install` yields a runnable project, as Composer's culture expects |
+| T5 | An installed package builds with its findings as warnings (§3.3) | its own CI gave the verdict; a consumer's `phn` may be stricter |
+| T6 | `phn fmt` is Phaenon's layout plus the project's fixer through `phn fix`, the second layer built once the measure of §4 passes (§5) | the project's php-cs-fixer configuration stays the one authority on PHP style |
+| T7 | VS Code gets a minimal client in M6 (§6.3) | the server is the cost; the client is small |
+| T8 | Throw analysis in M6, unused private members if cheap, purity later (§9) | `throws` is Phaenon syntax and the editor will show it |
+| T9 | *Open*: the method syntax on non-objects, and with it §8's `list-methods` and `string-methods` (roadmap, D20 proposal) | |
+| T10 | Roadmap M6's "GitHub Action" is CI formats plus Tequila's reusable workflows (§7.2), its "Docker base image update" no base-image change (§7.3) | the plugin brings the binary wherever Composer runs |
