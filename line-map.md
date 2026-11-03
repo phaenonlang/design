@@ -135,7 +135,8 @@ fails when a copy differs.
   point into compiled files with maps: `file.php:42`, `file.php(42)` (`getTraceAsString()`),
   `in file.php on line 42` / `file.php on line 42`, PHPStan's `--error-format=raw`. `--root
   /app=.` maps a production path prefix to the local checkout. `vendor/bin/phpunit | phn trace`
-  and pasting a production trace both work.
+  and pasting a production trace both work. Since M6 it reads CI's formats too: GitHub workflow
+  commands, and Checkstyle, JUnit, Clover and Cobertura reports (`tooling.md` §7.1).
 - **The PHPStan parity test** and **the conformance execution suite** translate the lines they
   observe through the map instead of requiring identical lines, which makes the conformance
   corpus a large test of the map itself.
@@ -176,8 +177,9 @@ fails when a copy differs.
   through the map (or `__LINE__`, which is exact). A fixture whose *compiled* line numbers a test
   asserts — PHPStan rule fixtures under `tests/PHPStan/Data` — is data, not code: it stays a
   `.php` file, which `phn build` copies as is.
-- **Coverage** (PHPUnit's Clover/Cobertura output and PhpStorm's coverage view) reports compiled
-  lines until a follow-up translates it (vault `open-items`).
+- **Coverage**: PHPUnit's Clover and Cobertura reports go through `phn trace`, which counts every
+  compiled line, holds included, as its source line (`tooling.md` §7.1). PhpStorm's coverage view
+  still reports compiled lines (vault `open-items`).
 
 ## 6. Decisions
 

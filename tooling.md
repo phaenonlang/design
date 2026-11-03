@@ -434,8 +434,9 @@ and code actions beyond a diagnostic's own fix.
 ### 7.1 Annotations and reports
 
 - **`phn check` writes CI formats.** `--format=github` writes GitHub's workflow commands
-  (`::error file=src/Foo.phn,line=12,col=5,title=P2103::…`), and `--format=checkstyle` serves other
-  CI systems.
+  (`::error file=src/Foo.phn,line=12,endLine=12,col=5,endColumn=9,title=P2103::…`), and
+  `--format=checkstyle` serves other CI systems. `--format=json` is the `--json` of M2, which
+  stays as its short form.
 - **`phn trace` reads three more formats:**
   - GitHub workflow commands, which PHPStan writes with `--error-format=github`;
   - Checkstyle XML;
@@ -445,13 +446,59 @@ and code actions beyond a diagnostic's own fix.
   compiled outputs are gitignored, so a PHPStan finding on compiled code that is not traced is not
   shown at all.
 - **Coverage.** `phn trace` translates Clover and Cobertura XML too:
-  - a source line counts as covered when any compiled line of a run that covers it is;
-  - holds count as generated text and are not reported.
+  - every compiled line counts as the source line its forward lookup gives, holds included;
+  - the compiled lines of one source line merge into one, covered when any of them is, with the
+    largest of their counts;
+  - the totals beside the lines (Clover's metrics, Cobertura's line rates) follow the merge.
 
   PhpStorm's coverage view, with the plugin reading the map, comes with §6.2 if the platform allows
   it.
 - **`phn build --check`** passes when its only failures are files built `--emit-on-error` whose
   outputs are current. On core these are the 9 files with deliberate findings (vault `open-items`).
+
+Done in slice 2 (2026-11-03), with these settlements:
+- **Holds count in coverage.** The draft left them out as generated text. A coverage run shows
+  otherwise. The executable lines a coverage driver reports on holds are code the source line is:
+  - an expression body's `return …;`;
+  - an empty body's closing brace (`fun __construct(…) {}`);
+  - the continuation lines of a folded pipeline.
+
+  Generated text that is not code (the header, imports, docblocks) is never executable, so it never
+  shows up. On reflector, 5 of 73 statements sit on holds, and leaving them out would drop those
+  source lines from the report. On tq-cli, 507 of 26,272 compiled lines merge into the source
+  lines they came from.
+- **The largest count, not the sum.** PHPUnit's count is the number of tests that ran the line.
+  The compiled lines of one source line are mostly run by the same tests, so a sum would overstate,
+  and the largest count is the one figure the merge knows to be true.
+- **Columns are dropped where a line is mapped**: a workflow command's `col` and `endColumn`, a
+  Checkstyle error's `column`. The map holds lines, and on an edited line a compiled column is not
+  the source's.
+- **A report is told by its root element.** `phn trace` reads stdin a line at a time, as before,
+  unless the input opens as XML. Such input is read whole:
+  - `checkstyle` is Checkstyle;
+  - `testsuites` or `testsuite` is JUnit;
+  - `coverage` with a `project` is Clover, any other `coverage` is Cobertura.
+
+  Other XML is text. The document is written back byte for byte except what points into a
+  compiled file with a map. A rewritten tag is escaped as libxml2, which writes PHPUnit's and
+  PHPStan's reports, escapes it.
+- **Cobertura's `<source>` becomes the directory that holds both trees** (the project root for
+  `.src/` → `src/`). Every class's filename is rewritten relative to it, so the filenames read as
+  repository paths, which is how GitLab matches them. A package or class that PHPUnit named after
+  its file is renamed with it.
+- **What stays the compiled file's:** Clover's `loc` and `ncloc`. A class's Clover metrics follow
+  the merge only when its file declares one class: Clover does not say which class a line belongs
+  to.
+- **Proof on the dogfood trees:**
+  - tq-cli's suite, run under PCOV in a throwaway container:
+    - all 2,054 JUnit test cases land on their `fun` line;
+    - of the 449 positions in the failure texts, 418 now point into a `.phn` and 31 into vendor
+      PHP, none into a compiled tree;
+    - all 569 Cobertura classes resolve to a `.phn`, and the root's totals equal the sum of the
+      lines.
+  - Core: `phn check --format=github` writes its 19 findings as annotations, and
+    `phn build --check --emit-on-error` passes with its 9 files.
+- The P4xxx checks on installed packages, which §11 put in this slice, came with slice 1 (§3.4).
 
 ### 7.2 GitHub Actions
 
