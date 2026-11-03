@@ -473,6 +473,13 @@ Done in slice 2 (2026-11-03), with these settlements:
 - **Columns are dropped where a line is mapped**: a workflow command's `col` and `endColumn`, a
   Checkstyle error's `column`. The map holds lines, and on an edited line a compiled column is not
   the source's.
+- **An annotation names its file by its path in the repository**: from the root of the git
+  repository that holds it (the nearest directory above the file with a `.git`), not from the
+  working directory. GitHub matches the path against the repository, and in a project kept in a
+  subdirectory of its repository the working directory is not the root. In a tree without git,
+  which `actions/checkout` downloads where git is missing, the path starts at `GITHUB_WORKSPACE`.
+  `phn trace` names the file of each command it rewrites the same way. A Checkstyle report keeps
+  its paths relative to the working directory.
 - **A report is told by its root element.** `phn trace` reads stdin a line at a time, as before,
   unless the input opens as XML. Such input is read whole:
   - `checkstyle` is Checkstyle;
