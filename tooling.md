@@ -290,6 +290,57 @@ compiler bug or a configuration choice, and the report makes either visible.
 
 If the refused share is not small, `phn fmt` ships its first layer alone (§5).
 
+Done in slice 3 (2026-11-03), with these settlements:
+- **The verbatim spans are the emitter's copied segments**, which the line map's property test
+  already tracked: `emit.FileVerbatim` returns them with the output. `phn fix` builds as
+  `phn build --emit-on-error` does, without printing findings, and keeps them in memory; nothing is
+  written beside the outputs.
+- **A change is found by aligning tokens.** Both outputs are lexed as PHP and aligned on their
+  tokens other than whitespace. A change is the text between two tokens both keep: a respaced gap,
+  a rewritten token or a run of them. It is narrowed to the bytes that differ. A change is carried
+  whole or not at all.
+- **What is carried:**
+  - a change that lies within one verbatim span;
+  - a run of a repeated byte, such as indentation, that can slide into one span;
+  - a deletion whose two ends lie in verbatim text, which takes the source between them along: a
+    method Rector removes goes with the head and the body the compiler wrote for it.
+
+  A replacement across compiler text is refused, since its new text is PHP the `.phn` may not
+  take. A copied plain-PHP file is a source and takes every change. A file the tool creates or
+  removes in an output root is reported, and the rebuild undoes it.
+- **Rounds instead of a check mode.** Some compiler text follows the source: the indentation of
+  an expression body's continuation lines, the `return` line, the blank line after the header. A
+  change of it is refused while the source is still the old one, and becomes the source's own
+  change once the rebuild has written that text anew. So `phn fix` rebuilds and runs the tool
+  again, carries what has become the source's, and stops after three rounds or when a round
+  carries nothing.
+
+  The last run reports what the tool still changes, at its source line, and the outputs are put
+  back as built. Running the tool itself needs no knowledge of its check mode, so any tool fits.
+  The exit status is 1 when something is left, or the tool's own status when it failed.
+  `--check` writes no source and reports every change: the CI form of the second layer of
+  `phn fmt` (§5.3).
+- **A method's modifiers stay the source's text** when they are already in PSR-12 order: the
+  emitter replaces only `fun`. The output is the same byte for byte (core's 800 and tq-cli's 859
+  outputs), but Rector's removal of a `static` is now carried. It used to be one of 344 refusals.
+- **The measure, on a copy of core's tree:**
+
+  | Run | Carried | Refused in round 1 | Left after the rounds |
+  |---|---|---|---|
+  | php-cs-fixer, other spacing (tabs, same-line braces, `( spaced )` parentheses, `) : type`, `declare( x = 1 )`, closure spacing, two blank lines before `namespace`) | 74,844, then 1,246 and 9 | 10,102 | 8,585, all compiler text this configuration lays out against PSR-12 |
+  | php-cs-fixer, core's configuration, back | 74,087, then 451 and 8 | 5,060 | **0**: exit status 0 |
+  | core's `1.0-alpha.15` Rector upgrade set | 1 | 0 | 0 |
+  | Rector's dead-code, code-quality and type-declaration sets | 2,450 in 229 files | 25 | 3: types Rector adds to the closures the compiler writes for pipelines |
+
+  With the project's own configuration nothing is refused in the end. The round-tripped `.phn`
+  equals the original except in two kinds of layout the compiler lays out itself, so the fixer
+  never sees them:
+  - a blank line before the first line (794 files), which the header absorbs;
+  - a class-like brace left on the declaration's line (756), which the compiler moves to its own.
+
+  Both are Phaenon layout, `phn fmt`'s first layer (§5.1). **The gate passes:** `phn fmt` ships
+  both layers.
+
 ## 5. `phn fmt`
 
 `phn fmt` has two layers.
