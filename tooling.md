@@ -40,9 +40,12 @@ Read and measured on 2026-11-02.
   platform or on none.
 - **Packagist hosts no artefacts.** It builds every package from a VCS repository, so a package per
   platform would be a git repository with each release's binary committed into it.
-- **Plugins run under `--no-scripts`.** That flag only drops `composer.json`'s script listeners, not
-  the event subscribers of plugins (`EventDispatcher::getListeners()`). `--no-plugins` turns plugins
-  off.
+- **Plugins run under `--no-scripts`, the autoload events do not.** That flag drops
+  `composer.json`'s script listeners, not the event subscribers of plugins
+  (`EventDispatcher::getListeners()`), but the autoload generator dispatches `pre-autoload-dump`
+  only when scripts run: `install --no-scripts` builds nothing, and the `dump-autoload` that follows
+  it in the template does (§3.3). `dump-autoload --dry-run` dispatches the event, and builds.
+  `--no-plugins` turns plugins off.
 - **An unlisted plugin is asked about or refused.** A plugin missing from `config.allow-plugins` is
   a question in an interactive run. In a non-interactive run the install fails
   (`PluginBlockedException`).
@@ -123,7 +126,9 @@ users through private channels: Tequila's package registry, a custom plugin repo
   `composer-plugin`: `composer.json` at the repository root, the plugin's PHP under `composer/`, and
   `.gitattributes` marking everything else `export-ignore`. The dist archive then holds the plugin
   alone, some tens of KB, without the Go sources. A compiler tag is a package version, and there is
-  no second repository to keep in step.
+  no second repository to keep in step. GitHub's source archives of a tag are made the same way and
+  hold the plugin alone too, so a release also publishes the whole tree as `phn-X.Y.Z-src.tar.gz`;
+  `go install …@vX.Y.Z` is unaffected (Go ignores `export-ignore` in module zips).
 - **It provides `vendor/bin/phn`.** This is a small PHP launcher that runs the binary and passes
   through the arguments, the standard streams and the exit status. If the binary is missing on first
   use (after an install with `--no-plugins`), the launcher fetches it the way the plugin would.
@@ -156,7 +161,10 @@ users through private channels: Tequila's package registry, a custom plugin repo
   - `extra.phaenon.binary-url` in the root `composer.json` names a mirror with the same file names,
     for builds that cannot reach GitHub. While the repositories are private (T1) this is how
     Tequila's CI and its tenants get the binary: from a mirror Tequila's registry serves, with the
-    Composer credentials they already have. Slice 1 settles which part of the registry serves it.
+    Composer credentials they already have. The mirror is the registry's release-asset door, which
+    already serves `tq` and the Flex recipes behind the Composer login. The value is a template:
+    `{version}` and `{file}` are replaced, and a value with neither is a base URL the file name is
+    appended to.
 
 **Why not a Composer package per platform** (D13's wording)? Composer cannot pick a package by
 platform (§1), so a plugin would have to choose and fetch the binary anyway. On top of that,
@@ -180,6 +188,15 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
 
   An `install --no-autoloader` builds at the `dump-autoload` that follows, so the template's
   Dockerfile works in its present order (§7.3).
+- **It writes the autoload maps first.** phn reads the vendor code through `vendor/composer`'s maps,
+  which a first install has not written yet at `pre-autoload-dump` and an update has left stale. So
+  the plugin dumps them once, plain (no optimisation, no scripts, the lock's suffix), and Composer's
+  own dump then overwrites them with the outputs in place.
+- **Nothing to build, nothing done.** Without an installed package or a root project that has a
+  `phaenon.json`, the plugin neither fetches the binary nor runs it.
+- **A compiler checkout is never written into.** With `phaenon/phn` a path repository onto the
+  compiler's checkout, the binary is `PHN_BINARY` or the checkout's own `bin/phn`, the developer's
+  build.
 - **Installed packages are read from their sources.** The program model already maps a project's
   outputs back to its sources (`ComposerLoader.Sources`). That mapping extends from the root project
   to every installed package with a `phaenon.json`. A package's build then sees its dependencies'
@@ -192,10 +209,15 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
 - **Each package builds for its own target** (D17: its `phaenon.json`, otherwise its composer.json's
   `require.php`), the target its CI tested.
 - **Unchanged packages are skipped.** A package is rebuilt only when its sources, the `phn` version
-  or its target changed since the last build, which a stamp in its output directory records. A
+  or its target changed since the last build, or the installed set did, which a stamp in each of its
+  output directories records (`.phn-build`: the compiler's version and the digest of its binary,
+  the target, the digest of `installed.json`, the digest of the root's files). A
   `dump-autoload` on a warm tree then costs nothing. A full build costs little anyway: core's 800
   files take 1.4 s.
-- **`phn build --vendor`** does the same by hand.
+- **`phn build --vendor`** builds the installed packages by hand, as the plugin does before
+  `phn build` builds the root. A package's program reads the vendor code through the root project's
+  `vendor/composer`, not through a vendor directory of its own (a path repository's checkout has
+  one), and a root its dist archive leaves out (`tests/`) is skipped.
 - **The root project's build can be turned off** with `extra.phaenon.build: false`, for a project
   whose own workflow builds it (Q4).
 
@@ -207,7 +229,7 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
   every call into it.
 - **A library states the compiler range it needs.** It requires `phaenon/phn` with the range its
   sources compile with (`^0.4`), as a PHPStan extension requires PHPStan.
-- **`phn check` reads `installed.json`** and reports two P4xxx errors:
+- **`phn check` reads `installed.json`** and reports two errors, `P4013` and `P4014`:
   - a file that uses `concurrently` where `phaenon/concurrent` is not installed (the vault's M5
     item);
   - an installed runtime package of another minor version.
@@ -218,6 +240,11 @@ reflector, object-mapper and mongodb-odm still commit a `.php` beside each `.phn
 dogfood branches predate D12 and D13. They move to the sibling layout and drop the committed PHP, and
 core's dogfood branch consumes them as path repositories through the plugin. That is the first proof
 of D13.
+
+Done in slice 1 (2026-11-03): the three moved, and core's dogfood branch takes them as path
+repositories of their dogfood checkouts, built by the plugin at every autoload dump; core's suite,
+PHPStan max and php-cs-fixer pass on them, a `--classmap-authoritative` dump with their outputs
+deleted included.
 
 ## 4. PHP's rewriting tools: `phn fix`
 
