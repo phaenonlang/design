@@ -260,6 +260,57 @@ remaining blocks keep paying a line each. The cost — a php-cs-fixer exception 
 one-time reformatting of every migrated tree (a `.git-blame-ignore-revs` entry keeps `git blame`
 useful) — is paid once. The php-cs-fixer exception went with the line rule (D19).
 
+### 5.5 Whitespace is spaces (D21)
+
+Unlike the rest of §5, this is syntax, not style.
+
+- **A tab is allowed in two places only:**
+  - the content of a string literal, a heredoc's or nowdoc's text included;
+  - the text of a comment.
+- **Everywhere else a tab is `P1005`, an error**, and the file is not compiled (D10):
+  - a line's indentation, and the whitespace between tokens;
+  - the indentation of a comment's continuation lines, such as the ` * ` lines of a docblock;
+  - the indentation of a heredoc's or nowdoc's closing marker, and the same prefix of its body
+    lines, which PHP strips with it;
+  - whitespace inside a token, as in `(\tint)` or `yield\tfrom`.
+- **One diagnostic per file**, at its first tab, with the number of lines that have one.
+- **Four spaces per indentation level** is the canonical layout that the plugin, `phn migrate`
+  and `phn fmt` write. Only the tab is checked; the width of the indentation is the project's
+  fixer's to check (`tooling.md` §5.2).
+
+**Migration and formatting.** `phn migrate` and `phn fmt` replace each forbidden tab with the
+spaces up to the next tab stop, four columns apart. The code then looks as it did in an editor
+that shows a tab as four columns.
+- A heredoc's closing indentation and the matching prefix of its body lines become the same
+  spaces, so the string's value does not change.
+- A tab in a string's content or a comment's text stays.
+- A docblock's indentation is part of the comment that `ReflectionClass::getDocComment()` and the
+  like return, so replacing a tab there changes that string. Migrate's one-line docblocks already
+  change it, and the tag parsers that read docblocks (PHPUnit, Doctrine, PHPStan) ignore
+  indentation.
+
+**Compilation** is unchanged: a source without such tabs compiles to output without them. A plain
+`.php` file copied into the output is not Phaenon and keeps its tabs.
+
+**In PhpStorm** the plugin's code style for `.phn` indents with spaces, whatever the project's PHP
+style says, and Reformat Code replaces the tabs as `phn fmt` does.
+
+**Why:**
+- **The PHP community settled it.** PER Coding Style 3.1 §2.4, PHP-FIG's successor to PSR-12,
+  says: "Code MUST use an indent of 4 spaces for each indent level, and MUST NOT use tabs for
+  indenting." PSR-2 already said so in 2012.
+- **A language that leaves it open hands the question to every project**, and an option to every
+  tool. The compiler would have to follow each source's choice in what it writes: docblocks,
+  `{}` bodies, expanded expression bodies. In a tab-indented source it wrote 633 docblocks and 426
+  empty bodies with spaces (`tooling.md` §4's measure).
+- **An error, not only a formatter's rule**: a formatter rule stops holding as soon as someone
+  doesn't run the formatter. As syntax, the rule holds for every `.phn` that compiles. Go settled
+  the question with its formatter, and Python 3 rejects inconsistent tabs. Phaenon takes the PHP
+  community's answer and makes it part of the language.
+- **Strings and comment text keep their tabs.** A tab in a string is part of its value. A
+  comment's text is prose, and a table pasted into it may need its tabs. A comment's indentation
+  is layout: its lines follow the code's.
+
 ## 6. Editor
 
 PhpStorm reads `fun` as the `function` keyword (the plugin's lexer hands its parser a
@@ -286,6 +337,7 @@ canonical style of §5.
 | F7 | No bare `@tag` lines: a one-line docblock, or the signature | §4.4 |
 | F8 | Canonical layout: opening braces of declarations on their line, one-line docblocks; a style, not syntax; output needs php-cs-fixer's brace rule off | §5 |
 | F9 | `phn migrate` lifts bare `@throws`, moves braces up, collapses one-line docblocks, writes `=>` for single-expression bodies; `--keep-layout` keeps the layout | §4.3, §5.3 |
+| F10 | **Whitespace is spaces** (2026-11-04, D21): a tab outside a string's content or a comment's text is `P1005`, an error; `phn migrate` and `phn fmt` replace such tabs with spaces to tab stops four columns apart, `--keep-layout` included; the plugin's `.phn` code style indents with spaces | §5.5 |
 
 ## 8. Decisions made while building D18
 
