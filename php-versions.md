@@ -183,9 +183,9 @@ array_values(array_filter(array_map(fn (User $u) => $u->email, $users)))
 - **A method of a property does not fold**: 8.6 reads the property after `A`, and a call in `A`
   may assign it. `implode(', ', $rows) |> $this->log->line(...)` stays a pipe on 8.5.
 - **A first-class callable after a pipe that stays one stays a stage** too — PHP 8.5 runs it as
-  written, and `A |> (fn ($x) => …) |> f(...)` reads better than `f(A |> (fn ($x) => …))`.
+  written, and `A |> (fn($x) => …) |> f(...)` reads better than `f(A |> (fn($x) => …))`.
 - **Layout.** A folded run goes on one line when that fits in 120 columns (a closure over several
-  lines keeping its lines), otherwise one argument per line with a trailing comma, PSR-12's
+  lines keeping its lines), otherwise one argument per line with a trailing comma, PER's
   multi-line argument list, a call around a single inner call staying on its line
   (`array_values(array_filter(` … `))`). Its lines map to the pipeline's first line
   (`line-map.md`).

@@ -278,8 +278,14 @@ A file the command rewrites outside the output roots is a real file and keeps th
 are Rector's `config/` and `rector.php` itself.
 
 What is never carried back is narrow on purpose. Generated text belongs to the compiler, and its
-layout is already what PSR-12 wants (D19). A tool that still wants to change it reveals either a
-compiler bug or a configuration choice, and the report makes either visible.
+layout is already what PER Coding Style wants (D19, D22). A tool that still wants to change it
+reveals either a compiler bug or a configuration choice, and the report makes either visible.
+
+**The project's fixer follows PER** (D22, 2026-11-04): `@PER-CS3x0`, or a later PER set. The
+compiled layout is PER Coding Style 3.0's, and PSR-12 contradicts it in one place that is the
+source's text: an empty body `{}`, which `@PSR12` expands to `{` and `}` on lines of their own.
+`phn fix` would carry that expansion into the `.phn`, against `phn fmt`'s layout. `@PSR12` also
+wants `fn (` where the compiler writes `fn(`.
 
 **Measure first.** Before §5 builds on this mechanism:
 1. Un-format core's `.phn` by running a php-cs-fixer config with other spacing rules through

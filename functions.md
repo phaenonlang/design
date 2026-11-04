@@ -32,7 +32,8 @@ fun helper(int $x): int           // function helper(int $x): int, outside a cla
   `protected const` and `final const` are written as in PHP.
 - **The same rule holds for asymmetric visibility**: `private(set) int $x` and a promoted
   `private(set) string $id` are public, as PHP 8.4 already allows when the main visibility is
-  omitted; the emitter writes `public private(set)` so the output satisfies PSR-12 tooling, and
+  omitted; the emitter writes `public private(set)` so the output satisfies PHP's style tooling
+  (php-cs-fixer's `modifier_keywords`), and
   `phn migrate` drops the `public`.
 - `function` remains valid everywhere it is today, and is the only spelling of a closure:
   `function () {}` and `fn () => …` are unchanged. `fun` is for declarations with a name.
@@ -43,7 +44,7 @@ fun helper(int $x): int           // function helper(int $x): int, outside a cla
 ### 1.2 Compilation
 
 The emitter replaces the declaration's head — the modifiers and the keyword, on one line — with
-PHP in PSR-12 order: `[abstract|final] [visibility] [static] function`, `public` written out.
+PHP in PER order (§4.6): `[abstract|final] [visibility] [static] function`, `public` written out.
 Nothing else moves; line N of the output is line N of the source (`emit` invariant). When the
 modifiers span several lines the keyword alone is replaced, so the line count still holds.
 
@@ -60,7 +61,7 @@ modifiers span several lines the keyword alone is replaced, so the line count st
   has 870 `public function` to 59 `protected function`), and the two words say nothing the
   reader did not assume.
 - The implicit `public` is not a new rule but PHP's, made the default spelling; the emitter
-  writes it out, so the PHP output stays PSR-12 and PhpStorm's "missing visibility" never fires
+  writes it out, so the PHP output stays PER and PhpStorm's "missing visibility" never fires
   on generated code.
 - `fun` reads immediately to anyone who has seen Kotlin; `fn` would collide with PHP's arrow
   functions; `func` and `def` were considered and are no better once `fn` is excluded.
@@ -239,7 +240,9 @@ declaration, invisible to every tool but Phaenon's.
 Until 2026-11-02 the emitter kept the source's layout (the line rule), so compiled output carried
 the style and needed php-cs-fixer's brace rules off. Since D19 (`line-map.md` §2) the emitter puts
 the braces of named functions, methods and class-likes where PSR-12 wants them and expands an
-expression body into a PSR-12 body; the line map keeps every position pointing into the `.phn`.
+expression body into a block; the line map keeps every position pointing into the `.phn`. Since
+D22 (2026-11-04) the layout it writes is PER Coding Style 3.0's: the same braces, and an empty
+body `{}` left on the declaration's line, where this layout and PER both put it.
 
 ### 5.3 Migration
 
