@@ -441,7 +441,8 @@ With these settlements:
   - core's and tq-cli's `composer cs` became `phn fmt`, `cs:check` `phn fmt --check`, and both
     pass.
 - **PhpStorm's Reformat Code** writes the first layer with the editor work (§6.2). Its golden files
-  are `internal/format/testdata` here.
+  are `internal/format/testdata` here. Done in slice 4 (§6.5), which also fixed the braces of
+  one-statement blocks in the first layer.
 
 ### 5.5 Why not the alternatives
 
@@ -538,6 +539,107 @@ and code actions beyond a diagnostic's own fix.
 - it polls the roots' modification times every 300 ms, since the standard library has no file
   events and a few thousand `stat` calls per poll are cheap;
 - it prints findings as `phn check` does.
+
+### 6.5 Done in slice 4 (2026-11-04)
+
+With these settlements:
+
+**The server keeps no model between checks** (`internal/lsp`; the project side is `cmd/phn/lsp.go`):
+- **A program per check, made cheap.** Every check builds a program of the whole project: the open
+  buffers as they are, the other files as on disk. Three things are kept between programs
+  (`cmd/phn/share.go`):
+  - the parsed trees (`program.ParseCache`): a file whose text is unchanged is not parsed again;
+  - the extensions' stubs, since asking `php` for them took 352 ms of a one-file check;
+  - Composer's maps, read again when a file of `vendor/composer` changes.
+
+  Nothing writes into a tree after the parse, so programs share trees, also across goroutines.
+  Replacing a file in a living model was the alternative: the model is built to be added to, and
+  its lazily built signatures and loaded vendor classes would all need invalidating.
+- **Measured on core (800 `.phn`) and tq-cli (859):**
+
+  | Check | core | tq-cli |
+  |---|---|---|
+  | First diagnostics of an opened file (`php` asked for its extensions) | 0.63 s | 0.77 s |
+  | An edit's file, after the 150 ms pause in typing | 50 ms more | 50 ms more |
+  | The whole project on save, published | 1.06 s | 1.26 s |
+
+  `phn check` on core takes 2.1 s; the parse cache is the difference.
+- **The project** is the nearest directory above the working directory with a `phaenon.json`, else
+  with a `composer.json`. Without a `phaenon.json` only the open files are checked, and nothing is
+  built.
+
+**Answers come from the newest check**:
+- **The checker's two queries became what the check records.** Instead of a probe re-checking the
+  enclosing function, the check records the type it gave every expression of the edited file
+  (`checker.Options.Observe`). Hover, go to definition and member completion read those types and
+  the program model (`symbolAt`).
+- **Completion and signature help check a copy of the buffer.** The word at the cursor becomes a
+  placeholder name, closed with up to two brackets and a `;` until the text parses:
+  `$this->repo->` is checked as `$this->repo->__phnProbe;`.
+- **An unfinished line elsewhere takes nothing away.** When the buffer does not parse, hover, go to
+  definition, and the completion of names and variables use the newest version that did.
+- **Class completion offers what Composer can load.** Its source is the classmap plus one walk of
+  the PSR-4 directories per set of maps (`ComposerLoader.ClassNames`). A class the file doesn't
+  import comes with its `use`.
+- **Hover prints Phaenon's spelling** (`types.PrintPhaenon`): `map<string, User>`, `class<T>`,
+  `?User`, `(int, string)`, `$this` as its class.
+- **Go to definition into the stubs** opens a read-only copy written under the user's cache
+  directory.
+
+**Diagnostics:**
+- **"declared here"** is related information (`checker.Diagnostic.Related`). It points at the
+  parameter an argument doesn't fit (P2103) and at the method an override breaks (P2502).
+- **The quick-fix of P1005** replaces the tabs (D21).
+
+**Build on save**:
+- **After a save only.** Opening the project or a change on disk re-checks without building. A
+  save's build waits for the check that finally completes, so a later save or change doesn't lose
+  it.
+- **Built from what is saved.** With an unsaved buffer open, the outputs come from a second program
+  of the disk alone; otherwise the save's check is built as it is (`buildJob` takes a checked
+  program).
+- **Reported with `phaenon/build`**, a notification of the server's own: files, outputs written,
+  files withheld, duration.
+
+**PhpStorm** (`../jetbrains`: `PhaenonLsp.kt`, `PhaenonCompiler.kt`, `PhaenonLayout.kt`):
+- **Diagnostics only, by what the server advertises.** The plugin passes `"features": "diagnostics"`,
+  and the server then advertises diagnostics and code actions alone. Overriding the descriptor's
+  support properties is not enough: PhpStorm 2026.2 replaced them with an `LspCustomization`
+  whose defaults turn on every feature the server advertises, from document symbols to inlay
+  hints. PhpStorm 2025.1, which the plugin builds against, reads the properties, which the plugin
+  sets as well.
+- **The LSP part is optional**, on `com.intellij.modules.ultimate`, the module both 2025.1 and
+  2026.2 declare for the API.
+- **The compiler** is the setting (Settings | Languages & Frameworks | Phaenon), else
+  `$PHN_BINARY`, else the project's `vendor/bin/phn`, else `phn` on the PATH. The same page
+  turns build on save off. The status bar shows the last build.
+- **Reformat Code is PhpStorm's PHP style plus the first layer.** It runs `phn fmt --stdin` twice:
+  - before the PHP formatter, which wraps lines by their length, so it measures the spacing the
+    layer writes (`map< string,list<int> >` made a signature wrap);
+  - after it, as an edit of its own right after the reformat.
+
+  Only a reformat of the whole file runs it, never one of a range (after completion, an inserted
+  import, Implement Methods).
+- **The shared goldens:** Reformat Code turns the input and the golden into the same text. That
+  text is in Phaenon's layout, and it differs from the golden in whitespace only. It isn't the
+  golden itself: `phn fmt`'s first layer leaves PHP's own spacing around Phaenon's syntax to the
+  project's fixer (`list<T>  $items`), and PhpStorm's PHP style tidies it.
+- **Spaces, never tabs** (D21): the plugin's indent options for a `.phn` turn tabs off and
+  override the PHP language's own options, as `.editorconfig` does. The PHP formatter's blocks
+  read the language's options otherwise.
+
+**`phn watch`** checks and builds at start and after each change, polling every 300 ms
+(`--interval`), and prints findings as `phn check` does. `--no-build` only checks.
+
+**Found on the way:**
+- **`phn fmt` left a one-statement body's brace on its own line.** The layout pass leaves that
+  brace to the arrow that migrate's second pass writes, which `phn fmt` never runs. The first
+  layer now treats every block as a block (`migrate.LayoutBlocks`; golden `format/blocks.phn`).
+  The dogfood trees were all migrated, so their bodies were arrows already, and nothing changed
+  there.
+- **Paths are matched under every spelling of the root.** macOS's `/var` is `/private/var`: a
+  buffer named through one spelling was a second copy of the project's file, declared twice
+  (P2511). URIs go back to the client in its own spelling.
 
 ## 7. CI and containers
 
