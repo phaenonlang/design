@@ -320,6 +320,23 @@ Done in slice 3 (2026-11-03), with these settlements:
   The exit status is 1 when something is left, or the tool's own status when it failed.
   `--check` writes no source and reports every change: the CI form of the second layer of
   `phn fmt` (§5.3).
+- **A reported change names its rule** (2026-11-04) when the tool's own report says which rule
+  it was: `src/Box.phn:7: php-cs-fixer (binary_operator_spaces) changes: "" → " "`.
+  - **Asking for the report.** `phn fix` adds the options itself, unless the command already
+    picks a report format: `--format=json -v` to php-cs-fixer's `fix`, `--output-format=json` to
+    Rector's `process`. It reads the report from the tool's standard output and doesn't print
+    it, unless the tool fails.
+  - **Rector** names each change's rector with the line of the node it rewrote. A change goes to
+    the rector whose node, starting on that line, is the innermost that encloses the change.
+  - **php-cs-fixer** names only the fixers applied to each file. A change in a file one fixer
+    changed is that fixer's. Otherwise, before printing, `phn fix` runs each candidate fixer
+    alone (`--rules`, the project's configuration otherwise) over copies of the outputs, and
+    names the fixers that alone make exactly that change. One run per candidate fixer, not per
+    change: on a sample with four fixers, the whole report took 1.9 s.
+  - **Otherwise the report says "one of"** and lists the file's rules. That happens when no
+    single fixer makes the change alone (a configured option that differs from the default),
+    or when several rectors name the same node.
+  - Any other tool's changes are reported as before, without a rule.
 - **A method's modifiers stay the source's text** when they are already in PSR-12 order: the
   emitter replaces only `fun`. The output is the same byte for byte (core's 800 and tq-cli's 859
   outputs), but Rector's removal of a `static` is now carried. It used to be one of 344 refusals.
