@@ -287,6 +287,16 @@ source's text: an empty body `{}`, which `@PSR12` expands to `{` and `}` on line
 `phn fix` would carry that expansion into the `.phn`, against `phn fmt`'s layout. `@PSR12` also
 wants `fn (` where the compiler writes `fn(`.
 
+**Text a lowering moves is carried back too** (2026-11-04). A folded pipe (`php-versions.md`
+§5.3) writes its operands, the programmer's text, into a call of the compiler's layout. The
+source's runs in that text are verbatim spans where they land, out of the source's order, so a
+change of an operand is carried like any other; the indentation the fold gives a continuation
+line is the compiler's. The carried changes are applied in the source's order, and a deletion
+across spans whose source range holds text that lands elsewhere is refused. Before, `@PER-CS3x0`
+on core and tq-cli left 13 and 117 changes (`.` spacing, `fn (`, trailing commas) uncarried in
+folded pipes; now none, and one `phn fix` converts either tree to PER with nothing left after
+the rebuild.
+
 **Measure first.** Before §5 builds on this mechanism:
 1. Un-format core's `.phn` by running a php-cs-fixer config with other spacing rules through
    `phn fix`.
@@ -406,6 +416,10 @@ A project without a fixer gets the first layer only.
   both layers for CI without writing anything.
 - **php-cs-fixer on the outputs** stays the check it is today. `phn fmt` is what makes the source
   pass it without editing by hand, and Composer's `cs` script becomes `phn fmt`.
+- **A fixer that undoes the first layer is named** (2026-11-04): when the first layer has to lay
+  a carried change out again — `@PSR12` expanding an empty body `{}` — `phn fmt` names the files,
+  rebuilds the outputs from the sources it kept in Phaenon's layout, and fails, since the layers
+  would disagree on every run. A PER set keeps the layout (§4, D22).
 - **In editors**, the LSP's formatting request runs the first layer, which takes milliseconds. The
   second layer costs a PHP process per run, so it runs on an explicit command.
 
