@@ -384,7 +384,47 @@ A project without a fixer gets the first layer only.
 - **In editors**, the LSP's formatting request runs the first layer, which takes milliseconds. The
   second layer costs a PHP process per run, so it runs on an explicit command.
 
-### 5.4 Why not the alternatives
+### 5.4 Done in slice 3 (2026-11-04)
+
+With these settlements:
+- **The first layer is migrate's layout without the bodies**, plus the spacing of Phaenon's own
+  syntax and no blank line before the first line (`internal/format`):
+  - braces, `{}` and one-line docblocks come from `migrate.LayoutBlocks`, which `phn migrate`
+    runs too. Turning a block into `=> expr` stays migrate's.
+  - The spacing touches only the gaps within a line and leaves a construct with a comment inside
+    as it is. It covers:
+    - type parameter lists, type arguments (on types, calls and `new`), tuple and closure types,
+      and type aliases;
+    - `throws`, `is`, `as` and `as?`;
+    - an expression body's `=>`;
+    - `concurrently` and `spawn`.
+
+    The tokens must come out as they went in (a `>>` counts as the `>` `>` it closes).
+  - The rest of a `.phn` is the project's PHP style, which the second layer writes.
+- **What the first layer leaves to the second:**
+  - the indentation of an expression body's continuation lines, which php-cs-fixer sees in the
+    output and `phn fix` carries back in its rounds (§4);
+  - the spacing of PHP syntax around Phaenon's, such as `list<T>  $items`.
+- **The second layer is `phn fix` with the project's fixer**, in this order:
+  - phaenon.json's `"fmt"` (`[]` turns the layer off);
+  - `tools/php-cs-fixer/vendor/bin/php-cs-fixer fix`, where the template and core keep it;
+  - `vendor/bin/php-cs-fixer fix`.
+
+  `phn fmt FILE…` hands the fixer those files' outputs. The first layer runs again after the
+  fixer, which can leave what only it lays out.
+- **`phn fmt --check`** reports the files out of the first layer's layout and every change the
+  fixer would make at its `.phn` line, writes nothing, and fails on either.
+- **Proof:**
+  - on the measure's copy of core, the tree un-formatted through `phn fix` (§4) comes back from
+    one `phn fmt` equal to the original, byte for byte, all 800 files;
+  - the first layer changes nothing in the five dogfood trees (1,853 `.phn`), and formats each
+    file to itself a second time;
+  - core's and tq-cli's `composer cs` became `phn fmt`, `cs:check` `phn fmt --check`, and both
+    pass.
+- **PhpStorm's Reformat Code** writes the first layer with the editor work (§6.2). Its golden files
+  are `internal/format/testdata` here.
+
+### 5.5 Why not the alternatives
 
 - **A native formatter for all of PHP?** php-cs-fixer's configurations are where PHP projects keep
   their style, and most of core's is migration fixers that rewrite code. A second style authority
