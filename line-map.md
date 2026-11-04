@@ -3,8 +3,8 @@
 > Decided 2026-11-02 (roadmap D19). Until then the emitter kept line N of the `.php` on line N
 > of the `.phn` (the *line rule*), so that every tool reporting a PHP position pointed into the
 > source without a mapping. This document replaces that rule: the emitter lays out the PHP it
-> generates as PSR-12 wants it, and every compiled file carries a **line map** that the
-> tools reporting positions read.
+> generates as PER Coding Style wants it (PSR-12 until D22, 2026-11-04), and every compiled file
+> carries a **line map** that the tools reporting positions read.
 
 ## 1. Why the line rule goes
 
@@ -35,8 +35,9 @@ PhpStorm debugs Twig and Blade templates through such mappings.
 ## 2. The compiled layout
 
 The emitter stays patch-based: plain PHP regions pass through as written, byte for byte. What
-the compiler *generates* or *rewrites* it now lays out freely, so the output passes PSR-12 and
-the dogfood projects' php-cs-fixer configurations with **no exceptions for compiled trees**:
+the compiler *generates* or *rewrites* it now lays out freely, so the output passes PER Coding
+Style 3.0 (php-cs-fixer's `@PER-CS3x0`; PSR-12 until D22) with **no exceptions for compiled
+trees**:
 
 - **Header**: the open tag, the marker and `declare(strict_types=1)` each on their own line,
   separated by blank lines, before the source's first line:
@@ -52,17 +53,25 @@ the dogfood projects' php-cs-fixer configurations with **no exceptions for compi
   ```
 - **Imports the compiler adds** (D11) go on lines of their own, in their sorted place in the
   file's `use` block, or as a new block after the `namespace` statement, separated by one blank
-  line as PSR-12 asks.
+  line as PER asks.
 - **Docblocks the compiler writes or extends** (generics' `@template`/`@param`/`@return`,
   `@throws` from a `throws` clause, the types D14 puts back) are multi-line PHPDoc blocks, one tag
   per line, indented like the declaration. A source one-line docblock that gains tags becomes a
   multi-line block.
-- **Expression bodies** `=> expr;` compile to a PSR-12 method body (`{` on its own line,
+- **Expression bodies** `=> expr;` compile to a PER method body (`{` on its own line,
   `return expr;`, `}`); an expression that spans several lines in the source keeps its line
   breaks.
-- **Opening braces of named functions, methods and class-likes** go where PSR-12 puts them (the
+- **Opening braces of named functions, methods and class-likes** go where PER puts them (the
   next line, except after a multi-line parameter list, where `) {` share a line), whichever
-  placement the `.phn` uses. Closures and anonymous classes keep theirs on the line, as in PSR-12.
+  placement the `.phn` uses. Closures and anonymous classes keep theirs on the line, as in PER.
+- **An empty body** — no statement, member or comment — stays as written: `{}` on the
+  declaration's line is PER's abbreviation (§4 for class-likes, §4.4 for functions and methods)
+  and Phaenon's layout (`functions.md` §5). Until D22 the emitter expanded it to PSR-12's
+  `{` and `}` on lines of their own.
+- **Closures the compiler writes** follow PER §7: an arrow function is `fn(…) =>`, with no space
+  after `fn` (a partial application's, `spawn`'s); a `function` closure (a partial application
+  whose parameter needs an inline `@var`, one in a constant expression) has `function (`, its
+  statement one level in on a line of its own, and its closing brace on the next.
 - **`__LINE__`** compiles to the source line as an integer literal, so code that reads it sees
   the `.phn` line.
 - **The line map** is the file's last line (§3).
@@ -188,7 +197,7 @@ fails when a copy differs.
 | L1 | The emitter no longer keeps line N on line N; every compiled file carries a line map | §1 |
 | L2 | The map is a comment on the file's last line, not a sidecar file or generated code | a sidecar can be lost or go stale between build and deploy; a method (Twig's `getDebugInfo()`) is an identifier the programmer did not write (D9); a trailing comment travels with the file and costs nothing at run time |
 | L3 | Runs and holds, absolute line numbers, a relative source path | readable by a person looking at the file; holds are what keep breakpoints off generated lines; a relative path survives deployment |
-| L4 | Generated and rewritten text follows PSR-12; plain PHP regions stay as written | the output must read as hand-written PHP (D9), and the emitter is not a formatter |
+| L4 | Generated and rewritten text follows PER Coding Style 3.0 (D22; PSR-12 until 2026-11-04); plain PHP regions stay as written | the output must read as hand-written PHP (D9), and the emitter is not a formatter |
 | L5 | `__LINE__` compiles to the source line | the one position PHP code reads by itself must stay exact |
 | L6 | Debugging in the plugin ships with the change, and the production integrations live in `phaenon/runtime` | debugging `.phn` needs a mapping in any case (§1); one package to require, and an integration loads only when its library is installed |
 
