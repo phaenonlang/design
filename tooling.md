@@ -349,6 +349,8 @@ Done in slice 3 (2026-11-03), with these settlements:
 
 The first layer is native, with no options:
 - the canonical layout of `functions.md` §5: braces, `{}` for empty bodies, one-line docblocks;
+- spaces for the tabs that `functions.md` §5.5 forbids (D21, 2026-11-04), before anything else,
+  so every later step works on spaces;
 - the spacing of Phaenon's own constructs, which no PHP tool knows.
 
 | Construct | Canonical spelling |
