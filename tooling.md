@@ -1115,20 +1115,21 @@ docblocks, and with them the compiled lines.
 
 **Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`):
 
-| Tree | Stripped | As written | Narrower | Wider | Other | Not recovered | `phn check`, baseline → codemod | PHPStan max, baseline → codemod |
-|---|---|---|---|---|---|---|---|---|
-| core | 289 | 260 (89%) | 29 (10%) | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
-| tq-cli | 807 | 734 (90%) | 50 (6%) | 23 (2%) | 0 | 0 | 2076 → 0 | 1396 → 0 |
+| Tree | Stripped | As written | Narrower | Shallower | Wider | Other | Not recovered | `phn check`, baseline → codemod | PHPStan max, baseline → codemod |
+|---|---|---|---|---|---|---|---|---|---|
+| core | 289 | 260 (89%) | 29 (10%) | 0 | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
+| tq-cli | 807 | 734 (90%) | 50 (6%) | 23 (2%) | 0 | 0 | 0 | 2076 → 0 | 1396 → 0 |
 
 - **No finding is added**, by `phn check` or by PHPStan, in either tree, and none is left: the
   codemod's types remove every finding the stripping caused.
 - **Narrower** is a type the author wrote wider than the values are, mostly one level of a
   document whose values are all scalars: `map<string, string>` where `map<string, mixed>` was
   written.
-- **Wider than written** are 23 of tq-cli's test fixtures, which its authors typed deeper than
-  anything reads them: route tables whose bodies only go to `json_encode()` are
+- **Shallower** is the depth pass's cut: the written type with `mixed` below the levels the code
+  uses, keys, scalars and objects as written. The 23 are tq-cli's test fixtures, which its authors
+  typed deeper than anything reads them: route tables whose bodies only go to `json_encode()` are
   `map<string, (int, mixed)>`, recorded calls whose headers no test reads hold `mixed` there. Core,
-  typed by hand, has none. The depth pass changed 17 of its types and brought 16 back to what was
+  typed by hand, has none. **Wider**, a value the codemod missed, fails the measurement. The depth pass changed 17 of its types and brought 16 back to what was
   written, each a `map<string, mixed>` spelled out before. The 17th is a configuration subtree,
   now `map<string, map<string, mixed>>` where `map<string, mixed>` was written.
 - **Nothing else is wider than written.** Before the depth pass, the version that spelled types

@@ -276,10 +276,13 @@ files behave identically (680 tests that observe line numbers are not run — se
   PhpStorm's diagnostics and VS Code, CI formats; the order in its §11. The repositories stay private until Tequila runs on Phaenon
   in production (T1).
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
-  (codemods: arrays → list/map where provable, string functions → methods).
-- Composer plugin (D13: builds every installed package with a `phaenon.json` on install, `phn`
-  pinned and shipped as a Composer package per platform), GitHub Action, Docker base image update
-  in `operations-container-images`.
+  (codemods: arrays → list/map where provable; *"string functions → methods" superseded by D20:
+  no method syntax on values that are not objects, `pipes` instead*).
+- Composer plugin (D13: builds every installed package with a `phaenon.json` on install; *"`phn`
+  pinned and shipped as a Composer package per platform" superseded by T2: one package with
+  checksum-pinned release binaries*); *"GitHub Action" and "Docker base image update in
+  `operations-container-images`" superseded by T10: CI formats plus Tequila's reusable
+  workflows, and no base-image change*.
 - Target: `php-service-template` ships `.phn` by default.
 
 ### M7 — Tequila on Phaenon
