@@ -1060,6 +1060,34 @@ finding refused each. A finding no declaration takes gives a rewritten file its 
 file the round did not rewrite, where only a return can reach, such a finding blames the round's
 returns.
 
+**How deep.** The rounds spell what the values are, all the way down: a JSON document a tq-cli
+command hands to a private helper came out nine levels deep, where its author wrote
+`map<string, mixed>`. Authors type what the code uses, so a last pass cuts each type to the
+levels the code uses. A use reaches a level by an index, a loop or a destructuring, or by a typed
+parameter, return or property the value is handed to: a path passed to a `list<string> $path`
+parameter keeps its `list<string>`. At the cut an array keeps its kind, its keys and what it holds
+besides arrays (`int`, `\SplFileInfo`: a word each), and holds `mixed` where it held arrays. A
+level of arrays beside other things, or of two kinds of array, is `mixed` whole. What the
+declaration holds keeps its kind when it is one kind of array: rows nobody reads into are
+`list<map<string, mixed>>`, not `list<mixed>`, as authors write them. Deep data is not a fault: a
+configuration tree read through an accessor stays `map<string, mixed>` however deep it is, and
+needs no class. Where the code indexes such a tree, its type keeps the levels the indexes reach.
+
+The uses are the checker's, so nothing is guessed. Each declaration's shallower spellings are
+tried, the shallowest first, and the first that adds no finding to the files its type reaches is
+kept. One check tries several declarations whose types reach no file in common. A spelling the
+code's own uses refused is not tried again. One refused by a finding that names another
+declaration (`argument 1 ($routes) of …::paidOrgInShape()`) is tried again once that one is cut.
+A file's declarations are tried from its end, since a method is usually written below its
+callers.
+
+A depth cap was measured first and set aside. At four levels it changed 11 types and left them
+deeper than written. At two it left core's over-precise types, which are two levels deep
+(`map<string, string|true|map<string, string>>` for claims typed `map<string, mixed>`), and gave
+tq-cli 101 findings where its code reads three levels deep. The tools that write types from code
+do the same: Rector types a parameter read as `$data['key']` `array<string, mixed>`, and
+TypeScript's infer-from-usage fix types only what is accessed.
+
 **Cost.** A round changes few files, and what a file's check finds depends only on its source and
 the declarations it reads, of which the codemod types none another file sees but a final method's
 return. So the first check checks every file given; a later one checks only the files the round
@@ -1068,7 +1096,9 @@ keeps the reading of its last check. A round that keeps everything it wrote is t
 reading. The checks share their parsed trees, as `phn lsp`'s programs do. On tq-cli (859 files) a
 run is 36 checks, the first whole and most of the rest of a few files, about 2,000 files checked
 in all: eight seconds, five plain `phn check`s' worth, of which narrowing takes ten checks and two
-seconds. Checking the whole project every round took a hundred.
+seconds. Checking the whole project every round took a hundred. The depth pass adds 29 checks and
+three seconds for tq-cli's 83 types two or more levels deep, and 13 checks and under a second for
+core's 19.
 
 **Switched on** by `phn migrate --list-types`.
 
@@ -1087,16 +1117,22 @@ docblocks, and with them the compiled lines.
 
 | Tree | Stripped | As written | Narrower | Wider | Other | Not recovered | `phn check`, baseline → codemod | PHPStan max, baseline → codemod |
 |---|---|---|---|---|---|---|---|---|
-| core | 289 | 244 (84%) | 45 (15%) | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
-| tq-cli | 807 | 722 (89%) | 85 (10%) | 0 | 0 | 0 | 2076 → 0 | 1396 → 0 |
+| core | 289 | 260 (89%) | 29 (10%) | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
+| tq-cli | 807 | 734 (90%) | 50 (6%) | 23 (2%) | 0 | 0 | 2076 → 0 | 1396 → 0 |
 
 - **No finding is added**, by `phn check` or by PHPStan, in either tree, and none is left: the
   codemod's types remove every finding the stripping caused.
-- **Narrower** is a type the author wrote wider than the values are: 114 of the 130 say `mixed`
-  where the values are known, as `map<string, mixed>` for a document the codemod spells out.
-  Eleven are nested deeper than four levels, the deepest any author wrote: a JSON body or a
-  scripted API's routes passed to a test helper.
-- **Nothing is wider than written.** The previous version wrote 76 types wider than the authors:
+- **Narrower** is a type the author wrote wider than the values are, mostly one level of a
+  document whose values are all scalars: `map<string, string>` where `map<string, mixed>` was
+  written.
+- **Wider than written** are 23 of tq-cli's test fixtures, which its authors typed deeper than
+  anything reads them: route tables whose bodies only go to `json_encode()` are
+  `map<string, (int, mixed)>`, recorded calls whose headers no test reads hold `mixed` there. Core,
+  typed by hand, has none. The depth pass changed 17 of its types and brought 16 back to what was
+  written, each a `map<string, mixed>` spelled out before. The 17th is a configuration subtree,
+  now `map<string, map<string, mixed>>` where `map<string, mixed>` was written.
+- **Nothing else is wider than written.** Before the depth pass, the version that spelled types
+  whole wrote none wider than the authors, and the one before it 76:
   46 typed before what their values come from was (now narrowed), 12 a
   self-reading declaration's own `mixed` (now the self round's), 14 an element type's lists and
   maps spelled as one `array<mixed>`, one each a pair read as a list, `$object::class` as a
@@ -1105,7 +1141,8 @@ docblocks, and with them the compiled lines.
 - The first version recovered 62% and 67% as written. Closing its gaps took 67% and 71%. The
   rounds that wait for precise types, the self rounds, the receivers, pipes and class-strings, and
   checking every file, took 79% and 82%, with nothing left unrecovered. Narrowing, the self round
-  for a declaration's own `mixed` and the spellings took 84% and 89%, with nothing wider.
+  for a declaration's own `mixed` and the spellings took 84% and 89%, with nothing wider. The depth
+  pass took 89% and 90%.
 - A measurement is only fair with the vendor code loadable: a library class the checker cannot
   load hides every override's parent.
 
@@ -1437,3 +1474,4 @@ Reviewed 2026-11-03.
 | T11 | **For an 8.5 target a pipe that PHP evaluates as the call it makes is written as that call**, a run of them as nested calls; any other pipe stays one, its partial applications arrow functions called at once (`php-versions.md` §5.3) | a pipeline the codemod wrote compiles back to the code it was written from; the arrow functions, the closures with an inline `@var` a `list` parameter needed and the closure each of them created at every call are gone from the 8.5 output |
 | T12 | A method stage's receiver may be a property its class declares without hooks, when the inner calls do not assign it (§8.1); the 8.5 lowering keeps such a stage a pipe stage | `… \|> $this->output->writeln(...)` ends most of tq-cli's pipelines (92 of the 239 chains the order rule refused); that a method the inner calls run reassigns the property is the codemod's assumption, not the compiler's |
 | T13 | A stage takes the piped value only into its first parameter or into the data parameter of PHP's functions that take it last (§8.1) | a pipeline follows the data: `count($xs) \|> sprintf('%d items', ?)` and `actual \|> … \|> self::assertSame(expected, ?)` read worse than the calls |
+| T14 | **A `list-types` type is spelled only as deep as the code uses it**, the checker deciding what a use needs, with no depth cap and no class suggested (§8.2) | authors type what the code uses: on core, typed by hand, it brings 16 types back as written and none wider; a cap at two leaves its over-precise two-level types and gives tq-cli 101 findings; deep data such as a configuration tree needs neither a class nor a deep type |
