@@ -1023,9 +1023,9 @@ its values may come from a declaration a later round types: with `inPlace()`'s `
 `rewriteFlow(…, array_slice($path, …))` gets `list<string>`, where in the same round it would have
 got `list<mixed>`. Up to ten rounds and a self round make a pass, and up to three passes run.
 
-**The check.** After each round, every file given is checked, not only those it rewrote: a final
-method's return reaches the files that call it. Types may narrow, which is the point, so the
-check compares findings only, by code and line. A new finding is blamed on a declaration the
+**The check.** After each round, the files it may have changed are checked, not only those it
+rewrote: a final method's return reaches the files that call it (see Cost). Types may narrow,
+which is the point, so the check compares findings only, by code and line. A new finding is blamed on a declaration the
 round typed:
 - when it falls on the declaration's line, on a line its values come from (a write, a return, an
   argument), or on a line that reads it (a property's fetch, a call of the method; for a
@@ -1036,6 +1036,15 @@ The next round leaves the blamed declarations out and keeps the others; the note
 finding refused each. A finding no declaration takes gives a rewritten file its arrays back. In a
 file the round did not rewrite, where only a return can reach, such a finding blames the round's
 returns.
+
+**Cost.** A round changes few files, and what a file's check finds depends only on its source and
+the declarations it reads, of which the codemod types none another file sees but a final method's
+return. So the first check checks every file given; a later one checks only the files the round
+rewrote and the files that call, by name, a method whose return it typed, and every other file
+keeps the reading of its last check. A round that keeps everything it wrote is the next round's
+reading. The checks share their parsed trees, as `phn lsp`'s programs do. On tq-cli (859 files) a
+run is 26 checks, the first whole and most of the rest of a few files: six seconds, three plain
+`phn check`s' worth. Checking the whole project every round took a hundred.
 
 **Switched on** by `phn migrate --list-types`.
 
