@@ -1106,6 +1106,28 @@ the class, and any other receiver may be anything. That fallback is the lenient 
 | A finding sits at the member's name | PHPStan reports the line where the declaration starts, which is the attribute's line when there is one. The editor wants the name |
 | A use inside a closure in a constant expression counts | PHPStan counts method calls only inside methods. Counting the use is the lenient side, and is right |
 
+**Narrowing the exemption.** Any attribute but PHP's own is a broad sign. An attribute that nothing
+reflects on, such as an IDE's `#[Immutable]` or a documentation marker, hides a dead property just
+the same. A project that wants the stricter check names, in `phaenon.json`, the attributes that do
+mark reflected properties:
+
+```json
+{"roots": {"src": ".src"}, "unused": {"reflectedAttributes": ["Doctrine\\ORM\\Mapping\\MappingAttribute"]}}
+```
+
+- **Matching.** An attribute exempts a property when its class is a listed class, or extends or
+  implements one. One interface that a framework's mapping attributes share covers the whole
+  family. An attribute class the program cannot load still matches a listed name exactly, but not
+  through an ancestor.
+- **Without the key**, any attribute but PHP's own exempts a property, as above: a project that
+  adopts Phaenon gets no findings its frameworks already answer for. **An empty list** lets no
+  attribute exempt a property, which is what PHPStan does without framework extensions.
+- **Scope.** The list concerns properties only. Methods and constants are checked whatever
+  attributes they carry.
+- **Who reads it.** `phn check`, `phn build`, `phn watch` and `phn lsp` read it, as they read the
+  roots: the server at its start. An installed package's own `phaenon.json` applies to that
+  package's build.
+
 **Done in slice 6 (2026-11-05).** Built as described (`internal/checker/unused.go`), with these
 results:
 - It surfaced a false `P2108`, which is fixed: a trait calling a private method of the class that
@@ -1123,6 +1145,9 @@ results:
     paths the tree's PHPStan analyses.
   - With the exemption, `phn check`'s output is byte for byte what it was before.
   - Core's check still takes about a second, using 3% more memory.
+- `unused.reflectedAttributes` narrows the exemption as described above. The goldens cover the
+  missing key (`unused-attributes.phn`), the empty list (`unused-attributes-strict.phn`) and a
+  list that names an interface (`unused-attributes-listed.phn`). No dogfood tree sets it.
 
 ## 10. The target: `php-service-template` on `.phn`
 
