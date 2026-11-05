@@ -5,6 +5,7 @@ Status: **reviewed 2026-10-30**; §9 holds the decisions, the body is the design
 the method-call syntax (§3.1) are gone from the language. The types, literals, tuples, interop,
 migration and shapes (§2, §4–§6) stand; lists and maps are transformed with PHP's functions and
 chained with pipes and partial application (`roadmap.md` D20, `php-versions.md` §5.4).
+**Amended 2026-11-05** (§7): `array<V>`, a bare `array`, shapes and the docblock vocabulary.
 Nothing is implemented yet beyond what M3 already has (the keywords `list` and `map` in type
 positions, their erasure to `array`, the lattice's array types).
 
@@ -15,8 +16,8 @@ every PHP type checker spends half its vocabulary (`list<T>`, `array<K, V>`, `no
 shapes) telling the two apart in docblocks. Phaenon makes the distinction the type system's:
 `list<T>` is an ordered sequence, `map<K, V>` a dictionary, and both **are PHP arrays at
 runtime** — nothing is boxed, copy-on-write value semantics and every `array_*` function stay
-exactly as they are. `array` remains as the *legacy type*, the honest spelling for "a PHP array I
-know nothing more about", the way `mixed` is for values. On top sit a stdlib with a predictable
+exactly as they are. `array<mixed>` is the honest spelling for "a PHP array I know nothing more
+about", the way `mixed` is for values; a bare `array` names no element type at all. On top sit a stdlib with a predictable
 argument order (`\Phaenon\Seq`, `\Phaenon\Map`) and method-call syntax on collection values
 that compiles to it, so `$users->filter(fn (User $u) => $u->active)` reads like a language with
 collections and runs like PHP.
@@ -53,7 +54,8 @@ collections and runs like PHP.
 |---|---|---|---|
 | `list<T>` | keys `0 .. n-1` in order, values `T` (PHPStan's `list<T>`) | `array` | `list<T>` |
 | `map<K, V>` | keys `K ⊆ int\|string`, values `V`, any order | `array` | `array<K, V>` |
-| `array` | the legacy type: `map<int\|string, mixed>` — PHP's `array` as the checker knows it | `array` | `array` |
+| `array<V>` | a PHP array of `V`, list or keyed: the type `map<int\|string, V>`, spelled for "the keys do not matter" | `array` | `array<V>` |
+| `array` | no element type written: in an override, the type of the method it overrides; elsewhere in a `.phn` declaration, `P2516`. A PHP API typed `array` gives `array<mixed>` | `array` | none |
 | `non-empty-list<T>` / `non-empty-map<K, V>` | refinements the checker *infers* (`count($xs) > 0`, a literal, `$xs[] = …`) and reads from docblocks; written natively as `list<T>` / `map<K, V>` | `array` | `non-empty-list<T>` / `non-empty-array<K, V>` |
 | `array{a: int, b?: string}` (shape) | read from docblocks in `.php` and `.phn` alike, as today; **not native syntax** in M4 (§6) | `array` | the shape |
 | `iterable<K, V>` | `map<K, V>\|Traversable<K, V>` (M3) | `iterable` | `iterable<K, V>` |
@@ -75,13 +77,24 @@ Decisions proposed with the table:
   through which a covariant key could be abused, so `map<'a'|'b', Admin> <: map<string, User>`
   is sound. This answers generics.md §3.3's open question (PHPStan agrees in practice: it treats
   array key and value types covariantly).
-- **`array` is allowed in declarations**, and it means what it says. "`mixed` must be written,
-  never inferred silently" (language-overview.md §3) applies: a parameter with no type at all is
-  `P2516`, which M4 turns from a warning into an **error** in Phaenon files (checker.md §9 said
-  M4 decides); a parameter written `array` is deliberate and fine, like one written `mixed`.
-  Passing an `array` where a `list<T>` or `map<string, V>` is expected is an error, as PHPStan
-  reports it at level 7+; narrowing is `is_list()`-style guards, a shape docblock, or `as`
-  (`$config as map<string, mixed>`, a runtime check through `\Phaenon\Type`).
+- **A bare `array` in a declaration names no element type** (2026-11-05; the first form of this
+  rule called it deliberate and fine).
+  - In an override it takes the docblock type of the method it overrides, as PHPStan reads it.
+  - Anywhere else in a `.phn` file it is `P2516`, the error for a parameter with no type at all:
+    "`mixed` must be written, never inferred silently" (language-overview.md §3), and
+    `array<mixed>` is the explicit "any array". A bare `iterable`, and an `array` inside another
+    type (`list<array>`), are the same.
+  - Why the change: the emitter writes no docblock for a bare `array`, so PHPStan at level max
+    reported `missingType.iterableValue` on the output of a source `phn check` had passed. The
+    emitted PHP must pass level max.
+  - Passing an `array<mixed>` where a `list<T>` or `map<string, V>` is expected is an error, as
+    PHPStan reports it at level 7+. Narrowing is `is_list()`-style guards, a shape docblock, or
+    `as` (`$config as map<string, mixed>`, a runtime check through `\Phaenon\Type`).
+- **`array<V>` is the spelling of "an array of `V`, list or keyed"** (2026-11-05). It is the type
+  `map<int|string, V>`, which includes every list since `list<T> <: map<int, T>`; but `map` reads
+  as a dictionary, and the point of this spelling is that the keys do not matter. It is PHPStan's
+  own one-argument form, so the docblock is the same text. It takes one argument: with a key type,
+  it is a `map<K, V>`.
 
 ### 2.1 Literals
 
@@ -243,17 +256,31 @@ call, and PHP code reads the output as the static call.
   (`array_map` preserving lists, `explode` returning a non-empty list, …).
 - **`array_*` functions stay callable** from `.phn`; nothing is removed. The stdlib exists for
   the argument order and the method form, not to forbid anything.
-- **Docblocks in `.phn`:** a `@var map<string, int>` written in Phaenon source reaches PHPStan
-  in the output. M4 decides: the emitter **translates** Phaenon vocabulary in user docblocks
-  (`map<K, V>` → `array<K, V>`, `class<T>` → `class-string<T>`), so a docblock is never wrong for
-  PHPStan. (Open item since M3.)
+- **Docblocks in `.phn` speak Phaenon** (decided 2026-11-05; M4 named the translation and did not
+  build it). A docblock is where shapes live (§6), so it must hold every Phaenon type. The emitter
+  rewrites Phaenon vocabulary in user docblocks into PHPStan's, in place:
+  - `map<K, V>` → `array<K, V>`, `non-empty-map` → `non-empty-array`;
+  - `class<T>` → `class-string<T>`;
+  - a tuple `(A, B)` → `array{A, B}`;
+  - `Closure(A): R` → `\Closure(A): R`, which PHPStan would otherwise resolve in the file's
+    namespace.
+
+  The docblock parser reads tuples. Before, `phn check` passed `@param array{by: map<string,
+  int>} $x`, and PHPStan on the output reported `App\map` as an unknown class; a tuple did not
+  parse, and its tag was dropped with a warning.
 
 ## 5. Migration
 
 `phn migrate` already lifts `@param list<T>` / `array<K, V>` / `T[]` into `list` / `map`
 (generics.md §11.1). M4 adds nothing to the lift; it decides what the lift leaves behind:
 
-- A bare `array` with no docblock stays `array` (legacy) and is not a finding.
+- `V[]`, `array<V>`, `array<array-key, V>` and `array<int|string, V>` become `array<V>`; an
+  `array<K, V>` with any other key becomes `map<K, V>`; `array-key` elsewhere is written
+  `int|string` (2026-11-05: `array-key` used to keep its tag, with the note "no Phaenon
+  spelling").
+- A bare `array` with no docblock type becomes `array<mixed>`, unless the declaration overrides one
+  whose type it inherits (2026-11-05). The opt-in codemods narrow first what they can prove
+  (tooling.md §8.2).
 - Shapes stay in docblocks (§6).
 - The `array_*` → `Seq::`/`Map::` codemod is M6's `phn migrate` v1 ("where provable"), not
   M4.
@@ -265,14 +292,21 @@ at level 8 — the same question as mongodb-odm (vault `open-items`) will come u
 
 ## 6. Shapes
 
-Tequila writes 35 shapes in `core`, 27 in mongodb-odm — configuration arrays, `[$a, $b]` pairs,
-data provider rows. Proposal for M4: **shapes stay docblock vocabulary**, read in `.phn` as in
-`.php`, and are not given native syntax yet. Reasons: a shape is usually a class that has not
-been written (checker.md §10, *shapes vs classes*); native syntax would be the single largest
-grammar addition of M4 for the smallest number of sites; and a shape cannot be tested at runtime
-without the runtime descriptors. The one shape idiom worth a type is the pair, and it has one:
-the tuple `(K, V)` of §2.4, a positional shape with its own spelling. Named shapes are revisited
-with the `core` numbers after the migration.
+**Decided 2026-11-05: shapes stay docblock vocabulary, with no native syntax.** A shape documents
+the keys of an ad-hoc array: the configuration tree a bundle receives, a decoded payload, a data
+provider's rows. A structure with fixed keys that deserves a type of its own is a class. The ease
+of PHP's arrays, where a shape is a comment rather than a declaration, is a feature worth keeping.
+So `@param array{name: string, age?: int} $row` stays the way to write one, read in `.phn` as in
+`.php`.
+
+- **Numbers.** After the migrations, the declarations of core, tq-cli and mongodb-odm carry 180
+  named shapes in docblocks (81, 85 and 14), the largest kind of docblock type left in the
+  dogfood. Before them, the M4 draft counted 35 in core and 27 in mongodb-odm.
+- **The pair is the exception**, and it has a type: the tuple `(A, B)` of §2.4.
+- **What follows:** the docblock is first-class. Phaenon types inside a shape are translated for
+  PHPStan (§4), and `@phpstan-type` names a shape used in several places.
+- **Still true from the M4 draft:** native syntax would be the largest grammar addition for the
+  fewest sites, and a shape cannot be checked at runtime without runtime type descriptors.
 
 ## 7. Decisions (reviewed 2026-10-30)
 
@@ -288,6 +322,10 @@ with the `core` numbers after the migration.
 | Generated code | imports and short names (`Seq::map`), roadmap D11 | reads as PHP a person wrote |
 | Wrapper objects (`make()` over ext-ds, Symfony-String-like objects) | not adopted; method syntax on the native types gives the chain, a lazy pipeline object can come later as a library | `Ds\*` has reference semantics and is a PECL dependency; wrapping at every boundary would copy O(n) per call, invisibly |
 | Editor support | the PhpStorm plugin must complete and resolve the methods on `list`, `map`, `string` and `bytes` receivers in the same milestone | a method syntax nobody's editor knows is not shipped |
+| `array<V>` (2026-11-05) | the native spelling of "an array of `V`, list or keyed", the type `map<int\|string, V>` | `map` reads as a dictionary; PHPStan's own one-argument form keeps the docblock the same text (§2) |
+| A bare `array` (2026-11-05) | names no element type: an override inherits its parent's, anywhere else in `.phn` it is `P2516`. Supersedes "deliberate and fine" | the output failed PHPStan max on sources `phn check` passed (§2) |
+| Shapes (2026-11-05) | docblock vocabulary, no native syntax | a fixed-key structure that deserves a type is a class; a shape documents an ad-hoc array (§6) |
+| Phaenon types in `.phn` docblocks (2026-11-05) | translated for PHPStan by the emitter; the docblock parser reads tuples | the docblock is where shapes live (§4) |
 
 ## 8. Checker and emitter work (once reviewed)
 
