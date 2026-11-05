@@ -584,7 +584,8 @@ turned it into a test.
 
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
-  M4 decides whether shapes survive as a language feature.
+  M4 decides whether shapes survive as a language feature. *Decided 2026-11-05 (collections.md
+  §6): they stay docblock vocabulary, with no native syntax.*
 - **Constant evaluation**: `const A = B::C + 1` — the checker evaluates literal arithmetic over
   int/float/string/bool/null and arrays; anything else types as the declared type. Enough for
   enum backing values and most constant tables.
