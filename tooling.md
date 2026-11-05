@@ -949,28 +949,51 @@ four test helpers in tq-cli. The codemod is for code below PHPStan level 6, whic
 cannot stand in for; it is checked by stripping types instead (below).
 
 **Candidates.** A declaration written as a bare `array` (or `?array`), with no docblock type of its
-own (a docblock tag with a type: prose alone does not count), that does not override one: what the
-arrays rule of `collections.md` §5 would otherwise write
-`array<mixed>`. The codemod runs after `pipes` and before that rule. A property that carries an
-attribute other than PHP's own is left out, since a framework may write it through reflection
-(§9.2); so is a promoted property, which the constructor's callers write.
+own (a docblock tag with a type: prose alone does not count): what the arrays rule of
+`collections.md` §5 would otherwise write `array<mixed>`. An override takes its parent's type
+(`collections.md` §2) and keeps it, unless what it returns is of another type that is a subtype of
+the parent's: the narrower return the class's own callers then see. The codemod runs after `pipes`
+and before that rule. A property that carries an attribute other than PHP's own is left out, since
+a framework may write it through reflection (§9.2); so is a promoted property, which the
+constructor's callers write.
 
 **How the type is found.** The checker types the files, and each value the declaration can hold is
 read from what it recorded:
 - *a property* (`$this->p`, or `self::$p` for a static one): its default, every `$this->p = …`,
   every element write, `$this->p[] = …`, `$this->p[$k] = …` and one level deeper
   (`$this->p[$a][] = …`), and what a callee passed it by reference writes back (`sort()`'s
-  `list<V>`; a write-back whose elements are unknown says only whether a list stays one). A
-  compound assignment holds what the expression gives, and `??=` its right side. An
+  `list<V>`). A compound assignment holds what the expression gives, and `??=` its right side. An
   `unset($this->p[…])` makes it a map. Any other use that may write it — an element passed by
-  reference, `foreach (… as &$v)`, a reference, another object's `$o->p` — leaves it alone;
-- *a return*: every `return` of the method;
-- *a parameter*: the argument at every call of the method in the class, its default, and where
-  the method is passed as a callable (`array_map([$this, 'm'], $xs)`, `$this->m(...)`), the type
-  the callable parameter it is passed to expects, or the type of the property it is stored in
-  (`$this->post = $post ?? self::send(...)`). A string that names it where PHP takes a
-  callable's name (a two-item array, `'Class::m'`, `call_user_func()` and its kin), a callable
-  array that names a method by a value, or a dynamic call leaves its parameters alone.
+  reference, `foreach (… as &$v)`, a reference, `$o->p` on an object that may be of the class —
+  leaves it alone; `$o->p` on an object of another class, by its type, is that class's;
+- *a return*: what every `return` of the method gives it — an unnamed `@var` above the `return`
+  types the value — but not the returns of a closure, a class, `spawn` or `concurrently` inside
+  it, which are theirs;
+- *a parameter*: the argument at every call of the method in the class, and its default. A call on
+  `$this`, `self::`, `static::` or the class's name is one, and so is a call on an object whose
+  type is the class or a subclass; a call on an object of another class is that class's, and one
+  whose object's type does not tell (a parent type, a type not known) leaves the parameter alone.
+  A pipe gives its left side (`$x |> $this->m(...)`, `$x |> $this->m(?, 'b')`). Where the method
+  is passed as a callable (`array_map([$this, 'm'], $xs)`, `$this->m(...)`), the parameter
+  receives what the callable parameter it is passed to expects, or what the property it is
+  stored in says (`$this->post = $post ?? self::send(...)`). The arguments of an anonymous
+  class's constructor are the class's own code. A string that names the method where PHP takes a
+  callable's name leaves its parameters alone: the second item of a two-item array whose first
+  may be the class (not `['git', 'status']`), `'Class::m'`, `call_user_func()` and its kin. So do a
+  callable array that names a method by a value, a dynamic call, and a partial application that is
+  not piped.
+
+**Values made of the declaration's own.** A value may be made of the declaration itself: a
+recursion (`$out = [...$out, ...self::leaves($v)]`), a property filtered or spread into itself
+(`$this->p = array_filter($this->p, …)`), a parameter a recursion passes on, as it is or grown
+(`self::depth([...$path, $k], $child)`), what `array_shift($this->p)` writes back (a list when the
+property is one). Read while the declaration is still `array`, such a value is `array<mixed>`, and
+nothing can be written. Once the rounds stop, a **self round** types these declarations as the
+least types their values settle on. Checks run with the declaration's own reads assumed to hold
+nothing: the reads in its values, its writes' targets, the recursive calls, a recursive parameter
+on entry (the checker's `Options.Assume`). Then they run with what the last check found, until the
+values settle, three checks at most. The type is checked as any round's is, and the rounds that
+follow carry it on: `strings()` returning the recursion `leaves()` is typed in the next one.
 
 **How it is written.** The union of the values must be arrays (and `null` for `?array`):
 - **A tuple** `(A, B)` when every value is a positional shape of the same length whose positions
@@ -984,50 +1007,71 @@ read from what it recorded:
 - **Widened to what can be spelled**: a literal to its type (`'a'` to `string`), a refinement
   (`non-empty-string`) to its base type, the arrays of an element type merged into one list, map
   or tuple, a class named as the file's imports and namespace name it, a closure as
-  `Closure(A): R`, a template by its name. An element type of more
-  than three members is written `mixed`: a document's `map<string, mixed>` reads better than
-  every type it holds.
+  `Closure(A): R`, a template by its name. String literals that all spell a class's declared name,
+  as `Foo::class` gives them, are `class<Foo>`, or `class` when they name several; a template's
+  class-string is `class<T>`. An anonymous class is spelled as the class it extends, or the one
+  interface it implements. An element type of more than three members is written `mixed`: a
+  document's `map<string, mixed>` reads better than every type it holds.
 - **Nothing is written** when neither keys nor elements are known (the arrays rule writes
   `array<mixed>`), when only `[]` is ever held, or when a type has no spelling (a callable's
-  signature, an anonymous class).
+  signature, an anonymous class that neither extends a class nor implements one interface).
 
 **Rounds.** A method that returns a property is known once the property is, so the codemod runs
-up to five rounds, each typing what the last one made known.
+in rounds, each typing what the last one made known. A type that says `mixed` somewhere
+(`list<mixed>`, `map<string, array<mixed>>`) waits until no precise type is left to write, since
+its values may come from a declaration a later round types: with `inPlace()`'s `$path` typed,
+`rewriteFlow(…, array_slice($path, …))` gets `list<string>`, where in the same round it would have
+got `list<mixed>`. Up to ten rounds and a self round make a pass, and up to three passes run.
 
-**The check.** As for `pipes` (§8.1), every rewritten file is checked again. Unlike `pipes`, the
-types may change: they narrow, which is the point, so the check compares findings only, by code
-and line. A new finding on a declaration's own line is that declaration's, and the next round
-leaves it out; a finding elsewhere gives the file its arrays back.
+**The check.** After each round, every file given is checked, not only those it rewrote: a final
+method's return reaches the files that call it. Types may narrow, which is the point, so the
+check compares findings only, by code and line. A new finding is blamed on a declaration the
+round typed:
+- when it falls on the declaration's line, on a line its values come from (a write, a return, an
+  argument), or on a line that reads it (a property's fetch, a call of the method; for a
+  parameter, any line of its method);
+- in any file, on a line that calls a method whose return the round typed.
+
+The next round leaves the blamed declarations out and keeps the others; the note says which
+finding refused each. A finding no declaration takes gives a rewritten file its arrays back. In a
+file the round did not rewrite, where only a return can reach, such a finding blames the round's
+returns.
 
 **Switched on** by `phn migrate --list-types`.
 
-**Checked by stripping and recovering.** In scratch copies of core and tq-cli, every candidate
-declaration whose type the authors wrote — `list<…>`, `map<…>`, `array<…>` on a private property,
-a private or final method's return, a private method's parameter — is turned back into a bare
-`array`. The codemod runs, and what it writes is compared with what was written by hand. The
-same copies migrated without it, every stripped declaration then `array<mixed>`, are the
-baseline: the codemod must add no finding to it, of `phn check` or of PHPStan at level max.
+**Checked by stripping and recovering**, as `TestListTypesMeasure` (`cmd/phn`; `PHAENON_LISTTYPES`
+names the trees). In memory, every candidate declaration whose type the authors wrote —
+`list<…>`, `map<…>`, `array<…>` on a private property, a final method's return, a private method's
+parameter — is turned back into a bare `array`. The codemod runs over the whole project, then the
+arrays rule. Each declaration's type is then compared with what was written in the program model,
+so `map<int|string, mixed>` is `array<mixed>`, and an override's bare `array` is the type it takes.
+The same project migrated without the codemod is the baseline: the codemod must add no finding of
+`phn check` to it. A scratch run compiled both trees and held them to PHPStan at level max too,
+comparing findings by the `.phn` line `phn trace` gives: the codemod's types change the compiled
+docblocks, and with them the compiled lines.
 
-**Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`). Stripping and recovering, with
-the gaps of the first version closed (callables passed and stored, static properties, compound,
-nested and by-reference writes, prose docblocks, tuples in element types, closures and templates
-spelled):
+**Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`):
 
-| Tree | Stripped | Written as by hand | Another type | Not recovered | `phn check` errors, baseline → codemod | PHPStan max, baseline → codemod |
-|---|---|---|---|---|---|---|
-| core | 289 | 196 (67%) | 74 (25%) | 19 (6%) | 486 → 71 | 535 → 74 |
-| tq-cli | 807 | 574 (71%) | 172 (21%) | 61 (7%) | 2078 → 229 | 1396 → 238 |
+| Tree | Stripped | As written | Narrower | Wider | Other | Not recovered | `phn check`, baseline → codemod | PHPStan max, baseline → codemod |
+|---|---|---|---|---|---|---|---|---|
+| core | 289 | 230 (79%) | 48 (16%) | 10 (3%) | 1 | 0 | 486 → 5 | 535 → 5 |
+| tq-cli | 807 | 664 (82%) | 76 (9%) | 66 (8%) | 1 | 0 | 2078 → 76 | 1396 → 71 |
 
-- **No finding is added**, by either checker, in either tree.
-- **Another type** is mostly narrower than what was written (`array<string>` as `list<string>`,
-  `map<string, mixed>` as `map<string, map<string, string>>`), or wider where a value comes from
-  a declaration that was stripped too and not recovered (`list<mixed>` for `list<string>`), and
-  where a top-level homogeneous tuple reads as a list.
-- **Not recovered**: overrides (stripped though they are not candidates, 21), keys and elements
-  both unknown (20), a callable whose arguments nothing says (7), a call that leaves the argument
-  out with no default (6).
-- The first version recovered 62% and 67%; a measurement is only fair with the copies' vendor
-  links intact, since a library class the checker cannot load hides every override's parent.
+- **No finding is added** by `phn check`, in either tree, or by PHPStan in core. In tq-cli
+  PHPStan moves one: `lackingKeys()`'s `$required` is typed `list<int|string>`, as its callers pass
+  it, and the key PHPStan flagged as an invalid offset where it is written (`$lacking[$k] = true`,
+  `mixed` before) it flags where it is read, `partnerOf($k)`. `phn check` reports that line in both.
+- **Wider** is the codemod's type where a value is `mixed` to the checker but the author knew more:
+  `array_keys()` of a bare public parameter is `list<int|string>` where the author wrote
+  `list<string>`, and an element built from untyped data is `array<mixed>` where the author wrote
+  `map<string, mixed>`. Both checkers accept every one; the findings left with the codemod's types
+  are those.
+- **Other** is one return each, wider in its keys and narrower in its values.
+- The first version recovered 62% and 67% as written. Closing its gaps took 67% and 71%. The
+  rounds that wait for precise types, the self rounds, the receivers, pipes and class-strings, and
+  checking every file, took 79% and 82%, with nothing left unrecovered.
+- A measurement is only fair with the vendor code loadable: a library class the checker cannot
+  load hides every override's parent.
 
 ## 9. Analysis rules
 

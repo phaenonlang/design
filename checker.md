@@ -119,7 +119,7 @@ environments (then/else). Predicates recognised in M2:
 |---|---|---|
 | `$x instanceof Foo` / `$x instanceof $cls` | `$x & Foo` (or the class-string's class) | `$x \ Foo` |
 | `is_int/is_float/is_string/is_bool/is_array/is_object/is_null/is_iterable/is_callable/is_scalar/is_numeric/is_countable/is_resource($x)` | intersect | subtract |
-| `is_a($x, Foo::class[, true])`, `is_subclass_of` | `$x & Foo` (class-string when 3rd arg) | — |
+| `is_a($x, Foo::class[, true])`, `is_subclass_of` | `$x & Foo`, or `$x & (Foo\|class-string<Foo>)` when `$allow_string` (`is_subclass_of`'s default) | — |
 | `$x === null`, `null === $x`, `$x !== null`, `isset($x)`, `empty($x)` | as expected | |
 | `$x === 'lit'` / `$x === Foo::Bar` / `$x === true` | literal / enum case | subtract literal |
 | `$x`, `!$x` (truthiness) | remove `null`, `false`, `0`, `''`, `'0'`, empty array | keep falsy |
@@ -602,6 +602,10 @@ turned it into a test.
   - *An assertion on a call decides the call's remembered result*: a docblock assertion is not
     certain, so a later `assertFalse()` of a call an earlier `assertTrue()` fixed is not
     impossible, and what follows is reachable.
+  - *`is_subclass_of()` takes a class name unless told not to*
+    (`IsSubclassOfFunctionTypeSpecifyingExtension`): `$allow_string` defaults to true there and
+    to false for `is_a()`, so a string it answers true for is `class-string<Foo>`. Read as
+    `is_a()`, the string narrowed to `never`, and an array keyed by it held nothing.
 
 ## 10. Open questions
 
