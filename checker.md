@@ -579,6 +579,29 @@ turned it into a test.
   a static variable no native type, so the `@var` tag is its declaration, in line with the rule
   that declarations carry types (`P2516`). The findings an undeclared static variable then gets
   where it is used say that its declaration is missing, which is true; PHPStan's are the same.
+- **What PHPStan infers and core relied on** (2026-11-05, core's last eleven findings). Each is
+  PHPStan's reading, taken from its source, because the code it accepts must check here too:
+  - *A successful `preg_match()` narrows its subject* to a `non-empty-string` when the constant
+    pattern's every match consumes a character (`RegexGroupParser`). The pattern is read for its
+    least match length; a conditional, recursion, free spacing or `\K` narrows nothing.
+  - *A method on a union receiver is one merged method* (`UnionTypeMethodReflection`): each
+    parameter takes the union of the members' types, the result the union of their results, when
+    the members' methods line up. Otherwise each member is checked.
+  - *A benevolent result* (PHPStan's function map, `__benevolent<…>`: phpredis, DOM's factories,
+    `Closure::bind()`) takes a method call on its object members. Only directly: kept in a
+    variable, it is an ordinary union, which is stricter.
+  - *`Closure::call($o)` binds `$this`* to `$o` and its class's scope (`enterClosureCall`).
+  - *A nested call infers its own templates*: contextual typing of its result leaves out an
+    expected type that mentions a template the enclosing call is still inferring, so a
+    constructor's template kept on a property resolves in `$m->a($m->b($x))` as in `$m->b($x)`.
+  - *A constant wildcard matches as a glob*: `Foo::*_SUFFIX` and `Foo::*PART*` as well as
+    `Foo::PREFIX_*`.
+  - *A catch starts from where the try body can first throw*: after the leading statements that
+    throw nothing, with the variables the first throwing statement binds by reference before it
+    calls anything.
+  - *An assertion on a call decides the call's remembered result*: a docblock assertion is not
+    certain, so a later `assertFalse()` of a call an earlier `assertTrue()` fixed is not
+    impossible, and what follows is reachable.
 
 ## 10. Open questions
 
