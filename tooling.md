@@ -953,6 +953,110 @@ parity test allow-lists each today:
 | Unused private members | `method.unused`, `property.unused`, `classConstant.unused` | In M6 if cheap (a scan per class), otherwise later |
 | Purity and unused results | `*.resultUnused`, `void.pure`, `@phpstan-pure` | Later: it needs a purity model, which the vault's "method-call path across impure calls" item needs as well |
 
+### 9.1 Throw analysis (slice 6)
+
+**What it reports:**
+
+| Code | Severity | Finding | PHPStan |
+|---|---|---|---|
+| `P2403` | warning | A catch that no throw point of its `try` block reaches: "X is never thrown in the try block". The code already reports a catch an earlier one makes dead | `catch.neverThrown` |
+| `P2404` | warning | A member of a `throws` clause (or `@throws` tag) that the body never throws | `throws.unusedType` |
+| `P2405` | error | `@throws void` on a body that throws | `throws.void` |
+
+The first two are warnings: dead code and a declaration wider than its body hide nothing. The
+third is an error, because a declaration that something cannot throw is false.
+
+**Throw points.** The analysis is PHPStan 2.2's, read from its source, so that the parity test can
+hold the checker to "never more lenient". Each place that may throw is a throw point. It is
+*explicit* when its exceptions are known, and *implicit* when it may throw any `Throwable`:
+- **`throw $e`** is explicit, with `$e`'s type.
+- **A call** has the exceptions its callee declares. This covers a function, a method, a static
+  call, `new`, a pipe stage and `__invoke`. The declaration is:
+  - the `throws` clause;
+  - else the `@throws` tags;
+  - else, for a method, the overridden method's declaration (docblock inheritance, as PHPStan does).
+
+  `@throws void` declares nothing thrown. A callee that declares nothing makes the call implicit,
+  with two exceptions, which PHPStan counts as not throwing:
+  - a call to a native function without arguments that has no required parameter (`time()`);
+  - inside `throw`, the call or `new` that makes the thrown object (`throw new NotFound($id)`,
+    `throw $this->error()`).
+
+  A `new` of a class without a constructor throws nothing.
+- **Implicit** also:
+  - a property a subclass could hook (not private, not final, in a non-final class), a hooked
+    property, and a property named by an expression;
+  - `foreach` over an object;
+  - `ArrayAccess` offsets, and the string conversion of an object;
+  - `include`, `require`, `eval`, `yield` and `yield from`;
+  - a call of a callable whose declaration is unknown.
+- **Explicit, from the language:**
+  - `/` or `%` with a divisor that may be zero: `DivisionByZeroError`;
+  - a `match` without `default` that is not exhaustive: `UnhandledMatchError`;
+  - `as`: `TypeError` (`as?` throws nothing);
+  - `concurrently`: implicit, since it rethrows the first failure of its tasks.
+
+Why implicit throw points: PHP has no checked exceptions, so a function that declares nothing may
+throw anything. Reading it as "throws nothing" would call nearly every catch dead. Read as
+"throws anything", every finding is certain.
+
+**Dead catch.** Each catch, in order, is matched against the throw points the earlier catches left.
+- A catch type is dead when it overlaps none of them, and a catch of `Throwable` only when the
+  `try` block has no throw point at all.
+- Two classes overlap when one extends the other. An interface overlaps every interface, and every
+  class that is not final, since a subclass may implement it.
+- A catch that matches subtracts what it catches from the throw points.
+
+**Unused `throws` member.** A member that overlaps no throw point leaving the body. With an
+implicit one, every member stays.
+- It is reported on functions, and on methods nobody can override: private or final ones, and
+  those of a final class. An overridable method keeps such a member, because its clause is the
+  contract its overrides are held to. That is PHPStan's default
+  (`checkTooWideThrowTypesInProtectedAndPublicMethods: false`).
+- Only members the declaration itself writes count, not inherited ones.
+- It is reported at the declaration's name, where PHPStan reports it, and names the member.
+
+**`@throws void`.** It is held to the explicit throw points: a call to a function that declares
+nothing does not break it.
+
+**Deliberately not done:**
+
+| What | Why |
+|---|---|
+| Checked exceptions: a caller held to catch or declare (`missingType.checkedException`) | D18: `throws` is documentation, not Java's checked exceptions (`functions.md` §4.1); PHPStan has it off by default |
+| Covariance of an override's `throws` (`throws.notCovariant`) | Off by default in PHPStan; it would hold PHP code to a contract it never stated |
+| PHPStan's knowledge of native functions: phpstorm-stubs' `@throws`, and 20 throw-type extensions (`json_decode` with `JSON_THROW_ON_ERROR`, the `DateTime` and `Reflection*` constructors, `intdiv`, …) | Phaenon's php-src stubs have no `@throws`, so those calls are implicit: more lenient, never stricter. The overlay takes PHPStan's own stub facts where they matter, starting with `Throwable`'s getters, which throw nothing |
+| A statement's own `/** @throws X */`, property hooks' `@throws` | PHPStan reads both; both are rare, and leaving them implicit is lenient |
+| Inferring a body's exceptions for its callers | PHPStan does not either. The declaration is the contract, so a change to a body does not change its callers' findings |
+
+**Done in slice 6 (2026-11-05).** Built as described (`internal/checker/throws.go`), with these
+settlements:
+- `P2405` is reported at the throw point, where PHPStan reports `throws.void`, not at the
+  declaration.
+- A call to a callee that takes a callable is implicit. PHPStan adds the throw points of the
+  callable a function calls at once; the checker does not follow callables, and an implicit point
+  is the lenient side of that.
+- A property the checker cannot find is implicit, since `__get` or `__set` serves it. PHPStan has no
+  point there.
+- The overlay's `exceptions.php` gives `Throwable`'s getters `@throws void`, as PHPStan's
+  `Exception.stub` does.
+- `catch.neverThrown` and `throws.unusedType` left the parity test's allow-list. On the goldens
+  (`throw-analysis.phn`, `throws-flow.phn`), PHPStan 2.2.5 flags no line the checker does not.
+- The five dogfood trees have 669 catches and 96 `throws` clauses. They pass PHPStan at level max,
+  and the analysis reports nothing on them either: `phn check`'s output is byte for byte what it
+  was before. Core's check still takes about a second.
+
+### 9.2 Unused private members
+
+To be measured before it is designed in detail. PHPStan reports a private method nobody calls
+(`method.unused`), a private property nobody reads or writes (`property.unused`,
+`property.onlyWritten`), and a private constant nobody reads (`classConstant.unused`). The checker
+resolves every member access while it types the class, so a use costs a mark. What decides the
+cost are the uses without a member access: callable arrays `[$this, 'name']`, names held in strings,
+and the members a framework reaches through reflection. Tequila's object-mapper writes private
+properties that way. The rule ships if the five dogfood trees, which pass PHPStan at level max,
+come out without false findings.
+
 ## 10. The target: `php-service-template` on `.phn`
 
 **What changes in the template:**
