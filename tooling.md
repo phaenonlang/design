@@ -950,7 +950,7 @@ parity test allow-lists each today:
 | Group | PHPStan identifiers | Proposal |
 |---|---|---|
 | Throw analysis | `catch.neverThrown`, `throws.unusedType`, checking `@throws` | **In M6.** `throws` is Phaenon syntax (D18), and the editor will show its findings |
-| Unused private members | `method.unused`, `property.unused`, `classConstant.unused` | In M6 if cheap (a scan per class), otherwise later |
+| Unused private members | `method.unused`, `property.unused`, `property.onlyWritten`, `classConstant.unused` | **In M6** (§9.2): it cost one record per member access |
 | Purity and unused results | `*.resultUnused`, `void.pure`, `@phpstan-pure` | Later: it needs a purity model, which the vault's "method-call path across impure calls" item needs as well |
 
 ### 9.1 Throw analysis (slice 6)
@@ -1046,16 +1046,83 @@ settlements:
   and the analysis reports nothing on them either: `phn check`'s output is byte for byte what it
   was before. Core's check still takes about a second.
 
-### 9.2 Unused private members
+### 9.2 Unused private members (slice 6)
 
-To be measured before it is designed in detail. PHPStan reports a private method nobody calls
-(`method.unused`), a private property nobody reads or writes (`property.unused`,
-`property.onlyWritten`), and a private constant nobody reads (`classConstant.unused`). The checker
-resolves every member access while it types the class, so a use costs a mark. What decides the
-cost are the uses without a member access: callable arrays `[$this, 'name']`, names held in strings,
-and the members a framework reaches through reflection. Tequila's object-mapper writes private
-properties that way. The rule ships if the five dogfood trees, which pass PHPStan at level max,
-come out without false findings.
+**What it reports:**
+
+| Code | Severity | Finding | PHPStan |
+|---|---|---|---|
+| `P2406` | warning | A private method, property or constant that nothing in its class uses | `method.unused`, `property.unused`, `classConstant.unused` |
+| `P2407` | warning | A private property that is written but never read | `property.onlyWritten`, `property.neverRead` |
+| `P2408` | warning | A private property that is read but never written | `property.onlyRead`, `property.neverWritten` |
+
+All three are warnings: dead code hides nothing. PHPStan's `checkUninitializedProperties` is off by
+default, so `P2408` stands even when the property is declared without a default.
+
+**What counts as a use.** The rules are PHPStan 2.2's, read from its source (`UnusedPrivate*Rule`
+and `ClassStatementsGatherer`), so the parity test can hold the checker to them:
+- Only uses inside the class body count, the traits it uses included. A nested anonymous class has
+  its own body.
+- An access counts when its receiver may be an instance of the class. That covers `$this`, `self`,
+  `static`, a variable of the class or a subclass, `mixed`, `object`, a parent class, and an
+  interface the class does not implement unless the class is final. A call on an unrelated class
+  that happens to have the same method name does not count.
+- **Methods.** These count as calls:
+  - `->`, `?->` and `::` calls;
+  - first-class callables;
+  - callable arrays, `[$this, 'name']` and `[self::class, 'name']`.
+
+  A method calling itself does not count. A call whose name is an expression counts for every
+  method it may name: `$this->$name()` keeps them all. The constructor and `__clone` are never
+  reported.
+- **Properties.**
+  - **Pure writes:** `=`, a write through an offset (`$this->items[] = $x`), a `foreach` target,
+    a destructuring, promotion, and a default value.
+  - **Reads and writes:** a compound assignment (`+=`, `??=`), `++` and `--`, and a by-reference
+    argument.
+  - **Reads:** everything else, `isset()` and `unset()` included.
+  - **More reads:**
+    - `get_object_vars($this)` reads every property;
+    - the constructor reading a promoted parameter, `$name`, reads the property.
+  - **Not true reads:**
+    - a property hook's accesses of its own backing value: all of them in a `set` hook, and the
+      reads in a `get` hook;
+    - a promoted property passed on as the same-named argument of `new self(…)`, as a wither
+      does. It is written but never read.
+- **Constants.** A `::` fetch, wherever the class evaluates it: a method, a property default,
+  another constant, an enum case, an attribute. A fetch whose name is an expression (`self::{$n}`)
+  keeps them all.
+
+**How.** While the checker types a class, it records the receiver type of each member access and
+the type of each dynamic name. When the class is checked, a pass over its syntax sorts the accesses
+into calls, reads and writes. Where nothing was recorded, `$this`, `self` and `static` stand for
+the class, and any other receiver may be anything. That fallback is the lenient side.
+
+**Deliberately different from PHPStan:**
+
+| What | Why |
+|---|---|
+| A private property that carries an attribute other than PHP's own (`#[MapToProperty]`, Doctrine's mapping, a serializer's) is not reported | Mapping frameworks read and write such properties through reflection. PHPStan learns that from framework extensions (phpstan-doctrine, the `ReadWritePropertiesExtension` interface), which Phaenon has no counterpart for. PHP's own attributes (`#[\SensitiveParameter]`) do not exempt a property. Methods and constants stay checked |
+| A finding sits at the member's name | PHPStan reports the line where the declaration starts, which is the attribute's line when there is one. The editor wants the name |
+| A use inside a closure in a constant expression counts | PHPStan counts method calls only inside methods. Counting the use is the lenient side, and is right |
+
+**Done in slice 6 (2026-11-05).** Built as described (`internal/checker/unused.go`), with these
+results:
+- It surfaced a false `P2108`, which is fixed: a trait calling a private method of the class that
+  uses it. PHP runs a trait's body in that class's scope, private members included.
+- `method.unused`, `property.unused`, `property.onlyWritten` and `classConstant.unused` left the
+  parity test's allow-list. On the goldens (`unused-private.phn`), PHPStan 2.2.5 flags no line
+  the checker does not, and the checker flags none PHPStan does not. `unused-attributes.phn`
+  allows the property identifiers for the attribute exemption. The eleven findings in older goldens
+  are real, and PHPStan reports those it can judge.
+- **Measured** on the five dogfood trees: about 2,100 private methods, 530 private constants and
+  several thousand private properties. In core, 22,067 member accesses had their receiver type
+  recorded and 295 fell back (1.3%); in tq-cli, 38,717 and 940 (2.4%).
+  - Before the attribute exemption there was one finding: an object-mapper test fixture's
+    promoted property, which only `#[MapToProperty]` reflection reads. That file lies outside the
+    paths the tree's PHPStan analyses.
+  - With the exemption, `phn check`'s output is byte for byte what it was before.
+  - Core's check still takes about a second, using 3% more memory.
 
 ## 10. The target: `php-service-template` on `.phn`
 
