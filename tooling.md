@@ -706,6 +706,11 @@ projects therefore runs several servers:
 - **The client's root is the project's.** `rootUri` names the project's directory, not the workspace
   folder around it.
 
+The PhpStorm plugin now follows the first two rules as well. It started a server at an installed
+package's own `phaenon.json`, and every server took every `.phn`, since PhpStorm offers a file to
+each server whose descriptor supports it. Its descriptor now takes only its own project's files, and
+installed code starts none. PhpStorm's PSI still reads installed code.
+
 **Found on the way: a `rootUri` around the project named no file right.** The server read every
 client path relative to `rootUri`. A client whose root is the workspace around the project, as
 `vscode-languageclient` sends by default, therefore put every path in the wrong directory, and the
