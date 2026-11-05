@@ -949,32 +949,42 @@ four test helpers in tq-cli. The codemod is for code below PHPStan level 6, whic
 cannot stand in for; it is checked by stripping types instead (below).
 
 **Candidates.** A declaration written as a bare `array` (or `?array`), with no docblock type of its
-own, that does not override one: what the arrays rule of `collections.md` §5 would otherwise write
+own (a docblock tag with a type: prose alone does not count), that does not override one: what the
+arrays rule of `collections.md` §5 would otherwise write
 `array<mixed>`. The codemod runs after `pipes` and before that rule. A property that carries an
 attribute other than PHP's own is left out, since a framework may write it through reflection
 (§9.2); so is a promoted property, which the constructor's callers write.
 
 **How the type is found.** The checker types the files, and each value the declaration can hold is
 read from what it recorded:
-- *a property*: its default, every `$this->p = …`, and every element write, `$this->p[] = …` and
-  `$this->p[$k] = …`. An `unset($this->p[…])` makes it a map. Any other use that may write it — a
-  by-reference argument, `foreach (… as &$v)`, a reference, a compound assignment, another
-  object's `$o->p` — leaves it alone;
+- *a property* (`$this->p`, or `self::$p` for a static one): its default, every `$this->p = …`,
+  every element write, `$this->p[] = …`, `$this->p[$k] = …` and one level deeper
+  (`$this->p[$a][] = …`), and what a callee passed it by reference writes back (`sort()`'s
+  `list<V>`; a write-back whose elements are unknown says only whether a list stays one). A
+  compound assignment holds what the expression gives, and `??=` its right side. An
+  `unset($this->p[…])` makes it a map. Any other use that may write it — an element passed by
+  reference, `foreach (… as &$v)`, a reference, another object's `$o->p` — leaves it alone;
 - *a return*: every `return` of the method;
-- *a parameter*: the argument at every call of the method in the class, and its default. A method
-  referred to in any other way — a first-class callable, `[$this, 'm']`, its name as a string, a
-  dynamic call — leaves its parameters alone.
+- *a parameter*: the argument at every call of the method in the class, its default, and where
+  the method is passed as a callable (`array_map([$this, 'm'], $xs)`, `$this->m(...)`), the type
+  the callable parameter it is passed to expects, or the type of the property it is stored in
+  (`$this->post = $post ?? self::send(...)`). A string that names it where PHP takes a
+  callable's name (a two-item array, `'Class::m'`, `call_user_func()` and its kin), a callable
+  array that names a method by a value, or a dynamic call leaves its parameters alone.
 
 **How it is written.** The union of the values must be arrays (and `null` for `?array`):
 - **A tuple** `(A, B)` when every value is a positional shape of the same length whose positions
-  differ in type. Positions of one type read as a list, which a literal like `['a', 'b']` usually
-  is, and `[]` is no tuple.
+  differ in type, or, in an element type, hold computed values: `list<(string, string)>` for
+  pairs built from variables. Same-typed positions read as a list at a declaration's top level,
+  which five values a method returns usually are, and wherever they hold literals, as
+  `['a', 'b']` does; `[]` is no tuple.
 - **`list<T>`** when every value is a list and every element write appends.
 - **`map<K, V>`** otherwise, or **`array<V>`** when the keys are any `int|string`
   (`collections.md` §2).
 - **Widened to what can be spelled**: a literal to its type (`'a'` to `string`), a refinement
   (`non-empty-string`) to its base type, the arrays of an element type merged into one list, map
-  or tuple, a class named as the file's imports and namespace name it. An element type of more
+  or tuple, a class named as the file's imports and namespace name it, a closure as
+  `Closure(A): R`, a template by its name. An element type of more
   than three members is written `mixed`: a document's `map<string, mixed>` reads better than
   every type it holds.
 - **Nothing is written** when neither keys nor elements are known (the arrays rule writes
@@ -998,21 +1008,26 @@ a private or final method's return, a private method's parameter — is turned b
 same copies migrated without it, every stripped declaration then `array<mixed>`, are the
 baseline: the codemod must add no finding to it, of `phn check` or of PHPStan at level max.
 
-**Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`). Stripping and recovering:
+**Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`). Stripping and recovering, with
+the gaps of the first version closed (callables passed and stored, static properties, compound,
+nested and by-reference writes, prose docblocks, tuples in element types, closures and templates
+spelled):
 
 | Tree | Stripped | Written as by hand | Another type | Not recovered | `phn check` errors, baseline → codemod | PHPStan max, baseline → codemod |
 |---|---|---|---|---|---|---|
-| core | 271 | 170 (62%) | 61 (22%) | 40 (14%) | 466 → 97 | 520 → 104 |
-| tq-cli | 747 | 502 (67%) | 154 (20%) | 91 (12%) | 1978 → 251 | 1316 → 222 |
+| core | 289 | 196 (67%) | 74 (25%) | 19 (6%) | 486 → 71 | 535 → 74 |
+| tq-cli | 807 | 574 (71%) | 172 (21%) | 61 (7%) | 2078 → 229 | 1396 → 238 |
 
 - **No finding is added**, by either checker, in either tree.
 - **Another type** is mostly narrower than what was written (`array<string>` as `list<string>`,
   `map<string, mixed>` as `map<string, map<string, string>>`), or wider where a value comes from
   a declaration that was stripped too and not recovered (`list<mixed>` for `list<string>`), and
-  where a homogeneous tuple reads as a list.
-- **Not recovered**: a method used as a callable or named in a string (35 in tq-cli), overrides
-  (stripped though they are not candidates, 21), keys and elements both unknown (21), compound
-  element writes and by-reference uses (16), types without a spelling (10).
+  where a top-level homogeneous tuple reads as a list.
+- **Not recovered**: overrides (stripped though they are not candidates, 21), keys and elements
+  both unknown (20), a callable whose arguments nothing says (7), a call that leaves the argument
+  out with no default (6).
+- The first version recovered 62% and 67%; a measurement is only fair with the copies' vendor
+  links intact, since a library class the checker cannot load hides every override's parent.
 
 ## 9. Analysis rules
 
