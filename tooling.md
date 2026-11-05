@@ -661,6 +661,88 @@ With these settlements:
   buffer named through one spelling was a second copy of the project's file, declared twice
   (P2511). URIs go back to the client in its own spelling.
 
+### 6.6 Done in slice 5 (2026-11-05)
+
+With these settlements:
+
+**The repository** is `phaenonlang/vscode`. It ships as a `.vsix` until the repositories are public
+(T1): 110 KB, the bundled client (esbuild) and the declarative files. It works on VS Code 1.91 and
+later, the floor of the client library `vscode-languageclient` 11.
+
+**The grammar is PHP's plus injections.** `source.phaenon` includes VS Code's `source.php`, as the
+plugin's grammar did. PHP's rules misread every Phaenon addition: `fun` and `throws` are constants
+to them, a declaration is a call, `list<T>` is two comparisons. So the grammar adds rules for
+Phaenon's syntax:
+- `fun` declarations with their type parameters, parameters, return type and `throws`;
+- type parameters in class-like headers (`<T of Bound = Default>`, `in`/`out`), and type arguments
+  wherever a name is written against `<`, `new Box<U>` and calls (`first<User>()`,
+  `$box->get<Address>()`) included;
+- type aliases, `is`, `as` and `as?`;
+- `concurrently` and `spawn`;
+- `bytes`, tuples and closure types.
+
+These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
+reads as a type in a parameter list, a property and a class header alike. Where PHP has the
+construct, the rules use its scope names, so themes colour Phaenon as they colour PHP.
+
+Found while running the grammar over the dogfood trees: PHP's property rule cannot read `?map<…>`, so
+its ternary rule took the `?` and waited for a `:` that never came, swallowing the rest of the class.
+A rule for the `?` before a generic type fixes it. Now every one of the trees' 1,859 files ends
+with no rule open.
+
+The PhpStorm plugin's TextMate bundle holds verbatim copies of the grammar and the language
+configuration, and this repository's tests compare them.
+
+**One server per project.** A file's project is the nearest `phaenon.json` above it, else the nearest
+`composer.json`, the rule the server applies to its working directory. A workspace with several
+projects therefore runs several servers:
+- **One owner per file.** Every client is offered every `.phn`, and its middleware keeps the files of
+  its own project. This also covers a project inside another's directory, whose files the outer
+  server would otherwise check too.
+- **Installed code has no server.** A `.phn` under a `vendor/` beside a `composer.json` is highlighted
+  only. Opened in the project around it, the file would be one of the project's own files and
+  declare its classes twice. A server of the package's own would check it without its
+  dependencies, which are installed beside it.
+- **The client's root is the project's.** `rootUri` names the project's directory, not the workspace
+  folder around it.
+
+**Found on the way: a `rootUri` around the project named no file right.** The server read every
+client path relative to `rootUri`. A client whose root is the workspace around the project, as
+`vscode-languageclient` sends by default, therefore put every path in the wrong directory, and the
+open buffer became a second copy of its file (P2511). The server now keeps `rootUri` only when it
+names its own project's directory, however spelled (`internal/lsp`, `TestAClientRootAroundTheProject`).
+
+**Commands and tasks:**
+- **Build and Check the Project** run `phn build` / `phn check` as tasks in the active editor's
+  project.
+- **A `phaenon` task type** lists `build`, `check` and `watch` for every project, also for
+  `tasks.json`.
+- **Trace the Selection** runs `phn trace` on the editor's selection, or on the whole document
+  without one.
+- **Trace the Terminal's Text** runs it on the terminal's selection, else on its whole buffer. VS Code
+  hands an extension a terminal's text only through the clipboard, whose text is put back
+  afterwards.
+- **`phaenon.traceRoots`** passes `--root PREFIX=LOCAL`, for a trace from a container.
+
+The status bar shows the last build on save, with the PhpStorm plugin's texts.
+
+**In an untrusted workspace the extension only highlights.** The server and the commands would run
+the project's `vendor/bin/phn`, the setting naming the binary is restricted, and everything starts
+once the workspace is trusted.
+
+**Tests:**
+- **Unit tests** of the project, binary and trace rules.
+- **The grammar's golden file**, written against a pinned copy of VS Code 1.145.0's PHP grammar,
+  since PHP's own scope names change between releases. The tokens Phaenon's rules name must come
+  out the same with the PHP grammar of every VS Code installed (1.91.0, 1.110.1 and 1.145.0 here).
+  With `PHAENON_TREES` the grammar also runs over whole trees.
+- **Fourteen end-to-end tests** run in a real VS Code, 1.91.0 and 1.145.0, against a real `phn`.
+  Their fixture is a project, a project nested in it and an installed package. They cover the
+  findings shown once, hover, definition, completion, signature help, symbols, formatting, build
+  on save and its status, both traces, the tasks, and the installed code left alone.
+
+As planned, debugging is not in this slice (§6.3).
+
 ## 7. CI and containers
 
 ### 7.1 Annotations and reports
