@@ -1147,6 +1147,49 @@ docblocks, and with them the compiled lines.
 - A measurement is only fair with the vendor code loadable: a library class the checker cannot
   load hides every override's parent.
 
+### 8.3 `throws` — measured, not built (2026-11-06)
+
+`phn migrate` already lifts `@throws` tags into `throws` clauses (D18). The question was whether a
+codemod should also write clauses from what a body throws. Scoped in the vault first: the body's
+own uncaught `throw new X` of a *checked* exception, `LogicException`, `Error` and their
+subclasses unchecked by default (PHPStan's `exceptions.uncheckedExceptionClasses` and
+`phaenon.json` extending the list), and no promotion to callers. Measured before building,
+with the checker's own throw points (`checker.Options.Thrown`, `TestThrowsMeasure` in `cmd/phn`,
+`PHAENON_THROWS`), on core (3,352 bodies, 87 declared by their authors) and tq-cli (5,737, 62):
+
+| Rule | core | tq-cli | What it writes |
+|---|---|---|---|
+| Own throws, `LogicException`/`Error` unchecked | 64 bodies (2%) | 455 (8%) | `RuntimeException` 32 and 279 of them, tq-cli's `UserError` 141 |
+| … and `RuntimeException` unchecked | 1 | 5 | MongoDB's and amp's exceptions |
+| … the project's own exception classes only | 12 | 189 | core: `ConcurrencyConflict`, `AggregateNotFound`, `RateLimitExceeded`, `DeliveryInProgress`, the token exceptions; tq-cli: `UserError` 141, `ArtifactUnavailable` 12, `ApiException` 9 |
+| Own throws and what callees declare | 1,232 (37%) | 2,177 (38%) | PHPUnit's `ExpectationFailedException` on 769 and 1,578 test bodies, Symfony's `ServiceCircularReferenceException`, MongoDB's, amp's |
+| The same, promoted to a fixpoint | 1,463 (44%) | 2,728 (48%) | five and seven rounds |
+
+What the measurement settled:
+- **Promotion is out**, as scoped: vendor docblocks (`@throws` on PHPUnit's assertions, Symfony's
+  container, MongoDB's driver, amp's streams) would put a clause on four bodies in ten.
+- **Both trees use `RuntimeException` as the plain failure** (`UserError` and `ConcurrencyConflict`
+  extend it), so a rule keyed on checked-versus-unchecked writes `throws \RuntimeException` on
+  hundreds of methods or, with it unchecked, nothing.
+- **A clause is a statement about the whole body.** Under PHPStan's model, which the checker
+  follows, a call to a method that declares `throws X` throws `X` and nothing else, where a call to
+  one that declares nothing may throw anything. So a clause written from the body's own `throw`
+  lines silences what the body's callees throw: in tq-cli, three callers' `catch (JsonException)`
+  and `catch (ParseException)` around methods whose `json_decode()` and `Yaml::parse()` calls are
+  undeclared become `P2403` "never thrown". A codemod's check would refuse those three, but the
+  hazard is the rule's, not the three's: every clause it writes narrows what callers may catch.
+- **Authors declare rarely and deliberately.** Core's 87 declarations are 2.6% of its bodies, and
+  with the default list 39 of them name exceptions that only callees throw: contracts carried
+  across layers by hand, which no rule without promotion reproduces.
+
+The only rule that wrote what an author would is the project's own exception classes: core's 12
+are its domain contracts, each a `throws` a reviewer would ask for, with no finding. On tq-cli
+the same rule is 141 `throws UserError` on command steps, which is either the CLI's contract made
+visible or noise, and a project decision. Recommendation, to be confirmed: **the codemod is not
+built now.** The lift covers migration; a project that wants its own contracts declared gets a
+small opt-in rule later, keyed on its PSR-4 namespaces, if a dogfood asks for one. The hook and
+the measurement stay.
+
 ## 9. Analysis rules
 
 The vault parks three groups of PHPStan rules under M6. PHPStan reports each at level max, and the
