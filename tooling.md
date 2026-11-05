@@ -984,34 +984,44 @@ read from what it recorded:
   not piped.
 
 **Values made of the declaration's own.** A value may be made of the declaration itself: a
-recursion (`$out = [...$out, ...self::leaves($v)]`), a property filtered or spread into itself
-(`$this->p = array_filter($this->p, …)`), a parameter a recursion passes on, as it is or grown
-(`self::depth([...$path, $k], $child)`), what `array_shift($this->p)` writes back (a list when the
-property is one). Read while the declaration is still `array`, such a value is `array<mixed>`, and
-nothing can be written. Once the rounds stop, a **self round** types these declarations as the
-least types their values settle on. Checks run with the declaration's own reads assumed to hold
-nothing: the reads in its values, its writes' targets, the recursive calls, a recursive parameter
-on entry (the checker's `Options.Assume`). Then they run with what the last check found, until the
-values settle, three checks at most. The type is checked as any round's is, and the rounds that
-follow carry it on: `strings()` returning the recursion `leaves()` is typed in the next one.
+recursion (`$out = [...$out, ...self::leaves($v)]`, `array_push($files, ...self::files($dir))`), a
+property filtered or spread into itself (`$this->p = array_filter($this->p, …)`), or read into a
+local and written back (`$files = $this->trees[$base] ?? []; …; $this->trees[$sha] = $files`: a
+read of the property in a method that writes it counts as one of its values'), a parameter a
+recursion passes on, as it is or grown (`self::depth([...$path, $k], $child)`), what
+`array_shift($this->p)` writes back (a list when the property is one). Read while the declaration
+is still `array`, such a value says `mixed` (`list<mixed>` for the recursion spread into
+`array_push()`), and that mixed is the declaration's own: no round writes a type that says mixed
+for a declaration whose values read it. Once the rounds stop, a **self round** types these
+declarations as the least types their values settle on. Checks run with the declaration's own
+reads assumed to hold nothing: the reads in its values, its writes' targets, the recursive calls, a
+recursive parameter on entry (the checker's `Options.Assume`). Then they run with what the last
+check found, until the values settle, three checks at most. The type is checked as any round's
+is, and the rounds that follow carry it on: `strings()` returning the recursion `leaves()` is
+typed in the next one.
 
 **How it is written.** The union of the values must be arrays (and `null` for `?array`):
-- **A tuple** `(A, B)` when every value is a positional shape of the same length whose positions
-  differ in type, or, in an element type, hold computed values: `list<(string, string)>` for
-  pairs built from variables. Same-typed positions read as a list at a declaration's top level,
-  which five values a method returns usually are, and wherever they hold literals, as
-  `['a', 'b']` does; `[]` is no tuple.
+- **A tuple** `(A, B)` when every value is a positional shape of the same length and the code reads
+  the values as one: takes them apart (`[$commit, $body] = $this->template[$name]`,
+  `foreach (… as [$a, $b])`) or reads them at a literal index, and never iterates or spreads them,
+  which reads them as a list. Where the reads do not tell, positions that differ in type make a
+  tuple, and so do computed ones in an element type: `list<(string, string)>` for pairs built from
+  variables. Same-typed positions read as a list at a declaration's top level, which five values a
+  method returns usually are, and wherever they hold literals, as `['a', 'b']` does, or arrays:
+  records in a row are a list, whatever their fields. `[]` is no tuple.
 - **`list<T>`** when every value is a list and every element write appends.
 - **`map<K, V>`** otherwise, or **`array<V>`** when the keys are any `int|string`
   (`collections.md` §2).
 - **Widened to what can be spelled**: a literal to its type (`'a'` to `string`), a refinement
   (`non-empty-string`) to its base type, the arrays of an element type merged into one list, map
-  or tuple, a class named as the file's imports and namespace name it, a closure as
-  `Closure(A): R`, a template by its name. String literals that all spell a class's declared name,
-  as `Foo::class` gives them, are `class<Foo>`, or `class` when they name several; a template's
-  class-string is `class<T>`. An anonymous class is spelled as the class it extends, or the one
-  interface it implements. An element type of more than three members is written `mixed`: a
-  document's `map<string, mixed>` reads better than every type it holds.
+  or tuple, but its lists apart from its maps of string keys when it holds both (a decoded answer
+  is `map<string, mixed>|list<map<string, mixed>>`, which one `array<mixed>` would not say), a
+  class named as the file's imports and namespace name it, a closure as `Closure(A): R`, a
+  template by its name. String literals that all spell a class's declared name, as `Foo::class`
+  gives them, are `class<Foo>`, or `class` when they name several; a template's class-string is
+  `class<T>`, an object's (`$object::class`) `class`. An anonymous class is spelled as the class
+  it extends, or the one interface it implements. An element type of more than three members is
+  written `mixed`: a document's `map<string, mixed>` reads better than every type it holds.
 - **Nothing is written** when neither keys nor elements are known (the arrays rule writes
   `array<mixed>`), when only `[]` is ever held, or when a type has no spelling (a callable's
   signature, an anonymous class that neither extends a class nor implements one interface).
@@ -1021,7 +1031,20 @@ in rounds, each typing what the last one made known. A type that says `mixed` so
 (`list<mixed>`, `map<string, array<mixed>>`) waits until no precise type is left to write, since
 its values may come from a declaration a later round types: with `inPlace()`'s `$path` typed,
 `rewriteFlow(…, array_slice($path, …))` gets `list<string>`, where in the same round it would have
-got `list<mixed>`. Up to ten rounds and a self round make a pass, and up to three passes run.
+got `list<mixed>`.
+
+Not every type made of an untyped declaration says `mixed`, though: `array_keys()` of a bare
+`array` is `list<int|string>`, `array_flip()` of one `array<int|string>`. So a type a round wrote
+stays a candidate, and a later round **narrows** it when its values spell a narrower type now: the
+order the rounds type declarations in no longer decides what they get. In tq-cli, `Val::map()`
+says `map<string, mixed>` and is typed after the callers that collect its keys, which get
+`list<string>` once it is. A narrowing is checked like any round's type. It is held back where it
+would only unroll a recursion: for a declaration whose values read it, and, in methods that reach
+themselves through others, for a type whose unknown sits a level deeper than before (core's
+`typeSchema()` and `arraySchema()` return each other's arrays, and each narrowing would nest the
+other's once more). A declaration is narrowed three times at most, so a pass ends when a round
+writes nothing; forty rounds are its backstop. A pass ends with a self round, and up to three
+passes run.
 
 **The check.** After each round, the files it may have changed are checked, not only those it
 rewrote: a final method's return reaches the files that call it (see Cost). Types may narrow,
@@ -1043,8 +1066,9 @@ return. So the first check checks every file given; a later one checks only the 
 rewrote and the files that call, by name, a method whose return it typed, and every other file
 keeps the reading of its last check. A round that keeps everything it wrote is the next round's
 reading. The checks share their parsed trees, as `phn lsp`'s programs do. On tq-cli (859 files) a
-run is 26 checks, the first whole and most of the rest of a few files: six seconds, three plain
-`phn check`s' worth. Checking the whole project every round took a hundred.
+run is 36 checks, the first whole and most of the rest of a few files, about 2,000 files checked
+in all: eight seconds, five plain `phn check`s' worth, of which narrowing takes ten checks and two
+seconds. Checking the whole project every round took a hundred.
 
 **Switched on** by `phn migrate --list-types`.
 
@@ -1063,22 +1087,25 @@ docblocks, and with them the compiled lines.
 
 | Tree | Stripped | As written | Narrower | Wider | Other | Not recovered | `phn check`, baseline → codemod | PHPStan max, baseline → codemod |
 |---|---|---|---|---|---|---|---|---|
-| core | 289 | 230 (79%) | 48 (16%) | 10 (3%) | 1 | 0 | 486 → 5 | 535 → 5 |
-| tq-cli | 807 | 664 (82%) | 76 (9%) | 66 (8%) | 1 | 0 | 2078 → 76 | 1396 → 71 |
+| core | 289 | 244 (84%) | 45 (15%) | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
+| tq-cli | 807 | 722 (89%) | 85 (10%) | 0 | 0 | 0 | 2076 → 0 | 1396 → 0 |
 
-- **No finding is added** by `phn check`, in either tree, or by PHPStan in core. In tq-cli
-  PHPStan moves one: `lackingKeys()`'s `$required` is typed `list<int|string>`, as its callers pass
-  it, and the key PHPStan flagged as an invalid offset where it is written (`$lacking[$k] = true`,
-  `mixed` before) it flags where it is read, `partnerOf($k)`. `phn check` reports that line in both.
-- **Wider** is the codemod's type where a value is `mixed` to the checker but the author knew more:
-  `array_keys()` of a bare public parameter is `list<int|string>` where the author wrote
-  `list<string>`, and an element built from untyped data is `array<mixed>` where the author wrote
-  `map<string, mixed>`. Both checkers accept every one; the findings left with the codemod's types
-  are those.
-- **Other** is one return each, wider in its keys and narrower in its values.
+- **No finding is added**, by `phn check` or by PHPStan, in either tree, and none is left: the
+  codemod's types remove every finding the stripping caused.
+- **Narrower** is a type the author wrote wider than the values are: 114 of the 130 say `mixed`
+  where the values are known, as `map<string, mixed>` for a document the codemod spells out.
+  Eleven are nested deeper than four levels, the deepest any author wrote: a JSON body or a
+  scripted API's routes passed to a test helper.
+- **Nothing is wider than written.** The previous version wrote 76 types wider than the authors:
+  46 typed before what their values come from was (now narrowed), 12 a
+  self-reading declaration's own `mixed` (now the self round's), 14 an element type's lists and
+  maps spelled as one `array<mixed>`, one each a pair read as a list, `$object::class` as a
+  string, a property read back through a local, and the checker running a `foreach` body over an
+  empty array (`checker.md` §3).
 - The first version recovered 62% and 67% as written. Closing its gaps took 67% and 71%. The
   rounds that wait for precise types, the self rounds, the receivers, pipes and class-strings, and
-  checking every file, took 79% and 82%, with nothing left unrecovered.
+  checking every file, took 79% and 82%, with nothing left unrecovered. Narrowing, the self round
+  for a declaration's own `mixed` and the spellings took 84% and 89%, with nothing wider.
 - A measurement is only fair with the vendor code loadable: a library class the checker cannot
   load hides every override's parent.
 
