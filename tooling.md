@@ -942,6 +942,78 @@ hold provably is one:
 
 It erases to the same `array`, so the PHP signature does not move.
 
+**Measured first (2026-11-05): nothing to rewrite in the dogfood.** PHPStan at level max requires
+the value type of every `array` (`missingType.iterableValue`), the trees documented them, and the
+lift made the docblocks syntax. What was left was overrides, which take their parent's type, and
+four test helpers in tq-cli. The codemod is for code below PHPStan level 6, which the dogfood
+cannot stand in for; it is checked by stripping types instead (below).
+
+**Candidates.** A declaration written as a bare `array` (or `?array`), with no docblock type of its
+own, that does not override one: what the arrays rule of `collections.md` §5 would otherwise write
+`array<mixed>`. The codemod runs after `pipes` and before that rule. A property that carries an
+attribute other than PHP's own is left out, since a framework may write it through reflection
+(§9.2); so is a promoted property, which the constructor's callers write.
+
+**How the type is found.** The checker types the files, and each value the declaration can hold is
+read from what it recorded:
+- *a property*: its default, every `$this->p = …`, and every element write, `$this->p[] = …` and
+  `$this->p[$k] = …`. An `unset($this->p[…])` makes it a map. Any other use that may write it — a
+  by-reference argument, `foreach (… as &$v)`, a reference, a compound assignment, another
+  object's `$o->p` — leaves it alone;
+- *a return*: every `return` of the method;
+- *a parameter*: the argument at every call of the method in the class, and its default. A method
+  referred to in any other way — a first-class callable, `[$this, 'm']`, its name as a string, a
+  dynamic call — leaves its parameters alone.
+
+**How it is written.** The union of the values must be arrays (and `null` for `?array`):
+- **A tuple** `(A, B)` when every value is a positional shape of the same length whose positions
+  differ in type. Positions of one type read as a list, which a literal like `['a', 'b']` usually
+  is, and `[]` is no tuple.
+- **`list<T>`** when every value is a list and every element write appends.
+- **`map<K, V>`** otherwise, or **`array<V>`** when the keys are any `int|string`
+  (`collections.md` §2).
+- **Widened to what can be spelled**: a literal to its type (`'a'` to `string`), a refinement
+  (`non-empty-string`) to its base type, the arrays of an element type merged into one list, map
+  or tuple, a class named as the file's imports and namespace name it. An element type of more
+  than three members is written `mixed`: a document's `map<string, mixed>` reads better than
+  every type it holds.
+- **Nothing is written** when neither keys nor elements are known (the arrays rule writes
+  `array<mixed>`), when only `[]` is ever held, or when a type has no spelling (a callable's
+  signature, an anonymous class).
+
+**Rounds.** A method that returns a property is known once the property is, so the codemod runs
+up to five rounds, each typing what the last one made known.
+
+**The check.** As for `pipes` (§8.1), every rewritten file is checked again. Unlike `pipes`, the
+types may change: they narrow, which is the point, so the check compares findings only, by code
+and line. A new finding on a declaration's own line is that declaration's, and the next round
+leaves it out; a finding elsewhere gives the file its arrays back.
+
+**Switched on** by `phn migrate --list-types`.
+
+**Checked by stripping and recovering.** In scratch copies of core and tq-cli, every candidate
+declaration whose type the authors wrote — `list<…>`, `map<…>`, `array<…>` on a private property,
+a private or final method's return, a private method's parameter — is turned back into a bare
+`array`. The codemod runs, and what it writes is compared with what was written by hand. The
+same copies migrated without it, every stripped declaration then `array<mixed>`, are the
+baseline: the codemod must add no finding to it, of `phn check` or of PHPStan at level max.
+
+**Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`). Stripping and recovering:
+
+| Tree | Stripped | Written as by hand | Another type | Not recovered | `phn check` errors, baseline → codemod | PHPStan max, baseline → codemod |
+|---|---|---|---|---|---|---|
+| core | 271 | 170 (62%) | 61 (22%) | 40 (14%) | 466 → 97 | 520 → 104 |
+| tq-cli | 747 | 502 (67%) | 154 (20%) | 91 (12%) | 1978 → 251 | 1316 → 222 |
+
+- **No finding is added**, by either checker, in either tree.
+- **Another type** is mostly narrower than what was written (`array<string>` as `list<string>`,
+  `map<string, mixed>` as `map<string, map<string, string>>`), or wider where a value comes from
+  a declaration that was stripped too and not recovered (`list<mixed>` for `list<string>`), and
+  where a homogeneous tuple reads as a list.
+- **Not recovered**: a method used as a callable or named in a string (35 in tq-cli), overrides
+  (stripped though they are not candidates, 21), keys and elements both unknown (21), compound
+  element writes and by-reference uses (16), types without a spelling (10).
+
 ## 9. Analysis rules
 
 The vault parks three groups of PHPStan rules under M6. PHPStan reports each at level max, and the
