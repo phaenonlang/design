@@ -144,7 +144,9 @@ bits. Rules:
 - Loops: iterate the body with the environment joined from the entry and the back edge until a
   fixed point; after 3 iterations the changing variables are widened to their declared type, or
   to the union's primitive. `foreach` keys/values come from the iterable's key/value types; a
-  `foreach` over a possibly-empty iterable may not assign its variables.
+  `foreach` over a possibly-empty iterable may not assign its variables, and one over an array
+  that holds nothing never runs its body: the body is checked, the state after the loop is the
+  one before it (PHPStan's, for an array not iterable at least once), and `P2409` says so.
 - `try`: catch blocks see the union of the environments at every statement of the body (any
   statement may throw); `finally` sees the union of all of them.
 - Closures and arrow functions start from a fresh environment with their parameters, plus `use`
@@ -268,7 +270,8 @@ generator-typed function, `$this` in a static context.
 
 **Flow** — variable possibly undefined; variable certainly undefined; unreachable statement after
 `return`/`throw`/`never` call (warning); always-true / always-false condition (warning);
-catch block ordering (a wider exception first makes a later catch dead, warning).
+catch block ordering (a wider exception first makes a later catch dead, warning); `foreach`
+over an array that holds nothing (warning).
 
 **Classes** — missing abstract method implementation in a concrete class; interface method
 signature mismatch; override incompatible (LSP); `#[\Override]` on a method that overrides
