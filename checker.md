@@ -274,13 +274,13 @@ catch block ordering (a wider exception first makes a later catch dead, warning)
 over an array that holds nothing (warning).
 
 **Classes** — missing abstract method implementation in a concrete class; interface method
-signature mismatch; override incompatible (LSP); `#[\Override]` on a method that overrides
-nothing; missing `#[\Override]` is **not** reported (Tequila's cs-fixer owns that); abstract
-method in a non-abstract class; final method overridden; trait conflict without `insteadof`; enum
-with properties; enum case value type mismatch; interface constants/properties rules;
-constructor promotion in an abstract constructor; readonly class with static/untyped properties;
-property hooks: `get` returning the wrong type, `set` parameter type, virtual property without
-backing used by reference.
+signature mismatch; override incompatible (LSP); `#[\Override]` on a method, a property or a
+constant that overrides nothing; missing `#[\Override]` is **not** reported (Tequila's cs-fixer
+owns that); abstract method in a non-abstract class; final method overridden; trait conflict
+without `insteadof`; enum with properties; enum case value type mismatch; interface
+constants/properties rules; constructor promotion in an abstract constructor; readonly class with
+static/untyped properties; property hooks: `get` returning the wrong type, `set` parameter
+type, virtual property without backing used by reference.
 
 **Removed from PHP (P1, §7)** — reported for checked files in Phaenon mode only.
 
@@ -401,7 +401,45 @@ turned it into a test.
   warns once (`P4007`) and knows php-src only.
 - **A trait sees its users.** A method the trait body calls on `$this`, `self` or `static` and
   the trait does not declare is looked up in the classes using the trait, as PHPStan does by
-  analysing a trait in each user's context.
+  analysing a trait in each user's context. *Properties too* (2026-11-06): a property the body
+  uses on `$this` and does not declare is every user's declaration, not the first one's, since
+  the body runs in each. A read has the union of the users' types and narrows as in a class's
+  own body; a write must suit each user's type (`P2201` names the user it does not suit), and the
+  readonly and set-visibility rules apply in the user's scope, so a trait's constructor
+  initialises its user's readonly property. A user without the property is `P2005` naming that
+  user; a property no user declares stays `P2005` on the trait. One reading of PHPStan's is not
+  taken: a comparison that one user's type alone decides (`=== null` on a property only another
+  user declares nullable) is not reported as impossible, because the trait's code serves both;
+  PHPStan, analysing per user, reports it in that user's context. Static properties through
+  `self::` and `static::` are not looked through yet (vault `open-items`).
+- **A readonly property is initialised by its constructor** (2026-11-06, `P2515`, PHPStan's
+  `property.uninitializedReadonly`, `MissingReadOnlyPropertyAssignRule`). A readonly property of
+  a class — every property of a `readonly class`, and those a trait brings — that has no default
+  and is not promoted must be assigned on every way out of the constructor; a way out by `throw`
+  or a `never` call needs nothing, a constructor that always throws initialises nothing, and so
+  does a class without a constructor of its own (none, or a parent's, which runs in the parent's
+  scope). A method of the class the constructor calls on `$this`, `self` or `static`, and those
+  it calls in turn, count, conditional or not, as PHPStan counts them: the property is
+  initialised at run time, and the one mistake, the write outside the constructor, is `P2206`
+  already. A read in the constructor before every way has assigned it is `P2515` as well (PHP
+  throws), `isset()` and `??` included, as PHPStan has it. The finding sits on the declaration,
+  in the trait for a trait's property, where PHPStan files it and where its ignore comments are.
+  On PHP 8.6 a default is the initialisation; on 8.5 the default is `P1002` and not also
+  `P2515`. Not matched yet: PHPStan's "already assigned" (`assign.readOnlyProperty`), a second
+  assignment in the constructor or one in a loop.
+- **A declared type names classes that exist** (2026-11-06, `P2001`, PHPStan's `class.notFound`).
+  A class in a parameter, return, property or class constant type, of a function, a method, a
+  closure or an arrow function, a member of a union, intersection or nullable type, and in the
+  positions Phaenon's syntax adds and the emitter writes into docblocks (type arguments,
+  `class<T>`, closure signatures, tuples), must exist; PHP resolves it when it checks a value,
+  so every call fails otherwise. Names a class docblock declares or imports
+  (`@phpstan-type`, `@phpstan-import-type`) are aliases, not classes. A bare `Closure` is
+  Phaenon's name for `\Closure` where the type is erased (a type argument, a signature: the
+  emitter writes `\Closure`), but where the type reaches PHP as written — a parameter, return,
+  property or constant type — PHP resolves it in the namespace, so without `use Closure;` it is
+  `P2001` naming the class PHP would look for (`App\Closure`). This narrows `generics.md` §11's
+  "the checker accepts a bare `Closure` everywhere": the emitter passes plain PHP through, so
+  the checker reads it as PHP does. A class newer than the target is `P4011`, not `P2001`.
 - **A general array is accepted for a shape it may well be.** `array<string, string>` passes for
   `array{spec: string, declared: string}` when its keys and values can be the shape's, as PHPStan
   accepts it; `array<string, mixed>` still fails against `array<string, int>`.
