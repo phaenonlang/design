@@ -72,12 +72,11 @@ Vendor code is loaded lazily, and nothing is cached between runs.
 **Tequila**:
 - **The template's Dockerfile builds in two steps.** Its vendor stage runs `composer install --no-dev
   --no-scripts --no-autoloader`, copies `src/`, `config/` and the rest, then runs `composer
-  dump-autoload --classmap-authoritative --no-dev`. The base image is `php-builder:8.5`: php-cli,
-  the extensions and Composer.
-- **CI runs through reusable workflows.** They are `php-ci-checks.yaml` and `php-ci-tests.yaml` in
-  `operations-github-actions`, mirrored into each org as `tequila-gha`. Composer authenticates to
-  GitHub with an App installation token scoped to that mirror, and to `composer.tequila.dev` with
-  the job's federated Tequila token.
+  dump-autoload --classmap-authoritative --no-dev`. The base image is the platform's PHP 8.5
+  builder: php-cli, the extensions and Composer.
+- **CI runs through reusable workflows.** Every repository runs the platform's shared workflows
+  for its checks and its tests, and Composer reaches private GitHub repositories and the
+  platform's package registry with credentials the job is given.
 - **Core's php-cs-fixer config rewrites code.** It is `@PSR12` plus the `@PHP80Migration:risky` to
   `@PHP83Migration` sets: `void_return`, `use_arrow_functions`, `modernize_strpos` and other fixers
   that change code, not only layout.
@@ -883,8 +882,8 @@ Done in slice 2 (2026-11-03), with these settlements:
 **No separate action.** With the plugin, every project has `vendor/bin/phn` after `composer
 install`, so nothing else needs to install it.
 
-**Tequila's reusable workflows** (`operations-github-actions`: `php-ci-checks.yaml`,
-`php-ci-tests.yaml`) gain three steps for a project with a `phaenon.json`:
+**Tequila's reusable workflows**, the checks' and the tests', gain three steps for a project with a
+`phaenon.json`:
 - `phn check --format=github`;
 - `phn fmt --check`;
 - PHPStan and PHPUnit with their annotations passed through `phn trace`.
@@ -1485,19 +1484,19 @@ results:
 - `contracts/` stays PHP. The contracts-codegen workflow and the subtree split read it as PHP;
   revisit after M6.
 - `tequila/core` stays PHP on `main`, and services consume it as PHP.
-- `iam` is M7.
+- The services themselves are M7.
 
 **The proof.** A service born from the working tree (`bin/init` on a throwaway copy) passes:
 1. its suite, PHPStan and php-cs-fixer;
 2. its image build;
-3. a local deploy (OrbStack);
+3. a local deploy;
 4. an exception thrown in the running service that the Monolog processor logs at its `.phn` line.
 
 **Dependency:** Tequila's CI and the tenants install `phaenon/*` through Tequila's package registry
-and the binary from phaenon.dev (T1, §3.2). The registry serves a vendor from its operator's list
-(`config/satis.json` in the registry's repository): the three `phaenonlang` repositories enter it,
-and the platform's GitHub App must cover that organisation to read them. A maintainer's step,
-taken with the first release the template installs.
+and the binary from phaenon.dev (T1, §3.2). The registry serves only the vendors its operator
+lists, so the three `phaenonlang` repositories enter that list and the registry is granted read
+access to the organisation. A maintainer's step, taken with the first release the template
+installs.
 
 ## 11. Order
 
@@ -1539,13 +1538,13 @@ taken with the first release the template installs.
 ## 13. Open questions for the review
 
 1. *(T1)* **When do the `phaenonlang` repositories go public?** Packagist, release assets without tokens,
-   and the two editor marketplaces all need public repositories. Tequila's CI reads private GitHub
-   repositories only through an App token scoped to its `tequila-gha` mirror.
+   and the two editor marketplaces all need public repositories. Tequila's CI reads a private GitHub
+   repository only through a token scoped to the repositories it is granted.
    - (a) At M6's start.
    - (b) Before slice 8: slices 1–7 run privately, the dogfood trees use path repositories and
      Composer's GitHub token, and the repositories are published before the template, whose
      consumers include tenants' CI.
-   - (c) After M6, with `composer.tequila.dev` serving `phaenon/*` and the Tequila App granted the
+   - (c) After M6, with Tequila's package registry serving `phaenon/*` and its CI granted the
      `phaenonlang` repositories in the meantime.
 
    Recommendation: (b). Publication does not block the work, and the template should not teach

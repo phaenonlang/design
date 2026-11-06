@@ -368,9 +368,8 @@ turned it into a test.
   which ones exist. The parity harness (§8) keeps running PHPStan at level max on the emitted
   goldens as a quality bar for generated code — cheap, because level 10 adds "no implicit
   `mixed`", which Phaenon forbids by language rule anyway. The reference profile for what
-  Phaenon deliberately lacks is Tequila's: PHPStan 2.x, level 8 in the 22 service repositories
-  (`core`, `iam`, `mongodb-odm` among them), level 10 in the 17 libraries,
-  `treatPhpDocTypesAsCertain: false` everywhere, no `phpstan-strict-rules`. Refinement types
+  Phaenon deliberately lacks is Tequila's: PHPStan 2.x, level 8 in most repositories, level 10 in
+  the rest, `treatPhpDocTypesAsCertain: false` everywhere, no `phpstan-strict-rules`. Refinement types
   (`non-empty-string`, `positive-int`, `int<0, max>`, …) are inferred and narrowed —
   `$s !== ''` gives `non-empty-string` — but never required in source, since they cannot be
   written as native types (`generics.md` §11.2): where a declared `string` flows into a vendor
