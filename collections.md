@@ -145,6 +145,10 @@ tells the truth. `\Phaenon\Seq::values($xs)` (or `array_values`) is how a list i
 ### 2.4 Tuples
 
 `(A, B)` is a **tuple type**: a positional, fixed-length list whose elements have their own types.
+Fixed means exact: `(string, int)` is two elements, and a value with three is not one, as a
+tuple in Python is not. (PHPStan's `list{string, int}` admits a longer value; the checker is
+stricter there, which parity allows. A docblock shape's optional entry, `list{int, 2?: bool}`,
+still lets a shorter value in.)
 It is spelled with parentheses in any type position (`list<(string, int)>`, `(User, bool)`,
 `?(int, int)`), built with an array literal (`[$name, $age]`), read by destructuring
 (`[$name, $age] = $pair`) or by index (`$pair[0]`), and erases to the shape PHPStan writes:
@@ -344,3 +348,9 @@ So `@param array{name: string, age?: int} $row` stays the way to write one, read
 - 2026-10-30: `P2518` with the implied `K of int|string` for an unbounded key parameter
   (`program.ImplyMapKeyBounds`, functions, methods, classes, aliases and closures), `P2516` an
   error — done.
+- 2026-11-06: **a tuple is exact.** The lattice had followed PHPStan, where `list{int, string,
+  string}` is a `list{int, string}`; found by the `list-types` audit, which saw tq-cli pass a
+  four-element record where `(string, string, string)` was declared. A tuple admits no longer
+  value now (`types.IsTuple`), and a shorter one only for entries a docblock marks optional.
+  Python's tuples, the ones most people know by that name, are exact; a tuple of unknown length
+  is a `list<T>`. The checker is stricter than PHPStan here, which §9 of `checker.md` allows.
