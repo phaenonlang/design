@@ -40,12 +40,12 @@ Read and measured on 2026-11-02.
   platform or on none.
 - **Packagist hosts no artefacts.** It builds every package from a VCS repository, so a package per
   platform would be a git repository with each release's binary committed into it.
-- **Plugins run under `--no-scripts`, the autoload events do not.** That flag drops
-  `composer.json`'s script listeners, not the event subscribers of plugins
-  (`EventDispatcher::getListeners()`), but the autoload generator dispatches `pre-autoload-dump`
-  only when scripts run: `install --no-scripts` builds nothing, and the `dump-autoload` that follows
-  it in the template does (§3.3). `dump-autoload --dry-run` dispatches the event, and builds.
-  `--no-plugins` turns plugins off.
+- **Plugins run under `--no-scripts`.** That flag drops `composer.json`'s script listeners, not
+  the event subscribers of plugins (`EventDispatcher::getListeners()`): `install --no-scripts`
+  still dispatches `pre-autoload-dump` and builds (verified on Composer 2.9.5; an earlier draft
+  said otherwise). What skips the build is `--no-autoloader`, which the template's vendor stage
+  passes; the `dump-autoload` that follows builds (§3.3), `--no-scripts` or not.
+  `dump-autoload --dry-run` dispatches the event, and builds. `--no-plugins` turns plugins off.
 - **An unlisted plugin is asked about or refused.** A plugin missing from `config.allow-plugins` is
   a question in an interactive run. In a non-interactive run the install fails
   (`PluginBlockedException`).
@@ -160,9 +160,12 @@ users through private channels: Tequila's package registry, a custom plugin repo
     from a checkout (how the dogfood trees use one today, from `PATH`) or a distribution's package.
   - `extra.phaenon.binary-url` in the root `composer.json` names a mirror with the same file names,
     for builds that cannot reach GitHub. While the repositories are private (T1) this is how
-    Tequila's CI and its tenants get the binary: from a mirror Tequila's registry serves, with the
-    Composer credentials they already have. The mirror is the registry's release-asset door, which
-    already serves `tq` and the Flex recipes behind the Composer login. The value is a template:
+    everyone gets the binary: the mirror is **phaenon.dev**, a Tequila Sites site whose
+    `/releases/{version}/{file}` are public, immutable downloads (checksummed on upload, served
+    with a year-long `Cache-Control` and an ETag of the SHA-256; no listing, no credentials), the
+    package's own checksums deciding what is accepted. The release workflow uploads every asset of
+    a tag there (write-once, with the site's publisher client). A mirror that does want
+    credentials gets them from `auth.json`, as Composer would send them. The value is a template:
     `{version}` and `{file}` are replaced, and a value with neither is a base URL the file name is
     appended to.
 
@@ -245,6 +248,54 @@ Done in slice 1 (2026-11-03): the three moved, and core's dogfood branch takes t
 repositories of their dogfood checkouts, built by the plugin at every autoload dump; core's suite,
 PHPStan max and php-cs-fixer pass on them, a `--classmap-authoritative` dump with their outputs
 deleted included.
+
+### 3.6 The playground
+
+phaenon.dev compiles in the browser, as the TypeScript playground does: the compiler built for
+WebAssembly (`GOOS=js GOARCH=wasm`: 10.7 MB, 2.7 MB gzipped), loaded by a page that shows the
+PHP and the findings beside the source.
+
+- **One entry point**, `cmd/phn-wasm`. Run by Go's `wasm_exec.js` (`go.run(instance)`), it sets
+  `globalThis.phaenon = {version, compile}` and stays alive for the page's calls. `version` is
+  the release, `"dev"` in a build that names none. `compile(source, options?)` is synchronous;
+  the options are `filename` (default `"main.phn"`), `target` (`"8.5"`, the default, or
+  `"8.6"`), `files` (path → source: the declarations the main file may use, `.phn` or `.php`;
+  none by default) and `emitOnError` (default true). It answers `{ok, php, findings}`:
+  - `php` is what `phn build` writes for the file and the target, line map included. It is
+    `""` when the file does not parse, and, with `emitOnError` false, when the file has an
+    error (D10). The default is true because the page shows the PHP beside the findings
+    whenever the parser got through.
+  - `findings` are what `phn check` reports for the files: `{file, line, column, code,
+    severity, message}`, with `endLine` and `endColumn` when the diagnostic has an end.
+    Columns count bytes, as `phn check`'s do, so a page whose editor counts UTF-16 units
+    converts them on lines with non-ASCII text. `ok` is false when any finding is an error.
+  - Every file given is checked; the main file alone is compiled.
+- **No disk.** The program holds the embedded stdlib (php-src stubs, overlay, the runtime and
+  concurrent sources) and the files given, nothing else: no `vendor`, no `phaenon.json`, no
+  extensions of a local `php`. `\DateTimeImmutable` and PHP's functions are known; a class from
+  outside the files is an unknown class, as in `phn check`, so the page passes its support
+  declarations as `files`. What the page compiles is what `phn build` writes for the same files
+  in a project without Composer: `internal/playground`'s tests hold it against the `phn` binary
+  and against every emitter golden.
+- **A panic is a finding**, never a dead instance: `P0000`, after the findings already made,
+  with no PHP. The code lies outside the checker's families. It also stands for an output the
+  emitter refused, which `phn build` prints without a code, and for arguments the page got
+  wrong (an option this version does not know, a source that is not a string).
+- **A compile is quick enough to run on every edit**: about 90 ms in Node once warm, 290 ms for
+  the first (2026-11-06, an M1 Pro), because the parsed stubs are kept between calls.
+- **Two assets per release**, `phn.wasm.gz` and `wasm_exec.js`, beside the five binaries. Their
+  checksums are pinned with the binaries' in `composer/checksums.json`, under the keys `wasm`
+  and `wasm-exec`, which no platform has, and `tools/release -verify` compares them too.
+  - phaenon.dev serves its downloads as published, without transfer compression, so the wasm
+    ships gzipped and the page inflates it with `DecompressionStream`. The gzip is written at
+    the best compression with a header that names no file, time or system, by the pinned
+    toolchain, so its bytes are as reproducible as the binaries'. The raw `.wasm` is not an
+    asset.
+  - `wasm_exec.js` is the building toolchain's (`$(go env GOROOT)/lib/wasm/`): only that one
+    fits the wasm.
+  - The release URL carries the version, so the names do not. phaenon.dev takes both by
+    version, like the binaries.
+  - The CLI's other commands (`lsp`, `trace`, `fix`, `fmt`, `migrate`) are not linked in.
 
 ## 4. PHP's rewriting tools: `phn fix`
 
@@ -842,8 +893,11 @@ A `setup-phn` action waits until a project runs `phn` without Composer. **(Amend
 
 ### 7.3 Containers
 
-- **The base images need no change.** The binary arrives with `composer install` and stays in
-  BuildKit's Composer cache mount between builds.
+- **The base images need no change.** The binary arrives with `composer install`. It stays in
+  BuildKit's Composer cache mount between builds only where the Dockerfile has one; the
+  template's has none, so each image build downloads it once at the dump (about 9 MB from
+  phaenon.dev). The binary then ships in the image under `vendor/phaenon/phn/bin/`, which
+  follows from `require` (§3.1); whether a runtime stage drops it is still open.
 - **A service's Dockerfile** copies `phaenon.json` and the source roots before `dump-autoload`, which
   builds them. Its `.dockerignore` keeps local outputs out of the build context.
 - **The image ships the `.phn` beside the outputs.** The Sentry integration reads its context lines
@@ -1439,8 +1493,10 @@ results:
 4. an exception thrown in the running service that the Monolog processor logs at its `.phn` line.
 
 **Dependency:** Tequila's CI and the tenants install `phaenon/*` through Tequila's package registry
-and the binary through its mirror (T1, §3.2). The registry needs read access to the `phaenonlang`
-repositories for that, a maintainer's step when slice 1 gets there.
+and the binary from phaenon.dev (T1, §3.2). The registry serves a vendor from its operator's list
+(`config/satis.json` in the registry's repository): the three `phaenonlang` repositories enter it,
+and the platform's GitHub App must cover that organisation to read them. A maintainer's step,
+taken with the first release the template installs.
 
 ## 11. Order
 
@@ -1454,6 +1510,7 @@ repositories for that, a maintainer's step when slice 1 gets there.
 | 6 | Throw analysis (and unused private members, per Q8) |
 | 7 | `list-types` and `map-types`, measured on core and tq-cli (`pipes` came with D20) |
 | 8 | The template on `.phn`, `phaenon/*` installed through Tequila's registry |
+| 9 | The playground's entry point (§3.6), in the release the template installs |
 
 **Why this order:**
 - **Distribution first**, because everything else is consumed through it: the editor's server is the

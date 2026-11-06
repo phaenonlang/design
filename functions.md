@@ -93,6 +93,8 @@ semantics.
 In a constant expression a closure may be written as PHP writes it anywhere else:
 
 ```php
+use Closure;
+
 #[Map(fn (int $x): int => $x * 2)]
 final class Doubled {}
 
@@ -112,6 +114,11 @@ final class Config
   scope has none.
 - Line preservation: `fn` becomes `static function` and `=>` becomes `{ return` on their own
   lines; `; }` is appended after the body's last token.
+- The closure's parameter and return types are erased and documented as anywhere else
+  (`generics.md` §4): `fn (list<string> $tags): bool` in an attribute compiles to
+  `/** @param list<string> $tags */ static function (array $tags): bool`. The same holds for
+  every constant expression a declaration carries outside its body: attribute arguments,
+  parameter defaults, property defaults, constants and enum case values.
 
 ### 2.3 Why
 
