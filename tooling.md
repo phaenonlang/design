@@ -151,7 +151,8 @@ users through private channels: Tequila's package registry, a custom plugin repo
   - A checksum mismatch fails the install.
 - **Builds are reproducible**: `-trimpath`, the Go toolchain pinned in `go.mod`, no VCS stamping, and
   the version set by the linker. So the checksums can be known before the tag:
-  1. The release PR's workflow builds the five binaries and commits their checksums into the PR.
+  1. The release PR's workflow builds the five binaries and the playground's two assets (§3.6)
+     and commits their checksums into the PR.
   2. The tag's workflow builds them again, refuses to publish unless they match, and uploads them.
 
   Anyone can rebuild a release and compare.
