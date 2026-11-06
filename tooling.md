@@ -153,9 +153,17 @@ the VS Code extension as a `.vsix`.
   - A checksum mismatch fails the install.
 - **Builds are reproducible**: `-trimpath`, the Go toolchain pinned in `go.mod`, no VCS stamping, and
   the version set by the linker. So the checksums can be known before the tag:
-  1. The release PR's workflow builds the five binaries and the playground's two assets (§3.6)
-     and commits their checksums into the PR.
-  2. The tag's workflow builds them again, refuses to publish unless they match, and uploads them.
+  1. **The release PR is release-please's.** Every push to `main` rebuilds one standing PR,
+     `chore(main): release X.Y.Z`, from the Conventional Commits since the last release: the
+     version (before 1.0 a breaking change bumps the minor), the `CHANGELOG.md` entry, and the
+     version in `composer/checksums.json`. A workflow then builds the five binaries and the
+     playground's two assets (§3.6) on the PR's branch and commits their checksums, with the
+     runtime constraints of §3.4 and the main line's branch alias, both at the release's minor.
+  2. **Merging it is the release.** The push of the merge builds the assets again from the merged
+     commit and goes on only when they match the pins: release-please tags the commit `vX.Y.Z`
+     and makes the release, the assets go onto it, then onto phaenon.dev. It is one workflow
+     because a tag made with a workflow's own token starts no other workflow, and the comparison
+     comes before the tag, so a release whose bytes differ from its pins is never tagged.
 
   Anyone can rebuild a release and compare.
 - **Two overrides:**
