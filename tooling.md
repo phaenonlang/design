@@ -1016,7 +1016,10 @@ typed in the next one.
   (`non-empty-string`) to its base type, the arrays of an element type merged into one list, map
   or tuple, but its lists apart from its maps of string keys when it holds both (a decoded answer
   is `map<string, mixed>|list<map<string, mixed>>`, which one `array<mixed>` would not say), a
-  class named as the file's imports and namespace name it, a closure as `Closure(A): R`, a
+  class named as the file's imports and namespace name it, a class another member of the union
+  covers left out (a value narrowed by `instanceof` in one branch and not in the other joins as
+  `DomainEvent|Event`, which is `Event`: the lattice's unions know no hierarchy), a closure as
+  `Closure(A): R`, a
   template by its name. String literals that all spell a class's declared name, as `Foo::class`
   gives them, are `class<Foo>`, or `class` when they name several; a template's class-string is
   `class<T>`, an object's (`$object::class`) `class`. An anonymous class is spelled as the class
@@ -1111,20 +1114,29 @@ so `map<int|string, mixed>` is `array<mixed>`, and an override's bare `array` is
 The same project migrated without the codemod is the baseline: the codemod must add no finding of
 `phn check` to it. A scratch run compiled both trees and held them to PHPStan at level max too,
 comparing findings by the `.phn` line `phn trace` gives: the codemod's types change the compiled
-docblocks, and with them the compiled lines.
+docblocks, and with them the compiled lines. Run again on 2026-11-06 after the depth pass, with
+the codemod's side alone: 0 findings in either tree.
 
 **Done in slice 7 (2026-11-05)** (`internal/migrate/arraytypes.go`):
 
 | Tree | Stripped | As written | Narrower | Shallower | Wider | Other | Not recovered | `phn check`, baseline → codemod | PHPStan max, baseline → codemod |
 |---|---|---|---|---|---|---|---|---|---|
-| core | 289 | 260 (89%) | 29 (10%) | 0 | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
+| core | 289 | 262 (90%) | 27 (9%) | 0 | 0 | 0 | 0 | 486 → 0 | 535 → 0 |
 | tq-cli | 807 | 734 (90%) | 50 (6%) | 23 (2%) | 0 | 0 | 0 | 2076 → 0 | 1396 → 0 |
 
 - **No finding is added**, by `phn check` or by PHPStan, in either tree, and none is left: the
   codemod's types remove every finding the stripping caused.
-- **Narrower** is a type the author wrote wider than the values are, mostly one level of a
-  document whose values are all scalars: `map<string, string>` where `map<string, mixed>` was
-  written.
+- **Narrower** is a type the authors wrote wider than the values. Audited one by one
+  (2026-11-06) with the shallower: of the 100, 84 are the codemod right, 64 wider than the
+  values (option bags and documents of scalars, `array<…>` for lists, `array<mixed>` for typed
+  YAML nodes, `string` for class names) and 20 deeper than the code reads (T14). 15 are right but
+  read worse than the authors': a parameter handed whole to a typed destination, a union of
+  scalars nothing reads, an override's narrower return nobody calls, a placeholder whose fields
+  are all null, a level a declared type spells, a value handed to a `list<…>` parameter typed as
+  a tuple. Each is a style rule not taken; the vault's open items have their numbers. One is a
+  design question: a tuple accepts a longer one, as PHPStan's shapes do (`collections.md` §2.4
+  calls it fixed-length). None is a checker gap: the recovered trees, compiled, give PHPStan max
+  no finding.
 - **Shallower** is the depth pass's cut: the written type with `mixed` below the levels the code
   uses, keys, scalars and objects as written. The 23 are tq-cli's test fixtures, which its authors
   typed deeper than anything reads them: route tables whose bodies only go to `json_encode()` are
@@ -1143,7 +1155,7 @@ docblocks, and with them the compiled lines.
   rounds that wait for precise types, the self rounds, the receivers, pipes and class-strings, and
   checking every file, took 79% and 82%, with nothing left unrecovered. Narrowing, the self round
   for a declaration's own `mixed` and the spellings took 84% and 89%, with nothing wider. The depth
-  pass took 89% and 90%.
+  pass took 89% and 90%. Leaving out a class another member covers took core to 90%.
 - A measurement is only fair with the vendor code loadable: a library class the checker cannot
   load hides every override's parent.
 
