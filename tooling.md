@@ -1507,9 +1507,9 @@ results:
 4. an exception thrown in the running service that the Monolog processor logs at its `.phn` line.
 
 **Dependency:** the template installs `phaenon/*` from Packagist and the binary from the GitHub
-release, as any project does (T15, §3.2). Until the packages are on Packagist its branch keeps
-path repositories, and the image build waits. *(Through Tequila's package registry and
-phaenon.dev under T1; superseded by T15.)*
+release, as any project does (T15, §3.2). Its branch kept path repositories onto the sibling
+checkouts until the packages were on Packagist (v0.2.0, 2026-11-06), and moved to them on
+2026-11-07. *(Through Tequila's package registry and phaenon.dev under T1; superseded by T15.)*
 
 ## 11. Order
 
