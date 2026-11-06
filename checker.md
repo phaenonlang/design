@@ -274,7 +274,9 @@ catch block ordering (a wider exception first makes a later catch dead, warning)
 over an array that holds nothing (warning).
 
 **Classes** — missing abstract method implementation in a concrete class; interface method
-signature mismatch; override incompatible (LSP); `#[\Override]` on a method, a property or a
+signature mismatch; override incompatible (LSP); a property redeclared against its parent's
+static-ness, readonly-ness, visibility or native type (PHP's class-link rules, the first broken
+reported in PHP's order); `#[\Override]` on a method, a property or a
 constant that overrides nothing; missing `#[\Override]` is **not** reported (Tequila's cs-fixer
 owns that); abstract method in a non-abstract class; final method overridden; trait conflict
 without `insteadof`; enum with properties; enum case value type mismatch; interface
