@@ -273,8 +273,9 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Design: `tooling.md` (reviewed 2026-11-03, decisions §14): `phaenon/phn` as one Composer package with
   the plugin and checksum-pinned binaries (amends D13), builds at `dump-autoload`, `phn fix`
   carrying the edits of PHP's rewriting tools back into the source, `phn fmt`, `phn lsp` for
-  PhpStorm's diagnostics and VS Code, CI formats; the order in its §11. The repositories stay private until Tequila runs on Phaenon
-  in production (T1).
+  PhpStorm's diagnostics and VS Code, CI formats; the order in its §11. The repositories went public
+  under MIT on 2026-11-06, `phaenon/*` on Packagist (T15, superseding T1's "private until Tequila
+  runs on Phaenon in production").
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
   (codemods: arrays → list/map where provable; *"string functions → methods" superseded by D20:
   no method syntax on values that are not objects, `pipes` instead*).
