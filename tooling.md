@@ -72,12 +72,11 @@ Vendor code is loaded lazily, and nothing is cached between runs.
 **Tequila**:
 - **The template's Dockerfile builds in two steps.** Its vendor stage runs `composer install --no-dev
   --no-scripts --no-autoloader`, copies `src/`, `config/` and the rest, then runs `composer
-  dump-autoload --classmap-authoritative --no-dev`. The base image is `php-builder:8.5`: php-cli,
-  the extensions and Composer.
-- **CI runs through reusable workflows.** They are `php-ci-checks.yaml` and `php-ci-tests.yaml` in
-  `operations-github-actions`, mirrored into each org as `tequila-gha`. Composer authenticates to
-  GitHub with an App installation token scoped to that mirror, and to `composer.tequila.dev` with
-  the job's federated Tequila token.
+  dump-autoload --classmap-authoritative --no-dev`. The base image is the platform's PHP 8.5
+  builder: php-cli, the extensions and Composer.
+- **CI runs through reusable workflows.** Every repository runs the platform's shared workflows
+  for its checks and its tests, and Composer reaches private GitHub repositories and the
+  platform's package registry with credentials the job is given.
 - **Core's php-cs-fixer config rewrites code.** It is `@PSR12` plus the `@PHP80Migration:risky` to
   `@PHP83Migration` sets: `void_return`, `use_arrow_functions`, `modernize_strpos` and other fixers
   that change code, not only layout.
@@ -93,9 +92,12 @@ Vendor code is loaded lazily, and nothing is cached between runs.
 - **VS Code has nothing for `.phn`.** Its PHP extensions (Intelephense, PHP Tools) read PHP files
   that start with the open tag.
 
-**Repositories**: `phaenonlang/*` stay private until they are published under MIT, which happens
-once Tequila runs on Phaenon in production (T1). Until then everything in this document reaches its
-users through private channels: Tequila's package registry, a custom plugin repository, a `.vsix`.
+**Repositories**: `phaenonlang/*` went public under MIT on 2026-11-06 (T15, superseding T1's
+"private until Tequila runs on Phaenon in production"). `phaenon/phn`, `phaenon/runtime` and
+`phaenon/concurrent` are published on Packagist like any open-source package, the plugin downloads
+the binary from the GitHub release with phaenon.dev as its mirror, and the editor extensions go to
+their marketplaces next; until then the PhpStorm plugin comes from a custom plugin repository and
+the VS Code extension as a `.vsix`.
 
 ## 2. Goals and non-goals
 
@@ -160,8 +162,10 @@ users through private channels: Tequila's package registry, a custom plugin repo
   - `PHN_BINARY=/path/to/phn` replaces the download with another binary, such as a compiler built
     from a checkout (how the dogfood trees use one today, from `PATH`) or a distribution's package.
   - `extra.phaenon.binary-url` in the root `composer.json` names a mirror with the same file names,
-    for builds that cannot reach GitHub. While the repositories are private (T1) this is how
-    everyone gets the binary: the mirror is **phaenon.dev**, a Tequila Sites site whose
+    for builds that cannot reach GitHub. While the repositories were private (T1) this was how
+    everyone got the binary, since GitHub serves a private repository's release assets only
+    through its API; now that they are public (T15) the GitHub release is the default and the
+    mirror the fallback. The mirror is **phaenon.dev**, a Tequila Sites site whose
     `/releases/{version}/{file}` are public, immutable downloads (checksummed on upload, served
     with a year-long `Cache-Control` and an ETag of the SHA-256; no listing, no credentials), the
     package's own checksums deciding what is accepted. The release workflow uploads every asset of
@@ -581,8 +585,8 @@ and code actions beyond a diagnostic's own fix.
   trees.
 - **Build on save is on by default**, with a status-bar item for the last build.
 - **Distribution.** A custom plugin repository (an `updatePlugins.xml` URL in PhpStorm's settings),
-  so updates arrive without installing zips by hand; the JetBrains Marketplace once the repositories
-  are public (T1).
+  so updates arrive without installing zips by hand; the JetBrains Marketplace next, now that the
+  repositories are public (T15).
 - **The `.php`-beside-`.phn` case** from the vault: in the adoption layout without `phaenon.json`, a
   `FileTypeOverrider` hides from the project a `.php` that has a `.phn` sibling and a `@generated`
   header.
@@ -601,8 +605,8 @@ and code actions beyond a diagnostic's own fix.
 - **Not in M6: debugging.** vscode-php-debug's path mappings map directories and cannot change the
   file extension, the same problem PhpStorm had (`line-map.md` §1). Debugging would need a debug
   adapter in front of Xdebug's that maps positions through the line map, a piece of work of its own.
-- **Publication waits for the repositories to be public**, both to the VS Code Marketplace and to
-  Open VSX. Until then the extension ships as a `.vsix`.
+- **Publication** to the VS Code Marketplace and to Open VSX comes next, now that the repositories
+  are public (T15). Until then the extension ships as a `.vsix`.
 
 ### 6.4 `phn watch`
 
@@ -717,9 +721,10 @@ With these settlements:
 
 With these settlements:
 
-**The repository** is `phaenonlang/vscode`. It ships as a `.vsix` until the repositories are public
-(T1): 110 KB, the bundled client (esbuild) and the declarative files. It works on VS Code 1.91 and
-later, the floor of the client library `vscode-languageclient` 11.
+**The repository** is `phaenonlang/vscode`. It ships as a `.vsix` until it is on the marketplaces,
+which the public repositories now allow (T15): 110 KB, the bundled client (esbuild) and the
+declarative files. It works on VS Code 1.91 and later, the floor of the client library
+`vscode-languageclient` 11.
 
 **The grammar is PHP's plus injections.** `source.phaenon` includes VS Code's `source.php`, as the
 plugin's grammar did. PHP's rules misread every Phaenon addition: `fun` and `throws` are constants
@@ -883,8 +888,8 @@ Done in slice 2 (2026-11-03), with these settlements:
 **No separate action.** With the plugin, every project has `vendor/bin/phn` after `composer
 install`, so nothing else needs to install it.
 
-**Tequila's reusable workflows** (`operations-github-actions`: `php-ci-checks.yaml`,
-`php-ci-tests.yaml`) gain three steps for a project with a `phaenon.json`:
+**Tequila's reusable workflows**, the checks' and the tests', gain three steps for a project with a
+`phaenon.json`:
 - `phn check --format=github`;
 - `phn fmt --check`;
 - PHPStan and PHPUnit with their annotations passed through `phn trace`.
@@ -897,7 +902,7 @@ A `setup-phn` action waits until a project runs `phn` without Composer. **(Amend
 - **The base images need no change.** The binary arrives with `composer install`. It stays in
   BuildKit's Composer cache mount between builds only where the Dockerfile has one; the
   template's has none, so each image build downloads it once at the dump (about 9 MB from
-  phaenon.dev). The binary then ships in the image under `vendor/phaenon/phn/bin/`, which
+  the GitHub release). The binary then ships in the image under `vendor/phaenon/phn/bin/`, which
   follows from `require` (§3.1); whether a runtime stage drops it is still open.
 - **A service's Dockerfile** copies `phaenon.json` and the source roots before `dump-autoload`, which
   builds them. Its `.dockerignore` keeps local outputs out of the build context.
@@ -1485,19 +1490,18 @@ results:
 - `contracts/` stays PHP. The contracts-codegen workflow and the subtree split read it as PHP;
   revisit after M6.
 - `tequila/core` stays PHP on `main`, and services consume it as PHP.
-- `iam` is M7.
+- The services themselves are M7.
 
 **The proof.** A service born from the working tree (`bin/init` on a throwaway copy) passes:
 1. its suite, PHPStan and php-cs-fixer;
 2. its image build;
-3. a local deploy (OrbStack);
+3. a local deploy;
 4. an exception thrown in the running service that the Monolog processor logs at its `.phn` line.
 
-**Dependency:** Tequila's CI and the tenants install `phaenon/*` through Tequila's package registry
-and the binary from phaenon.dev (T1, §3.2). The registry serves a vendor from its operator's list
-(`config/satis.json` in the registry's repository): the three `phaenonlang` repositories enter it,
-and the platform's GitHub App must cover that organisation to read them. A maintainer's step,
-taken with the first release the template installs.
+**Dependency:** the template installs `phaenon/*` from Packagist and the binary from the GitHub
+release, as any project does (T15, §3.2). Until the packages are on Packagist its branch keeps
+path repositories, and the image build waits. *(Through Tequila's package registry and
+phaenon.dev under T1; superseded by T15.)*
 
 ## 11. Order
 
@@ -1510,7 +1514,7 @@ taken with the first release the template installs.
 | 5 | The VS Code extension |
 | 6 | Throw analysis (and unused private members, per Q8) |
 | 7 | `list-types` and `map-types`, measured on core and tq-cli (`pipes` came with D20) |
-| 8 | The template on `.phn`, `phaenon/*` installed through Tequila's registry |
+| 8 | The template on `.phn`, `phaenon/*` installed from Packagist (T15) |
 | 9 | The playground's entry point (§3.6), in the release the template installs |
 
 **Why this order:**
@@ -1539,17 +1543,19 @@ taken with the first release the template installs.
 ## 13. Open questions for the review
 
 1. *(T1)* **When do the `phaenonlang` repositories go public?** Packagist, release assets without tokens,
-   and the two editor marketplaces all need public repositories. Tequila's CI reads private GitHub
-   repositories only through an App token scoped to its `tequila-gha` mirror.
+   and the two editor marketplaces all need public repositories. Tequila's CI reads a private GitHub
+   repository only through a token scoped to the repositories it is granted.
    - (a) At M6's start.
    - (b) Before slice 8: slices 1–7 run privately, the dogfood trees use path repositories and
      Composer's GitHub token, and the repositories are published before the template, whose
      consumers include tenants' CI.
-   - (c) After M6, with `composer.tequila.dev` serving `phaenon/*` and the Tequila App granted the
+   - (c) After M6, with Tequila's package registry serving `phaenon/*` and its CI granted the
      `phaenonlang` repositories in the meantime.
 
    Recommendation: (b). Publication does not block the work, and the template should not teach
    tenants a private source.
+
+   *Answered by T1; superseded by T15 (2026-11-06): public now, `phaenon/*` on Packagist.*
 2. **D13's amendment.** Release assets pinned by checksum in `phaenon/phn` instead of a package per
    platform (§3.2). Recommendation: yes.
 3. **Where `phaenon/phn` lives.** The compiler repository's root (one tag, one version) or a
@@ -1575,7 +1581,7 @@ Reviewed 2026-11-03.
 
 | # | Decision | Why |
 |---|---|---|
-| T1 | **The repositories stay private until Tequila runs on Phaenon in production**. Until then `phaenon/*` reach Tequila and its tenants through Tequila's package registry, the binaries through a mirror it serves (§3.2), the PhpStorm plugin through a custom plugin repository, the VS Code extension as a `.vsix` | A language is ready for the public when products have been built and run in production on it, with features delivered on it continuously, not when it first compiles a codebase |
+| T1 | **The repositories stay private until Tequila runs on Phaenon in production** *(superseded by T15 on 2026-11-06)*. Until then `phaenon/*` reach Tequila and its tenants through Tequila's package registry, the binaries through a mirror it serves (§3.2), the PhpStorm plugin through a custom plugin repository, the VS Code extension as a `.vsix` | A language is ready for the public when products have been built and run in production on it, with features delivered on it continuously, not when it first compiles a codebase |
 | T2 | **D13 amended**: one package, `phaenon/phn`, with the binaries as release assets pinned by checksum in the package, fetched through Composer's HTTP client (§3.2) | Composer cannot pick a package by platform, and Packagist hosts no artefacts |
 | T3 | `phaenon/phn` is built from the compiler repository's root (§3.1) | one tag, one version, nothing to keep in step |
 | T4 | The plugin builds the root project at `dump-autoload` too, unless `extra.phaenon.build: false` (§3.3) | `composer install` yields a runnable project, as Composer's culture expects |
@@ -1589,3 +1595,4 @@ Reviewed 2026-11-03.
 | T12 | A method stage's receiver may be a property its class declares without hooks, when the inner calls do not assign it (§8.1); the 8.5 lowering keeps such a stage a pipe stage | `… \|> $this->output->writeln(...)` ends most of tq-cli's pipelines (92 of the 239 chains the order rule refused); that a method the inner calls run reassigns the property is the codemod's assumption, not the compiler's |
 | T13 | A stage takes the piped value only into its first parameter or into the data parameter of PHP's functions that take it last (§8.1) | a pipeline follows the data: `count($xs) \|> sprintf('%d items', ?)` and `actual \|> … \|> self::assertSame(expected, ?)` read worse than the calls |
 | T14 | **A `list-types` type is spelled only as deep as the code uses it**, the checker deciding what a use needs, with no depth cap and no class suggested (§8.2) | authors type what the code uses: on core, typed by hand, it brings 16 types back as written and none wider; a cap at two leaves its over-precise two-level types and gives tq-cli 101 findings; deep data such as a configuration tree needs neither a class nor a deep type |
+| T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |

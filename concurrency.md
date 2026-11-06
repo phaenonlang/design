@@ -36,13 +36,13 @@ What the dogfood codebase does today, read on 2026-11-01:
   `ManifestFlow` combines a `DeferredFuture`, a local HTTP server and a `TimeoutCancellation`
   by hand. `TestInfra` polls with `usleep()`, which would freeze the loop if it ever ran inside a
   fan-out.
-- **`tequila/nats` is synchronous by decision.** The ADR `nats-client-architecture` (2026-08)
+- **`tequila/nats` is synchronous by decision.** Its architecture decision record (2026-08)
   chose a sans-I/O core, non-blocking sockets with `stream_select` against a deadline, and an
   event-pumped `Connection` whose every call "returns or throws" — because Messenger, the
   change-stream streamers and a FrankenPHP request handler want exactly that, and because
   Fibers/Revolt would have brought "a runtime nobody else in core uses". The `Transport`
   interface is the seam it left for "a Fiber/Revolt-backed transport, a drop-in later".
-- **`core`, `iam` and the services** run on FrankenPHP worker mode and in Messenger workers;
+- **`core` and the services built on it** run on FrankenPHP worker mode and in Messenger workers;
   no Fibers, no amp.
 - **PHP 8.5 has Fibers and nothing above them**: no scheduler, no awaitable, no `async` in the
   language. Revolt is the event loop amp v3 and (through a bridge) ReactPHP share. Two loops in
@@ -498,5 +498,5 @@ table wins.
 | The `use` clause | The emitter captures by value what the body reads before writing and the scope defines before the block; by reference what the body assigns and the scope reads first after it; arrow-function parameters shadow | The first rule (everything mentioned, by reference) produced `&$path`, `&$repo` on loop variables in tq-cli; the refined one writes what a person writes |
 | The runtime's source | `phaenon/concurrent`'s `Scope` is written in Phaenon (`stdlib/concurrent/Scope.phn`, with a `concurrently` block inside) and compiled into the package; the compiler reads the same file as the API's declaration | The class is the first dogfood of its own syntax, and the declaration cannot drift from the code |
 | amp declarations | The compiler embeds the amp 3.1 and Revolt 1.0 signatures it relies on and loads them ahead of a project's vendor copy | The checker must know `Future<T>` in a project whose vendor directory is not installed yet; a missing method is a declaration to add |
-| `tequila/nats` | The connection has one socket reader at a time (the pump lease), and an opt-in reader task per connection is the lease with a permanent holder; `RevoltTransport` is a suggested dependency (tequila/nats#13, the ADR amended in tequila/platform#255) | C8 named a "single-reader change"; the lease keeps worker mode's "nothing runs between requests" by default, and the reader task serves long-running amp processes without a second code path |
+| `tequila/nats` | The connection has one socket reader at a time, and an opt-in reader task per connection is that reader made permanent; `RevoltTransport` is a suggested dependency (merged upstream, the client's ADR amended with it) | C8 named a "single-reader change"; one reader at a time keeps worker mode's "nothing runs between requests" by default, and the reader task serves long-running amp processes without a second code path |
 | Editor | The PhpStorm plugin approximates blocks at the token level: a statement block parses as a block, `spawn expr` as `expr`; the expression forms wait for a PSI element (M6) | The plugin erases Phaenon syntax in front of PhpStorm's parser; a block that yields a value has no PHP shape to erase to |

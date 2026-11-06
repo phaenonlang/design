@@ -40,7 +40,7 @@ prerequisite. The first real codebase is Tequila (~50 repos, Symfony, MongoDB, N
 ## 2. Repository layout
 
 ```
-~/labs/phaenon/
+<workspace>/
 ├── php-src/        reference clone of php/php-src — read-only (grammar, stubs, .phpt corpus)
 ├── design/         this directory → becomes repo phaenon/design (specs, decisions, RFC-style docs)
 ├── phaenon/        the compiler, Go — monorepo:
@@ -135,7 +135,7 @@ files behave identically (680 tests that observe line numbers are not run — se
   override-erasure for parameters and returns, reified → leading `string|\Phaenon\Type` parameter /
   `$__T` property / synthesised binding constructors, `is`/`as` lowering (native where PHP can),
   alias expansion. Golden test compiles `.phn` → `.php`, runs `php -l` and PHPStan level max.
-- ✅ `phaenon/runtime` (`~/labs/phaenon/runtime`, private `phaenonlang/runtime`): `\Phaenon\Type`
+- ✅ `phaenon/runtime` (`phaenonlang/runtime`): `\Phaenon\Type`
   with 12 PHPUnit tests and PHPStan max clean.
 - Found on the way: PHPStan reads one docblock tag per line, so generic declarations cost
   output lines (decision in `generics.md` §11); `Foo::class(...)` is not callable syntax, hence
@@ -177,7 +177,7 @@ files behave identically (680 tests that observe line numbers are not run — se
   `iterable` against `array|Traversable`, and conditional returns with defaults (`explode`,
   `microtime`, `array_shift`, `array_map`, `preg_replace`). The remaining 41 (39 in `src`) are
   PHPStan's level-9/10 findings on a level-8 library — `mixed` from Symfony config arrays and
-  untyped `array` parameters. Decided: the library went to level max on `main` (PR #45, merged
+  untyped `array` parameters. Decided: the library went to level max on `main` (merged
   2026-10-30); rebuilt on it, `phn check` reports **0 errors** after 13 more checker gaps went
   (`class_exists` proving a class-string, static-method asserts, constant-key paths, `?? null`
   narrowing, `array_key_first` on non-empty arrays, nested index assignment).
@@ -243,8 +243,8 @@ files behave identically (680 tests that observe line numbers are not run — se
   *Target:* `tq-cli` compiled from 859 `.phn` with its fifteen fan-outs as blocks — 2052 tests
   green on the output, PHPStan 10 and cs clean, `phn check` at 0 over `src` and `tests` (378 at
   the first build: checker gaps closed in three merges, real findings fixed in tq-cli);
-  `tequila/nats` with `RevoltTransport`, the pump lease and an opt-in reader task, 175 tests
-  against the server (tequila/nats#13, the ADR amended in tequila/platform#255). *Found on the
+  `tequila/nats` with `RevoltTransport`, one socket reader at a time and an opt-in reader task,
+  175 tests against the server (merged upstream, the client's ADR amended with it). *Found on the
   way:* `?(A, B)` did not parse; the first capture rule wrote `&$path` on loop variables; closure
   types gained `T...` and `T=` (`generics.md` §11.3); numeric string keys are int keys
   (`checker.md` §9); `.` joins two `bytes` (`strings.md` §6); the plugin's stubs went stale on
@@ -273,20 +273,20 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Design: `tooling.md` (reviewed 2026-11-03, decisions §14): `phaenon/phn` as one Composer package with
   the plugin and checksum-pinned binaries (amends D13), builds at `dump-autoload`, `phn fix`
   carrying the edits of PHP's rewriting tools back into the source, `phn fmt`, `phn lsp` for
-  PhpStorm's diagnostics and VS Code, CI formats; the order in its §11. The repositories stay private until Tequila runs on Phaenon
-  in production (T1).
+  PhpStorm's diagnostics and VS Code, CI formats; the order in its §11. The repositories went public
+  under MIT on 2026-11-06, `phaenon/*` on Packagist (T15, superseding T1's "private until Tequila
+  runs on Phaenon in production").
 - LSP server in the Go binary; VS Code + PhpStorm plugins; `phaenon fmt`; `phaenon migrate` v1
   (codemods: arrays → list/map where provable; *"string functions → methods" superseded by D20:
   no method syntax on values that are not objects, `pipes` instead*).
 - Composer plugin (D13: builds every installed package with a `phaenon.json` on install; *"`phn`
   pinned and shipped as a Composer package per platform" superseded by T2: one package with
-  checksum-pinned release binaries*); *"GitHub Action" and "Docker base image update in
-  `operations-container-images`" superseded by T10: CI formats plus Tequila's reusable
-  workflows, and no base-image change*.
+  checksum-pinned release binaries*); *"GitHub Action" and "Docker base image update"
+  superseded by T10: CI formats plus Tequila's reusable workflows, and no base-image change*.
 - Target: `php-service-template` ships `.phn` by default.
 
 ### M7 — Tequila on Phaenon
-- Service by service: `iam` first (largest, most representative), then the rest via the template.
+- Service by service: the largest, most representative one first, then the rest via the template.
 - Public: spec, playground (compile in the browser via WASM build of the Go compiler), docs site.
 
 ### Phase 3 (not planned) — native runtime
@@ -307,7 +307,7 @@ reusable; the backend is a separate decision then.
 
 ## 5. First steps (this week)
 
-1. `rm ~/labs/phaenon/php-src/go.mod` — the stray module file in the reference clone.
+1. Remove the stray `go.mod` from the reference clone of php-src.
 2. Write `design/language-overview.md` (scope; 2–3 pages).
 3. Bootstrap the `phaenon` Go module (`cmd/phn`); start the lexer from `Zend/zend_language_scanner.l` and
    the Pratt table from `zend_language_parser.y`.
