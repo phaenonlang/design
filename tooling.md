@@ -896,8 +896,8 @@ Done in slice 2 (2026-11-03), with these settlements:
 **No separate action.** With the plugin, every project has `vendor/bin/phn` after `composer
 install`, so nothing else needs to install it.
 
-**Tequila's reusable workflows**, the checks' and the tests', gain three steps for a project with a
-`phaenon.json`:
+**Tequila's reusable workflows**, the checks' and the tests', have three steps for a project with a
+`phaenon.json` (since 2026-11-07, each gated on the file; every other caller runs as before):
 - `phn check --format=github`;
 - `phn fmt --check`;
 - PHPStan and PHPUnit with their annotations passed through `phn trace`.
