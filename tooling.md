@@ -910,8 +910,14 @@ A `setup-phn` action waits until a project runs `phn` without Composer. **(Amend
 - **The base images need no change.** The binary arrives with `composer install`. It stays in
   BuildKit's Composer cache mount between builds only where the Dockerfile has one; the
   template's has none, so each image build downloads it once at the dump (about 9 MB from
-  the GitHub release). The binary then ships in the image under `vendor/phaenon/phn/bin/`, which
-  follows from `require` (§3.1); whether a runtime stage drops it is still open.
+  the GitHub release). The binary lands under `vendor/phaenon/phn/bin/`, which follows from
+  `require` (§3.1), and the vendor stage keeps it: the stage is also the `<service>-src` image in
+  which a composition build runs Composer, and the plugin compiles again at that dump. **The
+  runtime images drop it** (since 2026-11-07): nothing in a running pod calls the compiler, the
+  line maps are read by `phaenon/runtime`, plain PHP, so an intermediate stage removes the file
+  and the api and worker stages copy that tree, several MB fewer per pull and one executable fewer
+  for a scanner to ask about. A stage of its own, because a file deleted after a `COPY` stays in
+  the copied layer.
 - **A service's Dockerfile** copies `phaenon.json` and the source roots before `dump-autoload`, which
   builds them. Its `.dockerignore` keeps local outputs out of the build context.
 - **The image ships the `.phn` beside the outputs.** The Sentry integration reads its context lines
