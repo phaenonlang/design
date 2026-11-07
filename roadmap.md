@@ -268,7 +268,7 @@ files behave identically (680 tests that observe line numbers are not run — se
   - `stdlib/constants.php` regenerated from the released build;
   - the conformance suites run once more against it.
 
-### M6 — Tooling and distribution
+### M6 — Tooling and distribution — ✅ done 2026-11-07
 - Before the first slice: D20, the method syntax removed and `phn migrate` writing pipes.
 - Design: `tooling.md` (reviewed 2026-11-03, decisions §14): `phaenon/phn` as one Composer package with
   the plugin and checksum-pinned binaries (amends D13), builds at `dump-autoload`, `phn fix`
@@ -283,7 +283,8 @@ files behave identically (680 tests that observe line numbers are not run — se
   pinned and shipped as a Composer package per platform" superseded by T2: one package with
   checksum-pinned release binaries*); *"GitHub Action" and "Docker base image update"
   superseded by T10: CI formats plus Tequila's reusable workflows, and no base-image change*.
-- Target: `php-service-template` ships `.phn` by default.
+- Target: `php-service-template` ships `.phn` by default — met 2026-11-07 (its release 0.9.0; the
+  four-step proof of `tooling.md` §10 passed on a service born from it).
 
 ### M7 — Tequila on Phaenon
 - Service by service: the largest, most representative one first, then the rest via the template.
