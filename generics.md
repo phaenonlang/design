@@ -178,7 +178,8 @@ Local, bidirectional, no global Hindley–Milner:
    `$c: Collection<User> = Collection::empty();` infers `T = User` from the declared variable type,
    return type, or parameter type at the use site.
 3. **From the bound / default** when nothing else constrains T.
-4. Otherwise: for erased T, infer `mixed` with warning `P2xxx: type argument not inferable`;
+4. Otherwise: for erased T, infer `mixed` with warning `P3010: type argument not inferable`
+   (built 2026-11-07, §11);
    for reified T, **error** — an explicit argument is required (a runtime value must exist).
 
 Closure arguments are checked *after* the other arguments are unified (TS's "deferred" closures),
@@ -696,11 +697,13 @@ kept as written; this section wins where they differ.
 | Inheritance | A child method without docblock types inherits the parent's **effective** type when its own native type equals the parent's erasure (`string $x` under `class-string<T> $x`), through `@extends`/`implements` substitution. | PHPStan's implicit `@inheritDoc` applies to the lifted syntax as it did to docblocks; `CachedReflector::reflect(string)` keeps `class-string<ClassType>`. |
 | Promoted properties | A method-level `@template` that a promoted parameter's type mentions stays in the docblock (with its `@param`), noted as "make it a class type parameter". | A property cannot carry a method type parameter; whether the class should become generic is a design decision per class, not a mechanical one. |
 | CLI | `phn migrate` takes `.php` (strip + lift) and `.phn` (lift only, rewritten in place when changed); `--keep-docblocks` is the mechanical v0. Notes print as `file:line: kept @tag …`. | One command for new and already-migrated projects. |
+| **`P3010`: a type argument nothing determines** (2026-11-07) | A warning at a call whose callee has a type parameter in its return type that no argument, no closure, no explicit argument and no expected type determined, and that has no bound to fall back on: the result is typed `mixed` from there (`$b = emptyBox();`, `first([])`). Silent when an argument the checker could not read is the reason, reported where it is if at all: a `mixed` or an unknown, a `never` (an unreachable branch), a generic class written without its arguments, or a callable parameter given anything but a closure with a signature (`[$this, 'method']`, a string) or given a closure that returns nothing (`run(fn() => $this->log())`, whose result is not used). | PHPStan is silent and infers `mixed`, which then flows through the program unchecked; the warning names the one place a declared type fixes it. The silences keep it honest on the dogfood: with them the four Tequila trees (core, mongodb-odm, object-mapper, reflector) report none, without them core reported 25 void closures passed to `run()` and mongodb-odm two `iterator_to_array()` of an unreachable branch. |
 
-Still open after M3: `--runtime-guards` (§6), monomorphisation (§7), hoisting descriptors out
-of hot paths (`static $__t ??= …`), and a `P3010`-style warning for an erased parameter that
-nothing constrains (§3.4 item 4) — PHPStan is silent there, so the checker is too for now. The
-Symfony DI warning of §5.4 went with `reified` (§11.2).
+Still open after M3: `--runtime-guards` (§6), monomorphisation (§7) and hoisting descriptors out
+of hot paths (`static $__t ??= …`). The `P3010` warning for an erased parameter that nothing
+constrains (§3.4 item 4) is built (2026-11-07, the last row above). The Symfony DI warning of §5.4 went with
+`reified` (§11.2).
+
 
 ### 11.2 `class<T>`, and the end of `reified` (2026-10-29)
 
