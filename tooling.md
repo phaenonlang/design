@@ -1506,6 +1506,10 @@ results:
 3. a local deploy;
 4. an exception thrown in the running service that the Monolog processor logs at its `.phn` line.
 
+Met on 2026-11-07: a service born from the branch's working tree passed the four on a local
+Kubernetes estate (the api and worker images from the committed Dockerfile; the deployed worker's
+record names `Greeting.phn:30`).
+
 **Dependency:** the template installs `phaenon/*` from Packagist and the binary from the GitHub
 release, as any project does (T15, §3.2). Its branch kept path repositories onto the sibling
 checkouts until the packages were on Packagist (v0.2.0, 2026-11-06), and moved to them on
