@@ -253,6 +253,12 @@ mean, so that the emitter can write PHP's own `is` once it exists. A Phaenon-onl
 shapes) keeps lowering to `\Phaenon\Type`. When PHP's proposal is voted, it is weighed here
 against this section.
 
+*Amended 2026-11-09 (roadmap D26): Phaenon has no `is` of its own any more, so there is nothing
+to keep compatible. `is` is a name again, deprecated as PHP 8.6 deprecates it (§9). When a PHP
+release ships `$x is <pattern>`, the construct is Phaenon's from that release with PHP's meaning
+(§1), and the checker narrows through it as through the tests it stands for; it is weighed here
+when the proposal is voted, as any PHP addition is.*
+
 ## 9. Decisions made while building PHP 8.6
 
 | Topic | Decision | Why |
@@ -283,7 +289,8 @@ against this section.
 | Library deprecations (2026-11-02) | Read from `#[\Deprecated]` (stubs and code) as well as `@deprecated`, on functions, methods, constants, class constants and enum cases; a stub's attribute holds when the overlay retypes the declaration; `P4006` takes PHP's wording: "function is_double() is deprecated since 8.6, use is_float() instead" | The stubs' 196 attributes went unread, so no library deprecation was reported; PHP's own message is the one a developer will meet in logs |
 | The language deprecations' code (2026-11-02) | One code, `P1101` (warning), in a new group P11xx for constructs PHP deprecates; a message per construct; reported whatever the target, behind `--no-deprecations` | Deprecated constructs are removals announced, the syntax family's matter; one code for the family, as `P4006` is one for the library |
 | Lines of the deprecations (2026-11-02) | PHP's, except a generator constructor or destructor: reported on each `yield`, where PHPStan reports it, not on the method's line where PHP does | The `yield` is what makes the method a generator, and the line PHPStan flags must carry the diagnostic |
-| `is` as a name (2026-11-02) | Reported only where it reaches PHP as a string, through `define()` and `class_alias()`; `let` everywhere | Phaenon parses `is` as the type test (§8), so declaring or importing a name `is` is already a syntax error |
+| `is` as a name (2026-11-02) | *(Superseded by the next row, 2026-11-09.)* Reported only where it reaches PHP as a string, through `define()` and `class_alias()`; `let` everywhere | Phaenon parses `is` as the type test (§8), so declaring or importing a name `is` is already a syntax error |
+| `is` as a name (2026-11-09) | Reported everywhere, as `let` is: a class, interface, trait, enum, function or constant named `is`, and an alias in `use` or `class_alias()`, is `P1101` | Roadmap D26 withdrew the type test, so `is` is an identifier again and the declarations PHP 8.6 deprecates compile; the deprecation is reported whatever the target (D17) |
 | `is_a()` with a class name (2026-11-02) | `P1101` when the first argument's type admits a string (mixed aside) and `$allow_string` is false or, for `is_a()`, omitted | `is_a()`'s default is false; PHP 8.6 raises the deprecation when a string reaches it, `is_a('K', K::class)` included |
 | Comparing two `Time\Duration` (2026-11-02) | No overlay: the checker admitted comparisons of objects already, as PHP (through the class's handler) and PHPStan do. What it lacked was an object compared with an int or a float, now `P2301` (GMP and `BcMath\Number` aside), in conditions as elsewhere | §6 assumed object comparisons were refused. PHP converts the object to a number with a Notice, and PHPStan reports it (`smaller.invalid`, `equal.invalid`, `spaceship.invalid`) |
 | The rest of the 8.6 library (2026-11-02) | Overlay types for `clamp<T>(T, T, T): T` and for the event lists of `Io\Poll\Context::add()` and `Watcher::modify*()`, `non-empty-array<Event>`; the rest is typed by its stubs | `clamp()` returns one of its arguments unchanged (`clamp(1.5, 0, 1)` is the int `1`); PHP 8.6 throws a TypeError for any other events array, the empty one included |
