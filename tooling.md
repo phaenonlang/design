@@ -240,8 +240,9 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
 
 ### 3.4 Versions
 
-*Amended by T16 (2026-11-08): `phaenon/phn` requires nothing; `phaenon/debug` is suggested, in
-lockstep; `P4013` and `P4014` are retired.*
+*Amended by T16 (2026-11-08): `phaenon/phn` requires nothing and conflicts with `phaenon/runtime`;
+`phaenon/debug` is suggested without a pin, the line-map format being `v1`; `P4013` and `P4014` are
+retired.*
 
 - **Lockstep until 1.0.** `phaenon/phn` X.Y.Z requires `phaenon/runtime` X.Y.* and suggests
   `phaenon/concurrent` X.Y.*, and `phn stdlib` regenerates both from the same tag. One compiler
@@ -1618,4 +1619,4 @@ Reviewed 2026-11-03.
 | T13 | A stage takes the piped value only into its first parameter or into the data parameter of PHP's functions that take it last (§8.1) | a pipeline follows the data: `count($xs) \|> sprintf('%d items', ?)` and `actual \|> … \|> self::assertSame(expected, ?)` read worse than the calls |
 | T14 | **A `list-types` type is spelled only as deep as the code uses it**, the checker deciding what a use needs, with no depth cap and no class suggested (§8.2) | authors type what the code uses: on core, typed by hand, it brings 16 types back as written and none wider; a cap at two leaves its over-precise two-level types and gives tq-cli 101 findings; deep data such as a configuration tree needs neither a class nor a deep type |
 | T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |
-| T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin and versioned in lockstep still, since it reads the line map the compiler writes; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
+| T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
