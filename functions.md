@@ -104,7 +104,9 @@ function title()` → `title()`, `final public static function create()` → `fi
 create()`, `protected function apply()` → `protected apply()`. `--keep-public` keeps `public`.
 A method named as §1.1 lists keeps `function`, and so does a function outside a class. Re-running
 on a `.phn` is a no-op. A tree migrated before 2026-11-09 holds `fun`, which `phn fmt` rewrites:
-dropped before a method's name, `function` where §1.1 requires the keyword (`tooling.md` §5.6).
+dropped before a method's name, `function` where §1.1 requires the keyword. `phn fmt` also lifts
+`function` off a method written the PHP way, wherever §1.1 allows it, and leaves the modifiers as
+written, so a tree has one spelling (`tooling.md` §5.6).
 
 ### 1.4 Why
 
@@ -122,7 +124,8 @@ dropped before a method's name, `function` where §1.1 requires the keyword (`to
 - A function keeps PHP's keyword: at statement level a bare name and parentheses are a call, and
   a reader should not have to find the brace to tell the two apart.
 - Keeping `function` valid on methods is not a second way to write the same thing by choice but
-  the compatibility contract: every PHP file is a Phaenon file, and `phn migrate` moves it over.
+  the compatibility contract: every PHP file is a Phaenon file, and `phn migrate` or `phn fmt`
+  moves it over.
 
 ### 1.5 `fun` (2026-11-01 – 2026-11-09)
 

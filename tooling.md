@@ -474,7 +474,8 @@ with D25 (2026-11-08).*
 
 This layer changes whitespace only, plus the brace and `{}` forms, which are layout too. Turning a
 block into `=> expr` stays `phn migrate`'s job, because it changes the code. *Since 2026-11-09 it
-also rewrites the spellings D26 and D27 withdrew, the one change of code it makes (§5.6).*
+also rewrites the spellings D26 and D27 withdrew and lifts `function` off methods, the changes of
+code it makes (§5.6).*
 
 PhpStorm's Reformat Code writes this same layer (the plugin's formatter), and the two share their
 golden files.
@@ -550,7 +551,7 @@ With these settlements:
   comments? The fixers move and respace comments, and every one of them would be looking at code
   that is not the code. On the compiled output, their assumptions hold.
 
-### 5.6 The withdrawn spellings (2026-11-09)
+### 5.6 The rewritten spellings (2026-11-09)
 
 Roadmap D26 and D27 withdrew `is`, `as`, `as?` and `fun`, and the trees migrated before them hold
 those spellings: `fun` heads about 10,000 declarations in the six dogfood trees, 3,414 in core.
@@ -561,6 +562,13 @@ emitter wrote for it.
   `static create(`, `protected fun apply(` → `protected apply(` — and becomes `function` where
   `functions.md` §1.1 requires the keyword: before a function outside a class, and before a
   method named after a modifier, `const`, `Closure`, `function` or `fn`.
+- **`function` on a method** is lifted the same way, wherever the grammar allows it: `public
+  function title(` → `public title(`, `final public static function create(` → `final public
+  static create(`. The names that require the keyword keep it, and so does a function outside a
+  class. The modifiers stay as written: dropping a sole `public` is `phn migrate`'s, with its
+  `--keep-public`, and the first layer has no options. `function` is not withdrawn and stays valid
+  input everywhere (D27); the rewrite gives a tree one spelling, and a PHP file dropped into a
+  Phaenon tree reads as Phaenon after its first format, as a tree that held `fun` does.
 - **`is`, `as` and `as?`** become the PHP test each one compiled to, the table of `generics.md`
   §11.4:
 
@@ -1670,4 +1678,4 @@ Reviewed 2026-11-03.
 | T14 | **A `list-types` type is spelled only as deep as the code uses it**, the checker deciding what a use needs, with no depth cap and no class suggested (§8.2) | authors type what the code uses: on core, typed by hand, it brings 16 types back as written and none wider; a cap at two leaves its over-precise two-level types and gives tq-cli 101 findings; deep data such as a configuration tree needs neither a class nor a deep type |
 | T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |
 | T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
-| T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, and each leftover `is`, `as` and `as?` to the PHP test it compiled to, reporting `P1001` only where none exists (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has exactly one PHP form, the one the emitter wrote |
+| T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, lifts `function` off every method the grammar allows (modifiers as written), and rewrites each leftover `is`, `as` and `as?` to the PHP test it compiled to, reporting `P1001` only where none exists (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has exactly one PHP form, the one the emitter wrote. Lifting `function` too gives a tree one spelling of a method, and makes a PHP file copied into a Phaenon tree idiomatic on its first format |
