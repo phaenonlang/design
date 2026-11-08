@@ -109,7 +109,8 @@ transport (§9.3) rather than a rewrite.
 ### 4.1 `concurrently { … }`
 
 ```php
-fun profile(UserId $id): Profile
+// in a class body
+profile(UserId $id): Profile
 {
     return concurrently {
         $user = spawn $this->users->find($id);           // Future<User>
@@ -335,17 +336,17 @@ says so when it is missing (§7).
 final class Scope
 {
     /** @template R  @param Closure(): R $body  @return R */
-    static fun run(Closure $body, float|int|null $timeout = null, ?Cancellation $cancellation = null): mixed;
+    static run(Closure $body, float|int|null $timeout = null, ?Cancellation $cancellation = null): mixed;
     /** @template T  @param Closure(): T $task  @return Future<T> */
-    static fun spawn(Closure $task): Future;
+    static spawn(Closure $task): Future;
     /** @template K of array-key  @template T  @param iterable<K, Future<T>> $tasks  @return array<K, T> */
-    static fun all(iterable $tasks): array;
+    static all(iterable $tasks): array;
     /** @template K of array-key  @template T  @template R  @param iterable<K, T> $items  @param Closure(T): R $task  @return array<K, R> */
-    static fun map(iterable $items, Closure $task): array;
-    static fun cancellation(): Cancellation;
-    static fun sleep(float $seconds): void;
-    static fun checkpoint(): void;
-    static fun cancelled(): bool;
+    static map(iterable $items, Closure $task): array;
+    static cancellation(): Cancellation;
+    static sleep(float $seconds): void;
+    static checkpoint(): void;
+    static cancelled(): bool;
 }
 ```
 
@@ -415,10 +416,10 @@ dogfood (§12) does them.
 ## 11. Editor
 
 PhpStorm's parser knows neither keyword, and the plugin's lexer-level technique (`fun` →
-`function`) cannot add the closing `})`. A workable approximation for M5: the lexer turns
-`concurrently` and its option list into a comment token, so the braces parse as a bare statement
-group, and `spawn` into a comment, so `$user = $this->users->find($id)` is typed `User` — wrong
-by a `Future<>`, navigable and completable. The expression form (`return concurrently {`) stays
+`function`, as it was then) cannot add the closing `})`. A workable approximation for M5: the
+lexer turns `concurrently` and its option list into a comment token, so the braces parse as a
+bare statement group, and `spawn` into a comment, so `$user = $this->users->find($id)` is typed
+`User` — wrong by a `Future<>`, navigable and completable. The expression form (`return concurrently {`) stays
 a syntax error in the editor until a PSI-level block exists (M6, with the LSP). The plugin's
 limitations list gets the entry.
 

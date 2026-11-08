@@ -88,8 +88,10 @@ Decisions proposed with the table:
     reported `missingType.iterableValue` on the output of a source `phn check` had passed. The
     emitted PHP must pass level max.
   - Passing an `array<mixed>` where a `list<T>` or `map<string, V>` is expected is an error, as
-    PHPStan reports it at level 7+. Narrowing is `is_list()`-style guards, a shape docblock, or
-    `as` (`$config as map<string, mixed>`, a runtime check through `\Phaenon\Type`).
+    PHPStan reports it at level 7+. Narrowing is PHP's tests (`is_array()`, `array_is_list()`), a
+    shape docblock, a `@var` tag, or a guard function with `@phpstan-assert` (2026-11-09, roadmap
+    D26; until 2026-11-08 also `as`, `$config as map<string, mixed>`, a runtime check through
+    `\Phaenon\Type`).
 - **`array<V>` is the spelling of "an array of `V`, list or keyed"** (2026-11-05). It is the type
   `map<int|string, V>`, which includes every list since `list<T> <: map<int, T>`; but `map` reads
   as a dictionary, and the point of this spelling is that the keys do not matter. It is PHPStan's
@@ -156,6 +158,10 @@ It is spelled with parentheses in any type position (`list<(string, int)>`, `(Us
 shape `array{0: A, 1: B}`, which the checker already has, so `zip`, `toList` and every PHP API
 that returns a pair-shaped array interoperate without conversion. A tuple is at least two
 elements long; `(A)` is a parenthesised type.
+
+*A type only (2026-11-09, roadmap D26).* Nothing tests a tuple at runtime: a value is a tuple
+because the code that built it says so, as in PHP, and a test the programmer writes out
+(`count($pair) === 2`, `is_int($pair[0])`) narrows as PHPStan narrows it.
 
 ## 3. The stdlib: `\Phaenon\Seq` and `\Phaenon\Map`
 
@@ -330,6 +336,7 @@ So `@param array{name: string, age?: int} $row` stays the way to write one, read
 | A bare `array` (2026-11-05) | names no element type: an override inherits its parent's, anywhere else in `.phn` it is `P2516`. Supersedes "deliberate and fine" | the output failed PHPStan max on sources `phn check` passed (§2) |
 | Shapes (2026-11-05) | docblock vocabulary, no native syntax | a fixed-key structure that deserves a type is a class; a shape documents an ad-hoc array (§6) |
 | Phaenon types in `.phn` docblocks (2026-11-05) | translated for PHPStan by the emitter; the docblock parser reads tuples | the docblock is where shapes live (§4) |
+| Tuples at runtime (2026-11-09) | a type only, with no runtime test; the tuple test of `is` (`generics.md` §11.4) went with the operator (roadmap D26) | the shape of a value at runtime is the programmer's code, as in PHP; a tuple's members are fixed by the type, which is what the checker needs |
 
 ## 8. Checker and emitter work (once reviewed)
 

@@ -32,8 +32,15 @@ PHP.*
   programmer did not write (roadmap D9, `generics.md` §11.2).
 - **The compiled output depends on nothing but PHP** (roadmap D24, 2026-11-08). No class,
   function or package the programmer did not write appears in it; a team can adopt the compiled
-  tree as its source any day. `is` and `as` compile to PHP's own tests and exist only where PHP
-  has one in O(1) (D23).
+  tree as its source any day.
+- **Types, not operators** (roadmap D26, 2026-11-09). What a line does at run time is written as
+  PHP writes it, wherever PHP has a settled way: Phaenon never adds an operation or a runtime
+  behaviour PHP lacks. What it adds changes nothing that runs: types, which are erased (the
+  `(bytes)` retyping among them), and the spelling of declarations (no `<?php`, expression
+  bodies, methods without a keyword), each a keyword or a brace away from the PHP the emitter
+  writes. A type test is PHP's own (`is_string($x)`, `$x instanceof Foo`), and a PHP developer
+  reading a `.phn` knows what every line does. (From 2026-11-08 until then `is` and `as`
+  compiled to those tests, D23.)
 
 ## 3. Removed from PHP
 
@@ -54,7 +61,9 @@ emitted PHP never contains them.
 ## 4. Kept from PHP (deliberately)
 
 `$variables` · classes, interfaces, traits, enums, readonly, property hooks, asymmetric visibility ·
-attributes · closures and arrow functions (`fun` is the spelling of a *named* function, `functions.md`) · `match` · named arguments · union/intersection/DNF
+attributes · closures and arrow functions · `function` for named functions (a method is declared
+without a keyword, `functions.md`, roadmap D27) · type tests (`instanceof`, `is_*()`; the only
+ones since D26) · `match` · named arguments · union/intersection/DNF
 types · class names as strings (`Foo::class`, typed `class<T>`) · exceptions · generators ·
 Fibers (as the concurrency substrate; since D25, 2026-11-08, as PHP has them, no more) · the request-cycle execution model · Composer · Symfony ·
 PHPStan vocabulary (read from docblocks, not written as syntax).
@@ -64,12 +73,12 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | Feature | Doc | Milestone |
 |---|---|---|
 | Type checker: inference, narrowing, flow analysis, diagnostics | `checker.md` (pending) | M2 |
-| Generics: `<T>`, bounds, variance, erased; `class<T>` as the type of `T::class`; `is`/`as` | `generics.md` | M3 |
+| Generics: `<T>`, bounds, variance, erased; `class<T>` as the type of `T::class`; `is`/`as` *(withdrawn 2026-11-09, D26: PHP's tests)* | `generics.md` | M3 |
 | `type` aliases | `generics.md` §2.1 | M3 |
 | `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (reviewed 2026-10-30) | M4 |
 | String/`bytes` split; method syntax on primitives removed by D20 (pipes with partial application instead) | `strings.md` (reviewed 2026-10-30), `roadmap.md` D20 | M4 |
 | `phaenon/runtime`: what compiled code calls (`Type`, `Debug`) and `Bytes`' conversions; `Seq`, `Map`, `Str` removed by D20. *2026-11-08, D24: `Type` and `Bytes` removed too; `Debug` is the opt-in `phaenon/debug`, and compiled code calls nothing* | `collections.md` §3, `strings.md` §4, `roadmap.md` D20 | M4 |
-| `fun` for named functions and methods (absent visibility is `public`); closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4 |
+| Methods without a keyword, `title(): string => …` (D27, 2026-11-09; written `fun` from 2026-11-01 until then); absent visibility is `public`; closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4; respelled in *Reads as PHP* |
 | Structured concurrency: `concurrently { }` blocks and `spawn` over amp v3 / Revolt, `Future<T>` handles, no function colouring. *Withdrawn 2026-11-08, D25: not in the language until PHP core has a scheduler* | `concurrency.md` (reviewed 2026-11-01, withdrawn §17) | M5 |
 | Tooling: `phn build/check/watch/fmt/migrate/lsp`, the Composer plugin, editors, CI | `tooling.md` (reviewed 2026-11-03) | M1, M6 |
 

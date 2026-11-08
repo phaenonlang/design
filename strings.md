@@ -7,7 +7,8 @@ overlay, `(bytes)`, `.` on `bytes`, `P2530` and `P2305` stand. `\Phaenon\Bytes` 
 conversions — `text()`, `textLossy()`, `fromHex()`, `fromBase64()`, `hex()`, `base64()` — and the
 rest is PHP's functions, which the overlay types for `bytes` (`strlen`, `substr`, `ord`,
 `hash_equals`). Text by code points is `mb_*`; graphemes are `grapheme_*` or symfony/string's
-`UnicodeString`.
+`UnicodeString`. *Amended 2026-11-08 and 2026-11-09 (roadmap D24, D26): `\Phaenon\Bytes` is gone,
+and the checked conversion is PHP's own `mb_check_encoding()` (§6).*
 Roadmap D5 decided the mechanism (method-call syntax on primitives compiles to static calls,
 strings stay primitive); this document fills in what the methods are, what `bytes` is, and where
 Unicode draws its lines.
@@ -53,10 +54,12 @@ reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\P
   Converting is explicit and free at runtime: `$text->bytes()` (`Str::bytes`, the identity)
   and `$data->text()` (`Bytes::text`, which **checks** UTF-8 validity and throws
   `\ValueError` otherwise — the one place a conversion costs a scan).
-  *Since 2026-11-08 (§6, roadmap D24) the checked conversion is `$data as string`, lowered to
-  `mb_check_encoding`, and `$data is string` narrows a `bytes` operand to `string&bytes` in its
-  then-branch: a value that is both, accepted as either, and `bytes` again where that branch
-  meets the untested value. `Str` went with D20, `Bytes` with D24.*
+  *Since 2026-11-09 (§6, roadmap D26) the checked conversion is PHP's own test,
+  `mb_check_encoding($data, 'UTF-8') ? $data : throw new \ValueError('not valid UTF-8')`:
+  `mb_check_encoding()` narrows a `bytes` operand to `string&bytes` in its then-branch, a value
+  that is both, accepted as either, and `bytes` again where that branch meets the untested value.
+  From 2026-11-08 until then it was spelled `$data as string` and `$data is string` (D24). `Str`
+  went with D20, `Bytes` with D24.*
 - A string **literal** is `string`. There is no bytes literal: **`(bytes) $raw` retypes a
   string as binary data**, free at runtime (the cast disappears from the output), and is how
   binary that PHP hands over in a `string` enters the type; `Bytes::fromHex('0001')` /
@@ -100,8 +103,8 @@ API's O(n × intl); and it is what `mb_*` already does in every Tequila string f
 
 ## 4. The API: `\Phaenon\Str` and `\Phaenon\Bytes`
 
-*`Str` went with D20 (2026-11-03); `Bytes` with D24 (2026-11-08, §6): `$b as string` is the checked
-conversion, PHP's functions are the rest.*
+*`Str` went with D20 (2026-11-03); `Bytes` with D24 (2026-11-08, §6): the checked conversion is
+`mb_check_encoding()` (D26, 2026-11-09; `$b as string` until then), PHP's functions are the rest.*
 
 Written in Phaenon (`stdlib/runtime/Str.phn`, `Bytes.phn`), read by the compiler as its own
 declaration and compiled into `phaenon/runtime` (as for `Seq` and `Map`, collections.md §3).
@@ -212,8 +215,8 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | `$bytes === $string` | `P2305` although both are PHP strings | the comparison is a type confusion even when it is true at runtime |
 | `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `strcmp`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
 | `.` and `.=` on `bytes` (2026-11-01) | `bytes . bytes` is `bytes`; `.=` with a `bytes` operand keeps a `bytes` variable, array element or property `bytes`. `bytes . string` and `string . bytes` stay `P2530`, interpolation stays text-only, a string literal is still `string` (a binary buffer starts from `(bytes) ''`) | PHP's `.` is byte concatenation already, so the operator erases unchanged; what the type exists to catch is binary mixed into text, not binary joined to binary. Without it, every builder of frames, archives or zip entries became a `list<bytes>` and `Bytes::concat()` (tq-cli's dogfood). Python draws the same line: `b'a' + b'b'` works, `b'a' + 'a'` is a `TypeError` |
-
-| `\Phaenon\Bytes` (2026-11-08) | Removed (roadmap D24, generics.md §11.4). The checked conversion to text is `$b as string` on a `bytes` operand: `\mb_check_encoding($b, 'UTF-8') ? $b : throw new \ValueError('not valid UTF-8')`, `as?` gives `null`, `is string` the test alone, under the operand rule of §11.4; `(string) $b` stays the unchecked mirror. In the then-branch of `is string` the operand is `string&bytes`, the intersection: a subtype of both, accepted wherever either is, printed so in messages and erased to `string`; the join with the untested value is `bytes` by plain subtyping, and an assignment ends it as any assignment does. An `as` whose operand can fail in two ways (`?bytes`, a tuple with a `bytes` member) throws one `\TypeError` naming what was expected, "with valid UTF-8" included; `\ValueError` is thrown only where the encoding is the sole way to fail. On a `string\|bytes` operand the test is `P3011`: PHP cannot tell them apart. The other methods are PHP's own functions, typed for `bytes` by the overlay: `hex2bin()` returns `bytes\|false`; `base64_decode()` keeps PHP's `string\|false`, since base64 carries JSON, PEM and secrets as often as binary (typed `bytes` it put `as string` on six sites in core and 28 in tq-cli), and `(bytes) base64_decode(…)` retypes the binary case; `bin2hex()`, `base64_encode()`, `mb_scrub()` (the lossy conversion), `hash_equals()`, `strlen()`, `substr()`, `\ord($b[$i])`, `.`. | A compiler-written call into a package the programmer did not choose is what D24 ends, and every method was a one-line wrapper. The test a `bytes` value needs before it is text is a runtime type test, which is what `as` means. `mb_check_encoding` over `preg_match('//u')`: 11 against 66–82 ns on a 12 KB string under PHP 8.5, which caches a string's validity, and it is the idiom PHP developers know; `ext-mbstring` is the one extension the lowering assumes, and Symfony's polyfill provides it where it is missing. |
+| `\Phaenon\Bytes` (2026-11-08) | *(The `is` / `as` spelling is superseded by the next row, 2026-11-09.)* Removed (roadmap D24, generics.md §11.4). The checked conversion to text is `$b as string` on a `bytes` operand: `\mb_check_encoding($b, 'UTF-8') ? $b : throw new \ValueError('not valid UTF-8')`, `as?` gives `null`, `is string` the test alone, under the operand rule of §11.4; `(string) $b` stays the unchecked mirror. In the then-branch of `is string` the operand is `string&bytes`, the intersection: a subtype of both, accepted wherever either is, printed so in messages and erased to `string`; the join with the untested value is `bytes` by plain subtyping, and an assignment ends it as any assignment does. An `as` whose operand can fail in two ways (`?bytes`, a tuple with a `bytes` member) throws one `\TypeError` naming what was expected, "with valid UTF-8" included; `\ValueError` is thrown only where the encoding is the sole way to fail. On a `string\|bytes` operand the test is `P3011`: PHP cannot tell them apart. The other methods are PHP's own functions, typed for `bytes` by the overlay: `hex2bin()` returns `bytes\|false`; `base64_decode()` keeps PHP's `string\|false`, since base64 carries JSON, PEM and secrets as often as binary (typed `bytes` it put `as string` on six sites in core and 28 in tq-cli), and `(bytes) base64_decode(…)` retypes the binary case; `bin2hex()`, `base64_encode()`, `mb_scrub()` (the lossy conversion), `hash_equals()`, `strlen()`, `substr()`, `\ord($b[$i])`, `.`. | A compiler-written call into a package the programmer did not choose is what D24 ends, and every method was a one-line wrapper. The test a `bytes` value needs before it is text is a runtime type test, which is what `as` means. `mb_check_encoding` over `preg_match('//u')`: 11 against 66–82 ns on a 12 KB string under PHP 8.5, which caches a string's validity, and it is the idiom PHP developers know; `ext-mbstring` is the one extension the lowering assumes, and Symfony's polyfill provides it where it is missing. |
+| The checked conversion to text (2026-11-09) | PHP's own test (roadmap D26, generics.md §11.5): `mb_check_encoding($b, 'UTF-8')` narrows a `bytes` operand to `string&bytes` in its then-branch, the intersection of the row above, and leaves it `bytes` in the else-branch. The idiom is `mb_check_encoding($b, 'UTF-8') ? $b : throw new \ValueError('not valid UTF-8')`, typed `string&bytes`; `… ? $b : null` is the nullable form, and `mb_scrub()` stays the lossy one. The encoding is a literal naming UTF-8 (`'UTF-8'`, in any case); any other argument narrows nothing. On a `string\|bytes` operand the then-branch is `string`. The compiler writes nothing of its own: `ext-mbstring` is needed where the source calls it, as for any `mb_*` function. `base64_decode()`, `hex2bin()` and `(string) $b` stay as the row above has them. | `as string` was a second spelling of this ternary. `mb_check_encoding()` is what PHP developers write to validate UTF-8, and what the lowering wrote; the row above measured it against `preg_match('//u')`. A `bytes` value becoming text is a type the checker learns from a test, as `is_int()` teaches it `int`, so all it needs is this one reading of a PHP call. |
 
 ## 7. Checker and emitter work (once reviewed)
 
