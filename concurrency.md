@@ -109,6 +109,7 @@ transport (§9.3) rather than a rewrite.
 ### 4.1 `concurrently { … }`
 
 ```php
+// in a class body
 profile(UserId $id): Profile
 {
     return concurrently {

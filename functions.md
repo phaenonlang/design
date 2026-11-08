@@ -35,16 +35,18 @@ abstract class Report
 function headline(Report $report): string => strtoupper($report->title());
 ```
 
-- **A method is a name and its parameters.** In the body of a class, interface, trait or enum,
-  anonymous classes included, a method is `[attributes] [modifiers] [&]name[<type
-  parameters>](parameters)[: type] [throws A|B]` followed by its body: a block, an expression
-  body `=> expr;` (§3), or `;` for an abstract or interface method. `&` before the name returns
-  by reference, as `function &name()` does.
+- **A method is a name and its parameters.** A declaration at class-member level — in the body
+  of a class, interface, trait or enum, anonymous classes included — is a method, written
+  `[attributes] [modifiers] [&]name[<type parameters>](parameters)[: type] [throws A|B]` and
+  followed by its body: a block, an expression body `=> expr;` (§3), or `;` for an abstract or
+  interface method. `&` before the name returns by reference, as `function &name()` does.
 - **How the parser tells it from a property.** After the attributes and modifiers, a name
   followed by `(`, or by a balanced `<…>` and then `(`, is a method; anything else begins a
-  property's type (`Foo $x`, `?Foo $x`, `list<int> $xs`, `(A&B)|null $x`), and constants, cases
-  and trait uses start with their keywords. No PHP class member starts with a name and `(`, so
-  the parse is deterministic, its lookahead bounded but for a generic method's `<…>`.
+  property's type (`Foo $x`, `?Foo $x`, `list<int> $xs`, `(A&B)|null $x`). A constant starts
+  with `const` and its type or name; a case and a trait use start with `case` or `use` followed
+  by a name, so `case(` and `use(` are methods. Apart from the modifiers, `var` and `const`, no
+  PHP class member starts with a name followed by `(`, so the parse is deterministic, with a
+  lookahead of one token after the name but for a generic method's `<…>`.
 - **No visibility means `public`.** That is PHP's own rule for a method written without one,
   made the normal spelling; `public` may be written and means the same. The emitter writes it
   out (§1.2).
@@ -57,22 +59,29 @@ function headline(Report $report): string => strtoupper($report->title());
   (php-cs-fixer's `modifier_keywords`), and
   `phn migrate` drops the `public`.
 - **PHP's `function` stays valid on every method**, since every PHP file is a Phaenon file, and
-  is required where the bare name would be ambiguous or misread:
+  is required where the bare name would need a longer lookahead or would mislead a reader:
   - a name that is a modifier, `static`, `abstract`, `final`, `public`, `protected`, `private`
-    or `readonly`: `public static (A&B)|null $x` is a property with a DNF type, so
-    `public static (` cannot also begin a method named `static`;
+    or `readonly`, or `var`: `public static (A&B)|null $x` and `var (A&B)|null $x` are
+    properties with a DNF type, so `public static (` is not read as a method named `static`.
+    A scan to the closing parenthesis could tell them apart (a parameter list is empty or holds
+    a `$`), but the lookahead stays one token, and the declaration stays readable. `var` is a
+    construct removed from Phaenon (`P1001`), which the parser must still read to report it;
   - `const`: `const (A&B)|null C = null;` is a constant with a DNF type;
   - `Closure`: `Closure(int): string $f` is a property with a closure type (`generics.md` §2.2);
-  - `function` and `fn`: in a class, `fn(): int => 1;` would read as an arrow function.
+    only the unqualified `Closure` is read so, not `closure()`;
+  - `function` and `fn`, the two names whose bare form is valid PHP of another meaning:
+    `fn(int $x): int => $x;` is an arrow function, and `function(): int { … };` a closure.
 
   Every other name needs no keyword, PHP's reserved words included: `list()`, `use()`,
   `case()`, `new()`, `match()`, `print()`.
-- **A function keeps `function`.** A named function outside a class is PHP's `function
-  name(…)`, because at statement level `process($order) {` reads as a call. What Phaenon adds to
+- **A function keeps `function`.** Every named declaration that is not at class-member level is
+  a function and is PHP's `function name(…)`, a function declared inside a method's body
+  included: at statement level `process($order) {` reads as a call. What Phaenon adds to
   functions — type parameters after the name, `throws`, an expression body — it adds to
   `function`.
 - **Closures are PHP's**: `function () use (…) {}` and `fn () => …` are unchanged. So are
-  property hooks: `get` and `set` inside a property's braces are hooks, not methods.
+  property hooks: `get` and `set` inside a property's braces are hooks, not methods, and they
+  are the precedent: PHP 8.4 declares a hook as `set(string $value) { … }`, without a keyword.
 - **`fun` is no keyword.** It is an ordinary identifier, so PHP code that declares or calls a
   function `fun()` compiles. A declaration still spelled with `fun` is `P1001`, the code of a
   construct removed from Phaenon, and its message names the rewrite, which `phn fmt` makes
@@ -102,11 +111,12 @@ protected static function slug(string $title): string
 `phn migrate` lifts `function` off every method and drops a sole `public` on the way: `public
 function title()` → `title()`, `final public static function create()` → `final static
 create()`, `protected function apply()` → `protected apply()`. `--keep-public` keeps `public`.
-A method named as §1.1 lists keeps `function`, and so does a function outside a class. Re-running
-on a `.phn` is a no-op. A tree migrated before 2026-11-09 holds `fun`, which `phn fmt` rewrites:
-dropped before a method's name, `function` where §1.1 requires the keyword. `phn fmt` also lifts
-`function` off a method written the PHP way, wherever §1.1 allows it, and leaves the modifiers as
-written, so a tree has one spelling (`tooling.md` §5.6).
+A method named as §1.1 lists keeps `function`, and so does every function, one inside a
+method's body included. Re-running on a `.phn` is a no-op. A tree migrated before 2026-11-09 holds
+`fun`, which `phn fmt` rewrites: dropped before a method's name, `function` where §1.1 requires
+the keyword. `phn fmt` also lifts `function` off a method written the PHP way, wherever §1.1
+allows it, and leaves the modifiers as written, so a tree has one spelling of the keyword and PHP
+code pasted into a `.phn` is idiomatic after one format (`tooling.md` §5.6).
 
 ### 1.4 Why
 
@@ -116,13 +126,15 @@ written, so a tree has one spelling (`tooling.md` §5.6).
   by its parameters, in a class body, is a method.
 - `public static function create()` takes most of a line, and most of a phone screen in a
   review. The declaration without a word is what TypeScript, Java and C# readers expect, and
-  nothing in PHP looks like it, so nothing is ambiguous; the exceptions of §1.1 are the names
-  where something would be.
+  PHP's newest accessor syntax already declares this way: a property hook is `set(string $value)
+  { … }`. The context, a class body or a property's braces, is what tells a declaration from a
+  call, and the exceptions of §1.1 are the names where a one-token lookahead or a reader would
+  need more.
 - The implicit `public` is not a new rule but PHP's, made the default spelling; the emitter
   writes it out, so the PHP output stays PER and PhpStorm's "missing visibility" never fires
   on compiled code.
-- A function keeps PHP's keyword: at statement level a bare name and parentheses are a call, and
-  a reader should not have to find the brace to tell the two apart.
+- A function keeps PHP's keyword: at statement level, a method's body included, a bare name and
+  parentheses are a call, and a reader should not have to find the brace to tell the two apart.
 - Keeping `function` valid on methods is not a second way to write the same thing by choice but
   the compatibility contract: every PHP file is a Phaenon file, and `phn migrate` or `phn fmt`
   moves it over.
@@ -202,6 +214,7 @@ the kind D9 asks for, and the checker's rule is PHP's rule stated before the fil
 ### 3.1 Spelling
 
 ```php
+// in a class body
 load(Id $id): T => $this->get($id) ?? throw new AggregateNotFound(static::aggregateClass(), $id);
 name(): string => $this->name;
 log(string $message): void => $this->logger->info($message);
@@ -221,6 +234,7 @@ static of(string $s): self => new self(trim($s));
   indentation level in:
 
   ```php
+  // in a class body
   load(Id $id): T throws AggregateNotFound
       => $this->get($id) ?? throw new AggregateNotFound(static::aggregateClass(), $id);
   ```
@@ -236,7 +250,9 @@ public function load(AggregateId $id): EventSourcedAggregate { return $this->get
 
 The output puts the opening brace on the declaration's line, which PSR-12's brace rule
 rejects, so compiled output needs that php-cs-fixer rule off, beside the line-1 rules of D12
-(§5.2).
+(§5.2). *Since D19 (2026-11-02) the line rule is gone: an expression body compiles to a body
+laid out as PER wants it, the brace and the `return` on lines of their own (§1.2, §5.2), and
+the line map points back.*
 
 ### 3.3 Why
 
@@ -251,6 +267,7 @@ has one (`fn`) and because its arrow is PHP's arrow: nothing about it is new to 
 ### 4.1 Spelling
 
 ```php
+// in a class body
 load(Id $id): T throws AggregateNotFound
 commit(): void throws ConcurrencyConflict|StoreUnavailable
 abstract handle(Command $c): Result throws Refusal;
@@ -420,7 +437,7 @@ canonical style of §5.
 | F8 | Canonical layout: opening braces of declarations on their line, one-line docblocks; a style, not syntax; output needs php-cs-fixer's brace rule off | §5 |
 | F9 | `phn migrate` lifts bare `@throws`, moves braces up, collapses one-line docblocks, writes `=>` for single-expression bodies; `--keep-layout` keeps the layout | §4.3, §5.3 |
 | F10 | **Whitespace is spaces** (2026-11-04, D21): a tab outside a string's content or a comment's text is `P1005`, an error; `phn migrate` and `phn fmt` replace such tabs with spaces to tab stops four columns apart, `--keep-layout` included; the plugin's `.phn` code style indents with spaces | §5.5 |
-| F11 | **Methods without a keyword** (2026-11-09, roadmap D27): in a class-like a method is `[modifiers] [&]name[<T>](…)` and its body; no visibility is `public`, written out by the emitter as PER requires; PHP's `function` stays valid on a method and is required for a name that is a modifier, `const`, `Closure`, `function` or `fn`; a function outside a class keeps `function` | §1.1, §1.2, §1.4 |
+| F11 | **Methods without a keyword** (2026-11-09, roadmap D27): a declaration at class-member level is a method, `[modifiers] [&]name[<T>](…)` and its body; no visibility is `public`, written out by the emitter as PER requires; PHP's `function` stays valid on a method and is required for a name that is a modifier, `var`, `const`, `Closure`, `function` or `fn`; every other named declaration is a function and keeps `function`, one inside a method's body included | §1.1, §1.2, §1.4 |
 | F12 | **`fun` leaves the language** (2026-11-09, roadmap D27): an identifier again; a leftover `fun` declaration is `P1001`, which `phn fmt` rewrites | §1.1, §1.5 |
 | F13 | `phn migrate` lifts `function` off methods and drops a sole `public`, `--keep-public` keeps it; functions and the names of F11 keep `function` | §1.3 |
 
