@@ -1,6 +1,8 @@
 # Phaenon — Concurrency design (draft 0.1)
 
-Status: **reviewed 2026-11-01** (decisions §15) · M5. Companion: `language-overview.md` §4–5,
+Status: **withdrawn 2026-11-08** (roadmap D25, §17): the syntax is not in the language until PHP
+core has a scheduler, and this document is the specification it will be mapped onto then.
+Reviewed 2026-11-01 (decisions §15) · M5. Companion: `language-overview.md` §4–5,
 `roadmap.md` D6 and §3 (M5), `functions.md` (closures and their lowering), `collections.md`
 (method syntax, the stdlib written in Phaenon).
 
@@ -500,3 +502,15 @@ table wins.
 | amp declarations | The compiler embeds the amp 3.1 and Revolt 1.0 signatures it relies on and loads them ahead of a project's vendor copy | The checker must know `Future<T>` in a project whose vendor directory is not installed yet; a missing method is a declaration to add |
 | `tequila/nats` | The connection has one socket reader at a time, and an opt-in reader task per connection is that reader made permanent; `RevoltTransport` is a suggested dependency (merged upstream, the client's ADR amended with it) | C8 named a "single-reader change"; one reader at a time keeps worker mode's "nothing runs between requests" by default, and the reader task serves long-running amp processes without a second code path |
 | Editor | The PhpStorm plugin approximates blocks at the token level: a statement block parses as a block, `spawn expr` as `expr`; the expression forms wait for a PSI element (M6) | The plugin erases Phaenon syntax in front of PhpStorm's parser; a block that yields a value has no PHP shape to erase to |
+
+## 17. Withdrawn (2026-11-08)
+
+Roadmap D25. The syntax is not in the language; this document stays as the specification of what
+it means, for the day PHP core has a scheduler to map it onto.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **The syntax goes** | `concurrently { }` and `spawn` leave the parser, the checker (`P2601`–`P2606` retired and reserved, never reused), the emitter and the editors; `concurrently` and `spawn` are not reserved words, so a PHP function of either name compiles. `phaenon/concurrent` is archived on GitHub and abandoned on Packagist; the amp and Revolt declarations leave the compiler, which reads a project's vendor copy of amp like any other package. | D24: the compiled output depends on nothing but PHP. A block compiled to three production dependencies the compiler chose — `phaenon/concurrent`, amp, Revolt — in a project that may run another loop today or a better library tomorrow, and an outside reader of the output named that first. |
+| **Not a pluggable target** | A project naming what a block compiles to was weighed and rejected. | Cancellation, failure propagation and the handle's type would be whatever the target does; the checker could promise none of §5, and two projects' blocks would mean two things. |
+| **amp as amp** | A program that wants amp writes amp: `async()`, `await()`, `Future`, `TimeoutCancellation`, checked from the package's own declarations. tq-cli's fifteen blocks go back to `Api::concurrently()`. | Honest about the dependency, and no worse than the block for the checker: amp's signatures are PHPStan-typed. |
+| **What brings it back** | A PHP release with a scheduler, an awaitable and cancellation of its own — the True Async work or a successor. The model of §3–§5 and the capture rules of §16 carry over; §6 is rewritten for the native primitives, and the dependency count stays at zero. Not a runtime of Phaenon's own (roadmap §3, Phase 3). | Structured concurrency needs the runtime's cooperation, and the runtime that can give it without a dependency is PHP. |

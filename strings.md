@@ -96,6 +96,9 @@ API's O(n × intl); and it is what `mb_*` already does in every Tequila string f
 
 ## 4. The API: `\Phaenon\Str` and `\Phaenon\Bytes`
 
+*`Str` went with D20 (2026-11-03); `Bytes` with D24 (2026-11-08, §6): `$b as string` is the checked
+conversion, PHP's functions are the rest.*
+
 Written in Phaenon (`stdlib/runtime/Str.phn`, `Bytes.phn`), read by the compiler as its own
 declaration and compiled into `phaenon/runtime` (as for `Seq` and `Map`, collections.md §3).
 Receiver first, operands next, callbacks last.
@@ -205,6 +208,8 @@ and convert inside (§6). Everything PHP has stays callable: `sprintf` (234 call
 | `$bytes === $string` | `P2305` although both are PHP strings | the comparison is a type confusion even when it is true at runtime |
 | `bytes` where PHP's function serves text and binary alike (`strlen`, `substr`, `bin2hex`, `base64_encode`, `hash_equals`, `strcmp`, `ord`, `fwrite`, …) | the overlay widens the parameter to `string\|bytes`; `substr` returns what it was given | one function, two uses; the stdlib is the typed path |
 | `.` and `.=` on `bytes` (2026-11-01) | `bytes . bytes` is `bytes`; `.=` with a `bytes` operand keeps a `bytes` variable, array element or property `bytes`. `bytes . string` and `string . bytes` stay `P2530`, interpolation stays text-only, a string literal is still `string` (a binary buffer starts from `(bytes) ''`) | PHP's `.` is byte concatenation already, so the operator erases unchanged; what the type exists to catch is binary mixed into text, not binary joined to binary. Without it, every builder of frames, archives or zip entries became a `list<bytes>` and `Bytes::concat()` (tq-cli's dogfood). Python draws the same line: `b'a' + b'b'` works, `b'a' + 'a'` is a `TypeError` |
+
+| `\Phaenon\Bytes` (2026-11-08) | Removed (roadmap D24, generics.md §11.4). The checked conversion to text is `$b as string` on a `bytes` operand: `\mb_check_encoding($b, 'UTF-8') ? $b : throw new \ValueError('not valid UTF-8')`, `as?` gives `null`, `is string` the test alone, under the operand rule of §11.4; `(string) $b` stays the unchecked mirror. On a `string\|bytes` operand the test is `P3011`: PHP cannot tell them apart. The other methods are PHP's own functions, typed for `bytes` by the overlay: `hex2bin()` and `base64_decode($s, true)` return `bytes\|false`, `bin2hex()`, `base64_encode()`, `mb_scrub()` (the lossy conversion), `hash_equals()`, `strlen()`, `substr()`, `\ord($b[$i])`, `.`. | A compiler-written call into a package the programmer did not choose is what D24 ends, and every method was a one-line wrapper. The test a `bytes` value needs before it is text is a runtime type test, which is what `as` means. `mb_check_encoding` over `preg_match('//u')`: 11 against 66–82 ns on a 12 KB string under PHP 8.5, which caches a string's validity, and it is the idiom PHP developers know; `ext-mbstring` is the one extension the lowering assumes, and Symfony's polyfill provides it where it is missing. |
 
 ## 7. Checker and emitter work (once reviewed)
 
