@@ -8,7 +8,7 @@ commit rules are in the compiler repo: read `../phaenon/AGENTS.md` first.
 | `language-overview.md` | Scope: what stays from PHP, what is removed, what is added, per milestone |
 | `generics.md` | Generics design; §11 records the decisions made while building M3 |
 | `checker.md` | Type checker design (M2); §9 decisions, §10 open questions |
-| `roadmap.md` | Decisions D1–D17, milestones M0–M7 and the PHP release milestones with their status, working method (§4) |
+| `roadmap.md` | Decisions D1–D27, milestones M0–M7 and the PHP release milestones with their status, working method (§4) |
 | `php-versions.md` | The target PHP version, following PHP releases, what each release adds and how it lowers |
 
 - A feature is designed here before it is built. A new area gets its own doc;

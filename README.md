@@ -18,7 +18,7 @@ decision wins.** A superseded decision keeps its row and names what superseded i
 | Document | Holds | Decisions |
 |---|---|---|
 | `language-overview.md` | The scope: what stays from PHP, what is removed, what is added | in each feature's document |
-| `roadmap.md` | The plan: milestones M0–M7 and the PHP release milestones with their status, the working method | §1 (D1–D25) |
+| `roadmap.md` | The plan: milestones M0–M7 and the PHP release milestones with their status, the working method | §1 (D1–D27) |
 | `generics.md` | Type parameters, variance, erasure to PHP, `class<T>`, interop with docblock generics | §11 |
 | `collections.md` | `list<T>`, `map<K, V>`, tuples, shapes and the legacy `array` | §7 |
 | `strings.md` | Text and `bytes` | §6 |
