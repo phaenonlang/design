@@ -221,7 +221,8 @@ $y = $x instanceof Money ? $x : null;    // $y: ?Money
 Inside a body, an **erased** `T` can be used as a type (declarations, casts for the checker) but not
 as a **value**: `new T`, `T::class`, `$x instanceof T`, `$x is T`, `T::staticMethod()` are compile
 errors with a fix-it: "declare `T` as `reified`, or test against the bound". This is what makes
-erasure honest instead of surprising.
+erasure honest instead of surprising. *(No `reified` since §11.2, and no `is` since §11.5,
+2026-11-09.)*
 
 ---
 
@@ -579,7 +580,8 @@ honest over time.
    parameters from the using class (`use Timestamps<T>`) — easy to erase, unclear value. Deferred.
 4. **Reified closures / generic closure expressions with `reified`.** Would need a hidden
    bound variable; doable, deferred.
-5. **Type aliases with reified use.** `type Ids = list<Uuid>; $x is Ids` expands fine; aliases
+5. **Type aliases with reified use.** *(Closed with `reified`, §11.2, and no `is` since §11.5.)*
+   `type Ids = list<Uuid>; $x is Ids` expands fine; aliases
    containing reified parameters of an enclosing class — allowed or not?
 6. **Should `is` on a container be deep by default?** Deep is correct and the cost is explicit;
    Hack chose shallow for `is` on generics (`vec<_>`) because deep was too costly in practice.
@@ -789,7 +791,7 @@ function every reader already knew, under the word PHP reserves for a pattern ma
 
 | Topic | Decision | Why |
 |---|---|---|
-| **`is`, `as` and `as?` leave the language** | A type test is written as PHP writes it: `is_string($x)`, `$x instanceof Foo`, `$x === null`, `is_array($x) && array_is_list($x)`, `count($x) === 2`, `in_array($x, ['a', 'b'], true)`; a checked value is `is_int($x) ? $x : throw new \TypeError(…)`, PHP 8's own idiom. The emitter lowers no test: what the source writes is the output. | Phaenon adds types and spelling, never an operator PHP lacks, so a reader knows what `is_string($x)` compiles to without learning anything. Every test §11.4 admitted has one PHP form, the one it compiled to, and PHPStan narrows through it on the output as the checker does in the source. |
+| **`is`, `as` and `as?` leave the language** | A type test is written as PHP writes it: `is_string($x)`, `$x instanceof Foo`, `$x === null`, `is_array($x) && array_is_list($x)`, `count($x) === 2`, `in_array($x, ['a', 'b'], true)`; a checked value is `is_int($x) ? $x : throw new \TypeError(…)`, PHP 8's own idiom. The emitter lowers no test: what the source writes is the output. | Phaenon adds no operation PHP lacks, so a reader knows what `is_string($x)` does without learning anything. Every test §11.4 admitted has a PHP form, the one it compiled to, and PHPStan narrows through it on the output as the checker does in the source. |
 | **Narrowing** | Through PHP's tests, as PHPStan narrows (`checker.md` §3.4, §9): `is_array()` gives `array<mixed>` or what the operand was, `array_is_list()` a list, `instanceof Foo` a `Foo` whose type arguments are what the operand's static type fixes and otherwise their bounds, a literal comparison the literal. A hand-written element check (`array_all($x, fn ($v) => is_string($v))`) narrows nothing beyond `list<mixed>`, as in PHPStan. | Parity on the output: the checker may be stricter than PHPStan, never more lenient. |
 | **A guard of one's own** | A function or method that tests a type says so with `@phpstan-assert`, `@phpstan-assert-if-true` or `@phpstan-assert-if-false` (the `@psalm-` and bare `@assert` spellings too), which the checker has honoured since M2, the exact form `=T` since 2026-10-31 (`checker.md` §9): `/** @phpstan-assert-if-true list<string> $x */ function isStringList(mixed $x): bool`. The Phaenon types in the tag are translated for PHPStan as in any `.phn` docblock (`collections.md` §4). | It is PHP's settled way to name a test, read by PHPStan, Psalm and PhpStorm alike. A syntax of Phaenon's for it would be a guard only Phaenon's tools read. |
 | **Tuples** | A type only: `(int, string)` in declarations, lifted from `array{…}` by `phn migrate`, with no runtime test. A value is a tuple because the code that built it says so, as in PHP; a test written out by hand narrows as PHPStan narrows it. | The shape of a value at runtime is the programmer's code. |

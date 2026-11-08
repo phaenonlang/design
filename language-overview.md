@@ -33,11 +33,14 @@ PHP.*
 - **The compiled output depends on nothing but PHP** (roadmap D24, 2026-11-08). No class,
   function or package the programmer did not write appears in it; a team can adopt the compiled
   tree as its source any day.
-- **Types, not operators** (roadmap D26, 2026-11-09). Where PHP has a settled way to write
-  something, Phaenon writes it PHP's way: it adds types and spelling, never an operator or a
-  runtime behaviour PHP lacks. A type test is PHP's own (`is_string($x)`, `$x instanceof Foo`),
-  and a PHP developer reading a `.phn` knows what every line compiles to. (From 2026-11-08 until
-  then `is` and `as` compiled to those tests, D23.)
+- **Types, not operators** (roadmap D26, 2026-11-09). What a line does at run time is written as
+  PHP writes it, wherever PHP has a settled way: Phaenon never adds an operation or a runtime
+  behaviour PHP lacks. What it adds changes nothing that runs: types, which are erased (the
+  `(bytes)` retyping among them), and the spelling of declarations (no `<?php`, expression
+  bodies, methods without a keyword), each a keyword or a brace away from the PHP the emitter
+  writes. A type test is PHP's own (`is_string($x)`, `$x instanceof Foo`), and a PHP developer
+  reading a `.phn` knows what every line does. (From 2026-11-08 until then `is` and `as`
+  compiled to those tests, D23.)
 
 ## 3. Removed from PHP
 
