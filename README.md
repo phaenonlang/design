@@ -22,7 +22,7 @@ decision wins.** A superseded decision keeps its row and names what superseded i
 | `generics.md` | Type parameters, variance, erasure to PHP, `class<T>`, interop with docblock generics | §11 |
 | `collections.md` | `list<T>`, `map<K, V>`, tuples, shapes and the legacy `array` | §7 |
 | `strings.md` | Text and `bytes` | §6 |
-| `functions.md` | `fun`, closures in constant expressions, expression bodies, `throws`, the source layout | §7 (F1–F10), §8 |
+| `functions.md` | Methods without a keyword, closures in constant expressions, expression bodies, `throws`, the source layout | §7 (F1–F13), §8 |
 | `concurrency.md` | `concurrently { }` blocks and `spawn` over amp v3 and Revolt; withdrawn until PHP core has a scheduler | §15 (C1–C10), §16, §17 |
 | `checker.md` | The type checker: its types, program model, checks and diagnostics, PHPStan parity | §9; open questions in §10 |
 | `line-map.md` | The compiled layout, and the line map that leads positions in compiled PHP back to the source | §6 |
