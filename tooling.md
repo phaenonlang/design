@@ -516,7 +516,9 @@ With these settlements:
     - an expression body's `=>`;
     - `concurrently` and `spawn` until 2026-11-08.
 
-    The tokens must come out as they went in (a `>>` counts as the `>` `>` it closes).
+    The tokens must come out as they went in (a `>>` counts as the `>` `>` it closes). *Since
+    2026-11-09 the rewrites of §5.6 are the layer's only changes of tokens; everything else in
+    it still keeps them.*
   - The rest of a `.phn` is the project's PHP style, which the second layer writes.
 - **What the first layer leaves to the second:**
   - the indentation of an expression body's continuation lines, which php-cs-fixer sees in the
@@ -556,19 +558,22 @@ With these settlements:
 Roadmap D26 and D27 withdrew `is`, `as`, `as?` and `fun`, and the trees migrated before them hold
 those spellings: `fun` heads about 10,000 declarations in the six dogfood trees, 3,414 in core.
 Their migration must be mechanical, so `phn fmt`'s first layer rewrites them, before anything
-else, as it replaces tabs. Each rewrite means what its spelling meant: it is the PHP the
-emitter wrote for it.
+else, as it replaces tabs. Each rewrite does at run time what its spelling did: it is the PHP the
+emitter wrote for it. What the checker learns from it can be less: after a rewritten tuple test it
+narrows as PHPStan narrows the conjunction, offset by offset, where `is` gave the tuple. None of
+the dogfood trees holds one.
 - **`fun`** is dropped before a method's name — `fun name(` → `name(`, `static fun create(` →
   `static create(`, `protected fun apply(` → `protected apply(` — and becomes `function` where
-  `functions.md` §1.1 requires the keyword: before a function outside a class, and before a
-  method named after a modifier, `const`, `Closure`, `function` or `fn`.
+  `functions.md` §1.1 requires the keyword: before every function, that is every named
+  declaration not at class-member level, one inside a method's body included, and before a
+  method named after a modifier, `var`, `const`, `Closure`, `function` or `fn`.
 - **`function` on a method** is lifted the same way, wherever the grammar allows it: `public
   function title(` → `public title(`, `final public static function create(` → `final public
-  static create(`. The names that require the keyword keep it, and so does a function outside a
-  class. The modifiers stay as written: dropping a sole `public` is `phn migrate`'s, with its
-  `--keep-public`, and the first layer has no options. `function` is not withdrawn and stays valid
-  input everywhere (D27); the rewrite gives a tree one spelling, and a PHP file dropped into a
-  Phaenon tree reads as Phaenon after its first format, as a tree that held `fun` does.
+  static create(`. The names that require the keyword keep it, and so does every function. The
+  modifiers stay as written: dropping a sole `public` is `phn migrate`'s, with its
+  `--keep-public`, and the first layer has no options. `function` is not withdrawn and stays
+  valid input everywhere (D27); the rewrite gives a tree one spelling of the keyword, and PHP code
+  pasted into a `.phn` is idiomatic after its first format, as a tree that held `fun` is.
 - **`is`, `as` and `as?`** become the PHP test each one compiled to, the table of `generics.md`
   §11.4:
 
@@ -586,9 +591,19 @@ emitter wrote for it.
   The other rows of §11.4, `class<Foo>` and tuples among them, are rewritten the same way. The
   functions are written unqualified, as a person writes them (the emitter wrote `\is_int()`), and
   the project's fixer adds the `\` its style may want; in a file whose namespace declares a
-  function of the same name they are qualified. A compound test is parenthesised where the expression around it binds tighter. The
-  rewrite reads the operand's type (an `array` operand, a `bytes` one), so it needs the checked
-  program, which an editor's server has.
+  function of the same name they are qualified. A compound test is parenthesised where the
+  expression around it binds tighter.
+- **What needs the checked program.** Most of these rewrites depend on the operand's type: `is
+  string` is `mb_check_encoding()` on a `bytes` operand and `is_string()` on any other, `is list`
+  drops `is_array()` on an array, and `as`, `as?` and tuple tests follow the same table. `phn fmt`
+  over a project's roots has the checked program, and so does an editor's server. Without one —
+  `phn fmt --stdin`, as PhpStorm's Reformat Code runs it, or files outside a project — only the
+  rewrites that need no type are made: `fun`, `function` on a method, and `$x is Foo` →
+  `$x instanceof Foo` where `Foo` is a class name, not a type keyword or an alias the file
+  declares. The type-dependent ones stay as written, and `P1001`, until a run with the program:
+  written without its type, `$b is string` would become `is_string($b)`, always true on `bytes`.
+  A name taken for a class that is an alias declared elsewhere becomes an unknown class, `P2001`
+  at the next check, never a silent change.
 - **What has no rewrite is reported**, `P1001` at the expression: a test on a type `P3011`
   refused, or on an operand `P3012` refused. No such test ever compiled, so a tree that built
   holds none.
@@ -1678,4 +1693,4 @@ Reviewed 2026-11-03.
 | T14 | **A `list-types` type is spelled only as deep as the code uses it**, the checker deciding what a use needs, with no depth cap and no class suggested (§8.2) | authors type what the code uses: on core, typed by hand, it brings 16 types back as written and none wider; a cap at two leaves its over-precise two-level types and gives tq-cli 101 findings; deep data such as a configuration tree needs neither a class nor a deep type |
 | T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |
 | T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
-| T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, lifts `function` off every method the grammar allows (modifiers as written), and rewrites each leftover `is`, `as` and `as?` to the PHP test it compiled to, reporting `P1001` only where none exists (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has exactly one PHP form, the one the emitter wrote. Lifting `function` too gives a tree one spelling of a method, and makes a PHP file copied into a Phaenon tree idiomatic on its first format |
+| T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, lifts `function` off every method the grammar allows (modifiers as written), and rewrites each leftover `is`, `as` and `as?` to the PHP test it compiled to, the type-dependent ones only with the checked program, reporting `P1001` only where no rewrite was made (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has a PHP form, the one the emitter wrote. Lifting `function` too gives a tree one spelling of the keyword, and makes PHP code pasted into a `.phn` idiomatic on its first format |
