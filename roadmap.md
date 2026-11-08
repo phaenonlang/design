@@ -189,6 +189,8 @@ files behave identically (680 tests that observe line numbers are not run — se
 
 - 2026-11-08: `--runtime-guards` and descriptor hoisting closed without being built, and `is` /
   `as` restricted to the tests PHP has in O(1); `\Phaenon\Type` goes (D23, `generics.md` §11.4).
+- 2026-11-09: `is`, `as` and `as?` leave the language; a type test is PHP's own (D26,
+  `generics.md` §11.5).
 
 ### M4 — Collections and strings — ✅ done 2026-11-01
 - `list<T>` / `map<K,V>` as first-class types with literals; `array` as a legacy type that
@@ -216,6 +218,7 @@ files behave identically (680 tests that observe line numbers are not run — se
 - 2026-11-01, fourth slice (`functions.md`): `fun` as the spelling of a named function or method,
   `public` implied; closures in constant expressions lowered to the `static function` PHP 8.5
   takes; `phn migrate` writes `fun`. Decided before M5 so that no later migration is redone.
+  *2026-11-09: `fun` leaves the language, and a method is declared without a keyword (D27).*
 - **Closed 2026-11-01.** ✅ `list<T>` / `map<K, V>` with literals and `array` as the legacy type,
   the tuple type `(A, B)`, `bytes`; ✅ the stdlib in Phaenon (`Seq`, `Map`, `Str`, `Bytes`,
   `phaenon/runtime` with 95 tests) behind method syntax on `list`, `map`, `string`, `bytes` and
@@ -270,7 +273,9 @@ files behave identically (680 tests that observe line numbers are not run — se
 - Design: `php-versions.md`: the target (D17), lowering or refusing what is newer than it, partial
   function application typed and lowered, pipe diagnostics, readonly defaults, `#[\Override]` on
   constants, the 8.6 deprecations, a library that knows each symbol's version, and `is` kept a
-  superset of PHP's coming pattern match.
+  superset of PHP's coming pattern match. *Since D26 (2026-11-09) Phaenon has no `is` of its own:
+  `is` is a name again, deprecated as PHP 8.6 deprecates it, and PHP's pattern match is Phaenon's
+  from the release that ships it.*
 - Order: the target and the 8.6 grammar (lexer, parser, printer, conformance against the
   `PHP-8.6` corpus under PHP 8.6); the library by version and the non-PFA checker items; partial
   application in the checker and the emitter; the plugin.
@@ -324,6 +329,51 @@ its favour and `phaenon/concurrent`) is a maintainer's step.
 6. phaenon.dev: the landing page states that the compiled output depends on nothing but PHP; the
    playground shows the native lowering.
 
+*Steps 1 and 2 are superseded by D26 (2026-11-09): the operators they lowered leave the language,
+and the source writes the tests the emitter wrote.*
+
+### Reads as PHP — started 2026-11-09
+What D26 and D27 ask for: a PHP developer reads a `.phn` file and knows what every line compiles
+to. `is`, `as`, `as?` and `fun` leave the language, a type test is PHP's own, and a method is
+declared without a keyword. Each step is its own PR, in this order:
+1. Design: D26, D27, and every document and example of this repository.
+2. The compiler `phn`:
+   - the lexer: `fun` is no longer a token;
+   - the parser: methods without a keyword; `is`, `as` and `fun` read as withdrawn constructs and
+     reported as `P1001`;
+   - the checker: `is` and `as` gone, `P3011` and `P3012` retired, `mb_check_encoding()`
+     narrowing `bytes`; the `@phpstan-assert*` tags, honoured since M2, pinned by goldens on
+     functions, methods and static methods;
+   - the emitter: no test lowered, `public function` written for a method without them;
+   - `phn fmt`: the rewrites of `tooling.md` §5.6; `phn migrate`: methods lifted out of `function`;
+   - the LSP and the playground;
+   - the goldens, conformance, and PHPStan parity on the dogfood.
+3. The PhpStorm plugin: the lexer that hands a `.phn` to PhpStorm's PHP parser inserts `function`
+   where a method without a keyword stands; its handling of `fun`, `is` and `as` goes.
+4. VS Code: the grammar reads methods without a keyword; the `fun`, `is`, `as` and `as?` rules go.
+5. phaenon.dev: the landing page's copy and examples, and the playground; the READMEs and
+   AGENTS.md of every repository.
+6. Dogfood: php-service-template re-migrated in a PR; core's and tq-cli's migrations opened as
+   PRs; every dogfood tree's suite, PHPStan and style checks green on the compiled output.
+
+The 0.4.0 releases of the compiler, the PhpStorm plugin and the VS Code extension wait for this
+milestone, so that the zero-dependencies changes and these ship together and a codebase migrates
+once.
+
+**No later milestone changes how Phaenon code is spelled.** What remains adds types and tooling:
+- *PHP 8.6* brings PHP's own syntax, partial application already in, and lowers it for an 8.5
+  target; nothing written today is respelled.
+- *M7* moves Tequila's services onto the language as it stands, and publishes it.
+- The open questions add constructs or checks without changing existing ones: generic traits
+  (`generics.md` §9), constant evaluation and deprecations (`checker.md` §10), templates
+  (`language-overview.md` §3).
+- The opt-in codemods (`list-types`, `map-types`, `throws`; `tooling.md` §8) narrow types or add
+  clauses, on a maintainer's go-ahead per tree.
+- A PHP release that ships `$x is <pattern>` adds PHP's construct; the tests written now stay
+  PHP and keep compiling.
+
+So a codebase migrated in this milestone is not reformatted again by any planned step.
+
 ### M7 — Tequila on Phaenon
 - Service by service: the largest, most representative one first, then the rest via the template.
 - Public: spec, playground (compile in the browser via WASM build of the Go compiler), docs site.
@@ -364,6 +414,15 @@ structured concurrency, PHP's own runtime can give when it has a scheduler (D25)
 
 - In-place output (`.php` beside `.phn`, gitignored) vs separate output directory — affects
   Symfony's autoloading, PHPStan runs, Docker builds. Lean: in-place, gitignored, like `.js` beside `.ts`.
-- Licence (MIT? Apache-2?), governance once it's public.
+  *Answered by D12 (2026-11-01): a sibling output directory.*
+- Licence (MIT? Apache-2?), governance once it's public. *The licence is answered by T15
+  (2026-11-06): MIT. Governance stays open.*
 - Whether the `design/` docs are published as the spec from day one (recommended: yes, public repo,
-  "RFC-style" docs — it costs nothing and makes feedback possible).
+  "RFC-style" docs — it costs nothing and makes feedback possible). *Answered by T15: public since
+  2026-11-06.*
+- **PHP's own `is`** (2026-11-09). When PHP's pattern-matching proposal is voted, `php-versions.md`
+  §8 weighs it; from the release that ships it, `$x is <pattern>` is PHP's construct and so
+  Phaenon's (D17), with nothing of the operator D26 withdrew carried over.
+- **`function` on methods in `phn fmt`** (2026-11-09). `phn fmt` rewrites `fun` but leaves a
+  method written `public function` as it is, which stays valid (D27); `phn migrate` is what lifts
+  it. Whether the first layer should lift it too waits for a tree that mixes the two spellings.
