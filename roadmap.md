@@ -329,8 +329,10 @@ its favour and `phaenon/concurrent`) is a maintainer's step.
 6. phaenon.dev: the landing page states that the compiled output depends on nothing but PHP; the
    playground shows the native lowering.
 
-*Steps 1 and 2 are superseded by D26 (2026-11-09): the operators they lowered leave the language,
-and the source writes the tests the emitter wrote.*
+*The `is` / `as` parts of steps 1 and 2, and step 6's native lowering in the playground, are
+superseded by D26 (2026-11-09): the operators leave the language, and the source writes the tests
+the emitter wrote. The removals stand: `\Phaenon\Type` and `\Phaenon\Bytes` are gone, and the
+overlay types PHP's functions for `bytes`.*
 
 ### Reads as PHP — started 2026-11-09
 What D26 and D27 ask for: a PHP developer reads a `.phn` file and knows what every line compiles
@@ -338,19 +340,29 @@ to. `is`, `as`, `as?` and `fun` leave the language, a type test is PHP's own, an
 declared without a keyword. Each step is its own PR, in this order:
 1. Design: D26, D27, and every document and example of this repository.
 2. The compiler `phn`:
-   - the lexer: `fun` is no longer a token;
-   - the parser: methods without a keyword; `is`, `as` and `fun` read as withdrawn constructs and
-     reported as `P1001`;
+   - the lexer: `fun` is no longer a token, and `is` is an identifier again, deprecated as a name
+     with `P1101` wherever PHP 8.6 deprecates it (`php-versions.md` §9);
+   - the parser: methods without a keyword at class-member level; `is`, `as` and `fun` read as
+     withdrawn constructs and reported as `P1001`;
    - the checker: `is` and `as` gone, `P3011` and `P3012` retired, `mb_check_encoding()`
      narrowing `bytes`; the `@phpstan-assert*` tags, honoured since M2, pinned by goldens on
      functions, methods and static methods;
    - the emitter: no test lowered, `public function` written for a method without them;
    - `phn fmt`: the rewrites of `tooling.md` §5.6; `phn migrate`: methods lifted out of `function`;
    - the LSP and the playground;
+   - the stdlib's own `.phn` (`stdlib/runtime/**`) respelled, and `../debug` regenerated from it,
+     which `TestDebugPackageFresh` checks;
+   - the compiler's AGENTS.md, where it says that `functions.md` is about `fun`, that the checker
+     lowers `is` and `as`, and that `phn migrate` writes `fun`;
    - the goldens, conformance, and PHPStan parity on the dogfood.
 3. The PhpStorm plugin: the lexer that hands a `.phn` to PhpStorm's PHP parser inserts `function`
-   where a method without a keyword stands; its handling of `fun`, `is` and `as` goes.
+   where a method without a keyword stands; its handling of `fun`, `is` and `as` goes. No token
+   marks a method any more, and `foo();` is an abstract method in a class body and a call in a
+   method's body, so the lexer keeps class-body context: the brace depth after a class,
+   interface, trait or enum header, which the incremental relexing has to restore.
 4. VS Code: the grammar reads methods without a keyword; the `fun`, `is`, `as` and `as?` rules go.
+   For the same reason the method rule needs a class-body scope, begun by a class-like header and
+   ended by its closing brace, rather than an injection that applies everywhere.
 5. phaenon.dev: the landing page's copy and examples, and the playground; the READMEs and
    AGENTS.md of every repository.
 6. Dogfood: php-service-template re-migrated in a PR; core's and tq-cli's migrations opened as
@@ -362,7 +374,8 @@ once.
 
 **No later milestone changes how Phaenon code is spelled.** What remains adds types and tooling:
 - *PHP 8.6* brings PHP's own syntax, partial application already in, and lowers it for an 8.5
-  target; nothing written today is respelled.
+  target; nothing written today is respelled. Its deprecations may prompt renames (a name `is`
+  or `let`, a function named `readonly`), but those are PHP's, made in PHP code too.
 - *M7* moves Tequila's services onto the language as it stands, and publishes it.
 - The open questions add constructs or checks without changing existing ones: generic traits
   (`generics.md` §9), constant evaluation and deprecations (`checker.md` §10), templates
@@ -371,6 +384,8 @@ once.
   clauses, on a maintainer's go-ahead per tree.
 - A PHP release that ships `$x is <pattern>` adds PHP's construct; the tests written now stay
   PHP and keep compiling.
+- Concurrency returns, if it does, as PHP's own syntax once PHP has a scheduler (D25, D17): an
+  addition, not a respelling.
 
 So a codebase migrated in this milestone is not reformatted again by any planned step.
 
