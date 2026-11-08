@@ -125,6 +125,9 @@ environments (then/else). Predicates recognised in M2:
 | `$x`, `!$x` (truthiness) | remove `null`, `false`, `0`, `''`, `'0'`, empty array | keep falsy |
 | `$a && $b`, `$a \|\| $b`, `!$p`, `($p)` | combined | |
 | `count($x) > 0` / `=== 0`, `$x !== []`, `array_key_exists('k', $x)`, `in_array($x, [...], true)` | non-empty / shape key / literal union | |
+| `array_is_list($x)` | a list of what the array held | — |
+| a call whose callee has `@phpstan-assert T $x`, `@phpstan-assert-if-true` or `@phpstan-assert-if-false` (`@psalm-` and `@assert` alike) | the argument as the tag says: after the call, or in the branch the tag names | the negation, where the tag says |
+| `mb_check_encoding($b, 'UTF-8')` on a `bytes` operand (2026-11-09) | `string&bytes` (`strings.md` §6) | `bytes` |
 | `assert($p)`, `if (!$p) throw/return/continue/break/exit` | narrowing continues after the statement | |
 | `match (true) { $p => … }` arms, `switch` with `===` semantics on literal subjects | per arm | |
 
@@ -132,6 +135,9 @@ Narrowing applies to **paths**: `$x`, `$x->prop`, `$x['k']`, `$this->prop`, `Foo
 property path is invalidated by any call on the same object, any assignment to a prefix of the
 path, and by `unset`. A variable path is invalidated by assignment and by reference capture
 (`&$x`, `use (&$x)`, passing to a by-ref parameter, `global`).
+
+*Since 2026-11-09 (roadmap D26, §9) these predicates are how a Phaenon program tests a type: `is`
+and `as` are gone, and PHP's tests are the only ones.*
 
 ### 3.5 Flow analysis
 
@@ -381,13 +387,13 @@ turned it into a test.
 - **Docblock types are not certain** (2026-10-29, `tequila/mongodb-odm`). A docblock, an
   inherited generic or a `@var` tag refines what PHP declares; the refined type drives inference
   and narrowing, the PHP type is what the runtime guarantees. A diagnostic that calls a check
-  impossible — an `instanceof` always true, a `=== null` always false, an `is` that can never
-  hold — requires both to agree. `normalize(object $value)` in a subclass of a generic normaliser
-  is typed `UnitEnum`, and its `if (!$value instanceof UnitEnum) throw` is not dead code, since
-  erasure lets any object in. This is PHPStan's `treatPhpDocTypesAsCertain: false`, Tequila's
-  setting everywhere; the parity harness runs PHPStan with it. The type flow still uses the
-  refined type: a ternary whose condition the refined types decide takes one branch, as in
-  PHPStan.
+  impossible — an `instanceof` always true, a `=== null` always false, an `is` that could never
+  hold (until D26) — requires both to agree. `normalize(object $value)` in a subclass of a
+  generic normaliser is typed `UnitEnum`, and its `if (!$value instanceof UnitEnum) throw` is
+  not dead code, since erasure lets any object in. This is PHPStan's
+  `treatPhpDocTypesAsCertain: false`, Tequila's setting everywhere; the parity harness runs
+  PHPStan with it. The type flow still uses the refined type: a ternary whose condition the
+  refined types decide takes one branch, as in PHPStan.
 - **`@var` narrows, never widens** (2026-10-29). Above an assignment, the tag's type must be a
   subtype of what PHP declares for the value (PHPStan's `varTag.nativeType`); a literal value must
   fit the tag instead. Above any other statement, `@var T $x` retypes `$x` for what follows; above
@@ -648,6 +654,17 @@ turned it into a test.
     (`IsSubclassOfFunctionTypeSpecifyingExtension`): `$allow_string` defaults to true there and
     to false for `is_a()`, so a string it answers true for is `class-string<Foo>`. Read as
     `is_a()`, the string narrowed to `never`, and an array keyed by it held nothing.
+- **Type tests are PHP's own** (2026-11-09, roadmap D26, `generics.md` §11.5). With `is` and `as`
+  gone, the predicates of §3.4 are the only type tests, and the checker narrows through them as
+  PHPStan does. A guard of the programmer's own is a function or method with `@phpstan-assert`,
+  `@phpstan-assert-if-true` or `@phpstan-assert-if-false`, honoured since M2 on functions,
+  methods and static methods (the exact `=T` form above, PHPUnit's assertions through the
+  overlay); nothing is added for it. One predicate is Phaenon's reading of a PHP call:
+  `mb_check_encoding($b, 'UTF-8')`, with the encoding written as a literal naming UTF-8, narrows a
+  `bytes` operand to `string&bytes` in its then-branch and leaves it `bytes` in the else-branch
+  (`strings.md` §6); without the literal it narrows nothing, since `mb_internal_encoding()` decides
+  at run time. PHPStan has no `bytes`, so parity is not at stake there. A leftover `is` or `as` is
+  `P1001`, and `P3011` and `P3012` are retired.
 
 ## 10. Open questions
 
@@ -662,3 +679,8 @@ turned it into a test.
   `--deprecations` (default on in `check`, off in `build`).
 - **Speed**: parsing all of `vendor/` for a Symfony project is ~5–10k files; the loaders are lazy
   and per-file, so a check touches hundreds, not thousands. A persistent cache is M6.
+- **Element checks** (2026-11-09). A hand-written check of a list's elements
+  (`array_all($xs, fn ($x) => is_string($x))`, a `foreach` that throws) narrows nothing beyond
+  `list<mixed>`, as in PHPStan 2.1 (`generics.md` §11.4), so its result is stated with a `@var` or
+  a guard function's `@phpstan-assert`. If PHPStan learns to narrow through `array_all()`, the
+  checker follows.
