@@ -18,7 +18,8 @@ emit must be plain PHP that Symfony, PHPStan, PhpStorm and a PHP caller understa
 2. Emitted PHP is **readable, idiomatic and typed the way the ecosystem types today**
    (`@template` docblocks), so the output is a first-class citizen of a Composer project.
 3. A **meaningful runtime story**: `$x instanceof T`, `new T(...)`, `$x is list<int>` — where the
-   programmer asked for it, at a cost the programmer can see.
+   programmer asked for it, at a cost the programmer can see. *Narrowed by §11.2, §11.4 and
+   §11.5: the runtime story is PHP's own, a `class<T>` value the code holds and PHP's tests.*
 4. **Zero cost when not asked for.** Code that never reifies a type parameter compiles to exactly
    the PHP a careful human would have written.
 5. **Interop both ways** without ceremony: Phaenon calls PHP generics (docblock-typed vendor code)
@@ -205,6 +206,15 @@ the syntax says so. `is` on a scalar/class type is O(1) and compiles to a native
 
 *Amended 2026-11-08 (§11.4, roadmap D23): deep is gone. `is` and `as` test only what PHP tests in
 O(1); `$x is list<int>` is `P3011`, `$x is list` compiles to `\array_is_list()`.*
+
+*Withdrawn 2026-11-09 (§11.5, roadmap D26): `is`, `as` and `as?` leave the language, and a test is
+written as PHP writes it. The examples above, as far as PHP can test them:*
+
+```php
+if (is_array($x) && array_is_list($x)) { /* $x: list<mixed>, its elements unchecked */ }
+if ($x === null || $x instanceof User) { /* $x: ?User */ }
+$y = $x instanceof Money ? $x : null;    // $y: ?Money
+```
 
 ### 3.6 Erased type parameters at runtime — the rule
 
@@ -539,6 +549,9 @@ typed `User` without annotation.
 | `new Repository<User>($store)` (reified) | `new Repository(User::class, $store)` or `new UserRepository($store)` |
 | `$x is list<int>` | n/a (compiled to `Type::list(Type::int())->check($x)`) |
 
+*The last row went with §11.4 and §11.5 (2026-11-09): a type test is PHP's own, and a PHP caller
+and a Phaenon one write the same.*
+
 ### 8.3 Symfony specifics
 
 - Autowiring: reified classes need a binding subclass (§5.4) or an explicit `arguments:` entry
@@ -571,7 +584,8 @@ honest over time.
 6. **Should `is` on a container be deep by default?** Deep is correct and the cost is explicit;
    Hack chose shallow for `is` on generics (`vec<_>`) because deep was too costly in practice.
    Possible compromise: `is list<int>` deep, `is list<_>` shallow (wildcard = don't check elements).
-   *Answered again 2026-11-08 (§11.4): shallow, and only where PHP has the test.*
+   *Answered again 2026-11-08 (§11.4): shallow, and only where PHP has the test. Closed 2026-11-09
+   (§11.5): there is no `is`; PHP's tests are what a program writes.*
 7. **Monomorphisation as an opt-in optimisation** for closed instantiation sets (e.g. a final
    reified class instantiated only from Phaenon code) — same semantics, no hidden parameter.
 8. **Diagnostics numbering and messages** — define the `P1xxx` (syntax) / `P2xxx` (inference) /
@@ -679,9 +693,9 @@ kept as written; this section wins where they differ.
 | `array-key`, shapes | Not native syntax in M3. A bound needs `int\|string`; a shape (`array{a: int}`) can only come from a docblock or an alias body — and it cannot be tested at runtime. | Hyphenated names and `{}` in types are an M4 question (strings/collections). |
 | Type aliases | `type X = …;` is file-level, namespace-scoped, generic (`type Result<T, E = \Throwable> = …`), expanded inline in emitted docblocks (no `@phpstan-type`). | PHPStan has no file-level aliases; inline expansion is what PHPStan sees either way. |
 | `Closure` | Written as `\Closure` in emitted signatures and docblocks. | The checker accepts a bare `Closure` everywhere; PHP in a namespace would resolve it to `App\Closure`. *Narrowed 2026-11-06 (`checker.md` §9): where the type reaches PHP as written, a bare `Closure` in a namespace that does not import it is `P2001`; erased positions keep reading it as `\Closure`.* |
-| `is` | Native where PHP has a check — `instanceof`, `is_int()`, `=== null`, `?Foo` and `A\|B` on a simple operand — otherwise `\Phaenon\Type::…->check()`. Deep by default (open question 6: decided). | Zero-cost when PHP can do it; the runtime cost is visible where it exists. |
-| `as` / `as?` | Always the runtime: `->assert()` / `->orNull()`. | One precise `TypeError` message for every shape; the dependency is already there for structural `is`. |
-| `is !T` | Dropped; write `!($x is T)`. | Nothing a negation prefix adds. |
+| `is` | *(Superseded by §11.4 and §11.5.)* Native where PHP has a check — `instanceof`, `is_int()`, `=== null`, `?Foo` and `A\|B` on a simple operand — otherwise `\Phaenon\Type::…->check()`. Deep by default (open question 6: decided). | Zero-cost when PHP can do it; the runtime cost is visible where it exists. |
+| `as` / `as?` | *(Superseded by §11.4 and §11.5.)* Always the runtime: `->assert()` / `->orNull()`. | One precise `TypeError` message for every shape; the dependency is already there for structural `is`. |
+| `is !T` | *(Superseded by §11.5: `!is_int($x)`, `!($x instanceof Foo)`.)* Dropped; write `!($x is T)`. | Nothing a negation prefix adds. |
 | Reified call sites | The checker records the final binding of each reified parameter per call site; the emitter turns it into the leading argument (`\App\User::class`, `$T`, `$this->__T` or a descriptor). A binding must be a class type or a reified parameter in scope — `P3005` otherwise. Explicit arguments (`decode<User>()`) and inference from arguments both work. | The emitter never re-infers; one source of truth. |
 | Runtime API | `Type::of(User::class)` not `Type::class(…)` (`Foo::class` is syntax); `from()` accepts `string\|Type`; `orNull()` is `as?`; `classString()` added; `literal()` covers scalars and enum cases; descriptors are interned by their printed name. | |
 | Variance checks | `out` / `in` positions are checked on non-private, non-static members; constructors are exempt; `readonly` properties count as output positions; closures and array keys follow PHPStan. | Parity with PHPStan's template variance rules. |
@@ -752,6 +766,10 @@ one million calls, `list<int>` inline against hoisted was 231 against 79 ns on a
 from ten elements on, and the operator that hides it reads as O(1). Roadmap D23 and D24. Where this
 table and the text above differ, this table wins.
 
+*Superseded 2026-11-09 by §11.5 (roadmap D26): `is`, `as` and `as?` left the language. The table
+stays as the record of what each test compiled to, which is what `phn fmt` writes when it rewrites
+a leftover one (`tooling.md` §5.6).*
+
 | Topic | Decision | Why |
 |---|---|---|
 | **Checkable types** | `is` and `as` accept a type PHP tests in O(1), and compile to that test: `int` → `\is_int($x)`, `float`, `string`, `bool` likewise; `null` → `$x === null`; `array`, and `map` with `mixed` key and value → `\is_array($x)`; `object` → `\is_object($x)`; `callable` → `\is_callable($x)`; `iterable` → `\is_iterable($x)`; a class, interface, enum, `self` or `static` → `$x instanceof Foo`; `Closure` → `$x instanceof \Closure`; `?T` → `$x === null \|\| …`; `A\|B` → `\|\|`, `A&B` → `&&` of the members' tests; a literal or an enum case → `$x === 'a'`, `$x === Suit::Hearts`; `class<Foo>` → `\is_string($x) && \is_a($x, Foo::class, true)` and bare `class` → `\is_string($x) && (\class_exists($x) \|\| \interface_exists($x))`, as since §11.2; `list` → `\is_array($x) && \array_is_list($x)`; a tuple `(int, string)` → `\is_array($x) && \array_is_list($x) && \count($x) === 2 && \is_int($x[0]) && \is_string($x[1])`. A conjunct the operand's static type already settles is dropped: on an `array` operand, `is list` is `\array_is_list($x)` alone. | Every form is the line a PHP developer writes, and PHPStan narrows each of them on the output; a tuple's test is O(arity), its members fixed by the type. |
@@ -761,3 +779,20 @@ table and the text above differ, this table wins.
 | **The operand: `P3012`** | A compound test, an `as` or an `as?` writes its operand more than once, so the operand is a variable, a property fetch or a static property fetch, a constant-index read of one of these (`$row['id']`, `$this->items[0]`), or a chain of them; never a call, a `new`, an operator or an assignment. Anything else is `P3012`: "the operand of `as` is evaluated twice; assign it to a variable first". A single-function test (`is int`, `is Foo`) takes any expression. | A compiler temporary (`\is_int($__v = f()) ? $__v : …`) is the machine-written output D9 forbids; binding the value first is what the hand-written line does. |
 | **Narrowing** | After `is list`, the operand is `list<mixed>`, or `list<T>` when it was `array<T>`; after `is array` it is `array<mixed, mixed>`, or what it was; after `as string` on `bytes`, `string`. A hand-written `array_all(...)` narrows nothing beyond that. | Parity with PHPStan on the output (`checker.md` §9): the checker may be stricter than PHPStan, never more lenient, and PHPStan narrows `is_array`, `array_is_list`, `is_int` and `instanceof` but not `array_all`. |
 | **`\Phaenon\Type` removed** | The class, its stub in the compiler and its tests leave `phaenon/runtime`; the emitter writes no call into any package (roadmap D24). §5.5's hoisting and §6's `--runtime-guards` are withdrawn unbuilt; §7's monomorphisation closes with them. | A guard on `list<T>` is the deep check by another name, and a guard on a scalar is the native parameter type PHP already enforces. Monomorphisation was an optimisation of reified instantiations, which went with §11.2. |
+
+### 11.5 Types, not operators (2026-11-09)
+
+Roadmap D26. §11.4 kept `is` and `as` to the tests PHP has; read again as a PHP developer reads a
+`.phn`, what was left was a second spelling of those tests, an operator that compiled to the
+function every reader already knew, under the word PHP reserves for a pattern match of its own
+(`php-versions.md` §8). Where this table and the text above differ, this table wins.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **`is`, `as` and `as?` leave the language** | A type test is written as PHP writes it: `is_string($x)`, `$x instanceof Foo`, `$x === null`, `is_array($x) && array_is_list($x)`, `count($x) === 2`, `in_array($x, ['a', 'b'], true)`; a checked value is `is_int($x) ? $x : throw new \TypeError(…)`, PHP 8's own idiom. The emitter lowers no test: what the source writes is the output. | Phaenon adds types and spelling, never an operator PHP lacks, so a reader knows what `is_string($x)` compiles to without learning anything. Every test §11.4 admitted has one PHP form, the one it compiled to, and PHPStan narrows through it on the output as the checker does in the source. |
+| **Narrowing** | Through PHP's tests, as PHPStan narrows (`checker.md` §3.4, §9): `is_array()` gives `array<mixed>` or what the operand was, `array_is_list()` a list, `instanceof Foo` a `Foo` whose type arguments are what the operand's static type fixes and otherwise their bounds, a literal comparison the literal. A hand-written element check (`array_all($x, fn ($v) => is_string($v))`) narrows nothing beyond `list<mixed>`, as in PHPStan. | Parity on the output: the checker may be stricter than PHPStan, never more lenient. |
+| **A guard of one's own** | A function or method that tests a type says so with `@phpstan-assert`, `@phpstan-assert-if-true` or `@phpstan-assert-if-false` (the `@psalm-` and bare `@assert` spellings too), which the checker has honoured since M2, the exact form `=T` since 2026-10-31 (`checker.md` §9): `/** @phpstan-assert-if-true list<string> $x */ function isStringList(mixed $x): bool`. The Phaenon types in the tag are translated for PHPStan as in any `.phn` docblock (`collections.md` §4). | It is PHP's settled way to name a test, read by PHPStan, Psalm and PhpStorm alike. A syntax of Phaenon's for it would be a guard only Phaenon's tools read. |
+| **Tuples** | A type only: `(int, string)` in declarations, lifted from `array{…}` by `phn migrate`, with no runtime test. A value is a tuple because the code that built it says so, as in PHP; a test written out by hand narrows as PHPStan narrows it. | The shape of a value at runtime is the programmer's code. |
+| **Type arguments** | `$x instanceof Repository` tests the class; the arguments come from the operand's static type or from a `class<T>` the code holds (§11.2), as §11.4's `Foo<Bar>` row had it. | Erasure: the arguments are not there to test. |
+| **Codes** | `P3011` and `P3012` are retired and reserved, never reused. A leftover `is`, `as` or `as?` expression is `P1001`, the code of a construct removed from Phaenon, as a leftover `concurrently` block is, with the PHP test in its message. `phn fmt` rewrites it into the PHP §11.4's table gives (`tooling.md` §5.6), so the diagnostic is left only where no test compiled. | One mistake, one diagnostic: the removed construct has its code. The trees migrated before 2026-11-09 hold such tests, and their migration must be mechanical. |
+| **The word `is`** | Not reserved: a name `is` compiles, with PHP 8.6's deprecation reported as for `let` (`php-versions.md` §9). `as` stays PHP's, in `foreach`, `use` and trait adaptations. When a PHP release ships `$x is <pattern>`, it is Phaenon's from that release with PHP's meaning (roadmap D17). | PHP reserves the word for its own construct, which Phaenon's operator would have collided with. |
