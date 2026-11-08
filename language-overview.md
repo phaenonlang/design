@@ -8,6 +8,10 @@ Status: **draft** · 2026-10-28 · scope document; each feature gets its own des
 Phaenon is PHP 8.5 with a type checker, generics, real collections, a sane standard library and
 structured concurrency — compiled to the PHP you would have written by hand.
 
+*Amended 2026-11-08 (roadmap D23–D25): no standard library since D20, no structured concurrency
+until PHP core has a scheduler, and no runtime package: the compiled output depends on nothing but
+PHP.*
+
 ## 2. Compatibility contract
 
 - **Every `.phn` file compiles to one `.php` file** with the same namespace, classes and functions,
@@ -26,6 +30,10 @@ structured concurrency — compiled to the PHP you would have written by hand.
   a `class<T>` value — a constructor argument you pass, or a static getter you override in the
   subclass that Symfony wires. The compiler never adds a parameter, a member or a name the
   programmer did not write (roadmap D9, `generics.md` §11.2).
+- **The compiled output depends on nothing but PHP** (roadmap D24, 2026-11-08). No class,
+  function or package the programmer did not write appears in it; a team can adopt the compiled
+  tree as its source any day. `is` and `as` compile to PHP's own tests and exist only where PHP
+  has one in O(1) (D23).
 
 ## 3. Removed from PHP
 
@@ -48,7 +56,7 @@ emitted PHP never contains them.
 `$variables` · classes, interfaces, traits, enums, readonly, property hooks, asymmetric visibility ·
 attributes · closures and arrow functions (`fun` is the spelling of a *named* function, `functions.md`) · `match` · named arguments · union/intersection/DNF
 types · class names as strings (`Foo::class`, typed `class<T>`) · exceptions · generators ·
-Fibers (as the concurrency substrate) · the request-cycle execution model · Composer · Symfony ·
+Fibers (as the concurrency substrate; since D25, 2026-11-08, as PHP has them, no more) · the request-cycle execution model · Composer · Symfony ·
 PHPStan vocabulary (read from docblocks, not written as syntax).
 
 ## 5. Added
@@ -60,9 +68,9 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 | `type` aliases | `generics.md` §2.1 | M3 |
 | `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (reviewed 2026-10-30) | M4 |
 | String/`bytes` split; method syntax on primitives removed by D20 (pipes with partial application instead) | `strings.md` (reviewed 2026-10-30), `roadmap.md` D20 | M4 |
-| `phaenon/runtime`: what compiled code calls (`Type`, `Debug`) and `Bytes`' conversions; `Seq`, `Map`, `Str` removed by D20 | `collections.md` §3, `strings.md` §4, `roadmap.md` D20 | M4 |
+| `phaenon/runtime`: what compiled code calls (`Type`, `Debug`) and `Bytes`' conversions; `Seq`, `Map`, `Str` removed by D20. *2026-11-08, D24: `Type` and `Bytes` removed too; `Debug` is the opt-in `phaenon/debug`, and compiled code calls nothing* | `collections.md` §3, `strings.md` §4, `roadmap.md` D20 | M4 |
 | `fun` for named functions and methods (absent visibility is `public`); closures in constant expressions (`#[Map(fn ($x) => …)]`) lowered to `static function` | `functions.md` | M4 |
-| Structured concurrency: `concurrently { }` blocks and `spawn` over amp v3 / Revolt, `Future<T>` handles, no function colouring | `concurrency.md` (reviewed 2026-11-01) | M5 |
+| Structured concurrency: `concurrently { }` blocks and `spawn` over amp v3 / Revolt, `Future<T>` handles, no function colouring. *Withdrawn 2026-11-08, D25: not in the language until PHP core has a scheduler* | `concurrency.md` (reviewed 2026-11-01, withdrawn §17) | M5 |
 | Tooling: `phn build/check/watch/fmt/migrate/lsp`, the Composer plugin, editors, CI | `tooling.md` (reviewed 2026-11-03) | M1, M6 |
 
 ## 6. Files and build

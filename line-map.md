@@ -164,6 +164,8 @@ fails when a copy differs.
 
 ### 4.3 Production: `phaenon/runtime`
 
+*`phaenon/debug` since 2026-11-08 (roadmap D24, T16): the package holds this and nothing else.*
+
 - **`Phaenon\Debug\LineMap`** reads a compiled file's map (the last line, read once per file and
   process and cached) and answers both lookups. It is used on error paths only; a request that
   throws nothing never touches it.
@@ -199,7 +201,7 @@ fails when a copy differs.
 | L3 | Runs and holds, absolute line numbers, a relative source path | readable by a person looking at the file; holds are what keep breakpoints off generated lines; a relative path survives deployment |
 | L4 | Generated and rewritten text follows PER Coding Style 3.0 (D22; PSR-12 until 2026-11-04); plain PHP regions stay as written | the output must read as hand-written PHP (D9), and the emitter is not a formatter |
 | L5 | `__LINE__` compiles to the source line | the one position PHP code reads by itself must stay exact |
-| L6 | Debugging in the plugin ships with the change, and the production integrations live in `phaenon/runtime` | debugging `.phn` needs a mapping in any case (§1); one package to require, and an integration loads only when its library is installed |
+| L6 | Debugging in the plugin ships with the change, and the production integrations live in `phaenon/runtime` *(`phaenon/debug` since 2026-11-08, D24)* | debugging `.phn` needs a mapping in any case (§1); one package to require, and an integration loads only when its library is installed |
 
 ## 7. The canonical source layout (amends `functions.md` §5)
 

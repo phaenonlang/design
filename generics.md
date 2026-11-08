@@ -203,6 +203,9 @@ visible at the call site, which is the point: generic runtime checks exist, they
 the syntax says so. `is` on a scalar/class type is O(1) and compiles to a native check
 (`is_int`, `instanceof`).
 
+*Amended 2026-11-08 (§11.4, roadmap D23): deep is gone. `is` and `as` test only what PHP tests in
+O(1); `$x is list<int>` is `P3011`, `$x is list` compiles to `\array_is_list()`.*
+
 ### 3.6 Erased type parameters at runtime — the rule
 
 Inside a body, an **erased** `T` can be used as a type (declarations, casts for the checker) but not
@@ -434,6 +437,9 @@ Inheritance chain: a generic subclass may re-export the parameter (`class Cached
 
 ### 5.5 The runtime library `\Phaenon\Type`
 
+*Removed 2026-11-08 (§11.4, roadmap D23–D24): the compiled output calls no runtime; the hoisting
+sketched below was measured and dropped.*
+
 Shipped as the Composer package `phaenon/runtime` (plain PHP, no extension, required only by
 output that uses `reified`, `is`/`as` on structural types, or `--runtime-guards`). It is a
 small immutable type-descriptor tree mirroring the checker's types:
@@ -475,6 +481,9 @@ practical win over PHP today, where `AggregateNotFound` can only say "User" if y
 ---
 
 ## 6. Runtime guards (dev mode)
+
+*Withdrawn 2026-11-08 (§11.4): never built; a guard on a structural type is the deep check by
+another name.*
 
 Erasure means a PHP caller can pass `list<string>` into a `list<int>` parameter and nothing stops
 it at runtime. The checker is the enforcement for Phaenon-to-Phaenon calls; for the boundary with
@@ -562,6 +571,7 @@ honest over time.
 6. **Should `is` on a container be deep by default?** Deep is correct and the cost is explicit;
    Hack chose shallow for `is` on generics (`vec<_>`) because deep was too costly in practice.
    Possible compromise: `is list<int>` deep, `is list<_>` shallow (wildcard = don't check elements).
+   *Answered again 2026-11-08 (§11.4): shallow, and only where PHP has the test.*
 7. **Monomorphisation as an opt-in optimisation** for closed instantiation sets (e.g. a final
    reified class instantiated only from Phaenon code) — same semantics, no hidden parameter.
 8. **Diagnostics numbering and messages** — define the `P1xxx` (syntax) / `P2xxx` (inference) /
@@ -699,8 +709,8 @@ kept as written; this section wins where they differ.
 | CLI | `phn migrate` takes `.php` (strip + lift) and `.phn` (lift only, rewritten in place when changed); `--keep-docblocks` is the mechanical v0. Notes print as `file:line: kept @tag …`. | One command for new and already-migrated projects. |
 | **`P3010`: a type argument nothing determines** (2026-11-07) | A warning at a call whose callee has a type parameter in its return type that no argument, no closure, no explicit argument and no expected type determined, and that has no bound to fall back on: the result is typed `mixed` from there (`$b = emptyBox();`, `first([])`). Silent when an argument the checker could not read is the reason, reported where it is if at all: a `mixed` or an unknown, a `never` (an unreachable branch), a generic class written without its arguments, or a callable parameter given anything but a closure with a signature (`[$this, 'method']`, a string) or given a closure that returns nothing (`run(fn() => $this->log())`, whose result is not used). | PHPStan is silent and infers `mixed`, which then flows through the program unchecked; the warning names the one place a declared type fixes it. The silences keep it honest on the dogfood: with them the four Tequila trees (core, mongodb-odm, object-mapper, reflector) report none, without them core reported 25 void closures passed to `run()` and mongodb-odm two `iterator_to_array()` of an unreachable branch. |
 
-Still open after M3: `--runtime-guards` (§6), monomorphisation (§7) and hoisting descriptors out
-of hot paths (`static $__t ??= …`). The `P3010` warning for an erased parameter that nothing
+`--runtime-guards` (§6), monomorphisation (§7) and hoisting descriptors out of hot paths
+(`static $__t ??= …`) stayed open after M3 and closed on 2026-11-08 without being built (§11.4). The `P3010` warning for an erased parameter that nothing
 constrains (§3.4 item 4) is built (2026-11-07, the last row above). The Symfony DI warning of §5.4 went with
 `reified` (§11.2).
 
@@ -717,8 +727,8 @@ as a PHP developer would read it. Where this table and §11.1 differ, this one w
 | **Runtime generics are written, not synthesised** | A generic that needs `T` at runtime holds a `class<T>` value, in one of the idioms PHP already uses: (a) a constructor parameter `class<T> $aggregateClass` (Tequila `core`'s `InMemoryAggregateRepository`); (b) an abstract static getter `aggregateClass(): class<T>` overridden by the concrete subclass, which is the DI service (`core`'s `AbstractEventSourcedRepository`); (c) a class name carried by an attribute and read by a factory that does `new $repositoryClass(...)` (`mongodb-odm`'s `AttributeBasedRepositoryFactory`). The checker types all three precisely; the language introduction (phaenon.dev) shows them. | The PHP idiom is readable, autowirable and already understood by every PHP developer and by PHPStan; the compiler has nothing to add to it but types. |
 | **`class<T>`** | A native type: the type of the expression `T::class`, a subtype of `string`. Bare `class` is any class name (`class<object>`). Erases to `string`; prints in emitted docblocks as `class-string<T>`. Parsed from the `class` keyword in a type position (Phaenon mode), so no name-joining rule exists. With `$c` of type `class<T>`, the checker narrows `$x instanceof $c` to `T`, types `new $c(...)` as `T` and checks `$c::method()` against `T` — as it already did for `class-string<T>` read from docblocks. | Rejected: a runtime class object (Python-style) — breaks attribute arguments (constant expressions only), `services.yaml` strings and `===` at every PHP boundary. Rejected: keeping `class-string<T>` as the one hyphenated exception — a special parser rule for a single name. `class<T>` reads as "a class of T" and mirrors `T::class`. |
 | **Hyphenated PHPStan names are not syntax** | `non-empty-string`, `positive-int`, `array-key`, `non-empty-list`, `int<a, b>`, `key-of<T>`, … are read by the type lattice from docblocks — in `.php` and `.phn` alike, as refinements of a native type, exactly as PHPStan reads them — but cannot be written as native types. The surface stays small on purpose: PHP's native types, `list<T>`, `map<K, V>`, `Closure(A): R`, `class<T>`, type parameters and aliases, plus what M4 adds deliberately. `array-key` is written `int\|string`; M4 decides the key bound of `map`. `phn migrate` lifts `class-string<T>` to `class<T>` and keeps the other hyphenated tags in docblocks with a note. Supersedes the "Hyphenated names" row of §11.1. | PHPStan is a tool's vocabulary, not a type-system design; the Go rule applies — the general type unless the use case demands otherwise — or the number of types explodes. Tequila's own `src/` writes `list<…>` on 2,007 lines against 22 `non-empty-string`, 17 `positive-int`, 67 `array-key` and 4 for all the rest combined. The §11.1 row was justified by the migration (reflector's lift), not by the language. |
-| **`\Phaenon\Type` narrowed** | The runtime serves structural `is` / `as` only (`$m is list<int>`), where PHP has no check of its own. It never appears in a signature. `Type::from()` and `Type::instantiate()` are removed. | What is left is an honest library call at the site that asked for a deep check; nothing hidden. |
-| **Emitter principle** | Roadmap D9: the emitted PHP contains no identifier the programmer did not write — no hidden parameters, no synthesised members, no renamed locals. The compiler adds only the header line, `declare(strict_types=1)`, docblocks, and `phaenon/runtime` calls where the source used `is` / `as` on a type PHP cannot test. | The output must read as PHP a person wrote; "generated-looking" PHP would be the complaint that follows Phaenon forever. |
+| **`\Phaenon\Type` narrowed** | The runtime serves structural `is` / `as` only (`$m is list<int>`), where PHP has no check of its own. It never appears in a signature. `Type::from()` and `Type::instantiate()` are removed. *Removed altogether 2026-11-08 (§11.4).* | What is left is an honest library call at the site that asked for a deep check; nothing hidden. |
+| **Emitter principle** | Roadmap D9: the emitted PHP contains no identifier the programmer did not write — no hidden parameters, no synthesised members, no renamed locals. The compiler adds only the header line, `declare(strict_types=1)`, docblocks, and `phaenon/runtime` calls where the source used `is` / `as` on a type PHP cannot test. *The last exception ended 2026-11-08 (§11.4, D24).* | The output must read as PHP a person wrote; "generated-looking" PHP would be the complaint that follows Phaenon forever. |
 
 ### 11.3 Optional and variadic closure parameters (2026-11-01)
 
@@ -729,3 +739,25 @@ string}` docblocks over `\Closure` properties because a closure type's parameter
 |---|---|---|
 | **`T=` and `T...` in a closure type** | `Closure(string, int=): void` has an optional second parameter, `Closure(string, string...): (int, string)` a variadic last one. A variadic parameter is last and at most one; after an optional parameter every parameter is optional or variadic (the parser rejects the rest). The type erases to `\Closure` with the signature spelled the same way in the docblock: `@var \Closure(string, string...): array{int, string}`. The checker treats a call on such a value as a call on a function with those parameters (`()` on `Closure(string, string...)` is P2101, an optional parameter may be omitted) and checks a closure literal against the type parameter by parameter: a variadic or optional parameter of the type is satisfied only by a variadic parameter or one with a default, as PHPStan rules (`Closure(string...)` does not accept `fn (string $s)`, which cannot be called with no argument). `phn migrate` lifts them; a by-reference parameter keeps the docblock, as before. | These are PHPStan's own markers for `callable(…)` and `Closure(…)` docblock types, so the erased docblock is read by PHPStan unchanged and `phn migrate` lifts the forms Tequila writes: tq-cli's eleven `Closure(string ...$args)` kubectl signatures and the `bool=` of its http boundary. By-reference closure parameters are rare enough (none in Tequila's sources) not to deserve syntax. |
 | **No parameter names** | `Closure(string $stdin, string ...$args)` is not Phaenon; the lift drops the names. | Phaenon's closure type never had them, and in a type they add nothing a checker or a reader needs: the closure literal names its own parameters. PHPStan accepts the nameless form. |
+
+### 11.4 Native tests only, and the end of `\Phaenon\Type` (2026-11-08)
+
+Settled when the descriptor hoisting of §5.5 was designed and measured, and the output was read
+again as a PHP developer reads it. Two findings closed it. PHPStan types every `static` variable
+`mixed`, whatever its initialiser, so a hoisted descriptor costs two compiler lines per function
+(`/** @var Type<list<int>> $__t */` above `static $__t = …;`) in output whose promise is the PHP a
+person would have written. And the saving was never where the cost is: with opcache on PHP 8.5,
+one million calls, `list<int>` inline against hoisted was 231 against 79 ns on an empty array,
+682 against 531 at ten elements and 4637 against 4463 at a hundred — the deep walk dominates
+from ten elements on, and the operator that hides it reads as O(1). Roadmap D23 and D24. Where this
+table and the text above differ, this table wins.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **Checkable types** | `is` and `as` accept a type PHP tests in O(1), and compile to that test: `int` → `\is_int($x)`, `float`, `string`, `bool` likewise; `null` → `$x === null`; `array`, and `map` with `mixed` key and value → `\is_array($x)`; `object` → `\is_object($x)`; `callable` → `\is_callable($x)`; `iterable` → `\is_iterable($x)`; a class, interface, enum, `self` or `static` → `$x instanceof Foo`; `Closure` → `$x instanceof \Closure`; `?T` → `$x === null \|\| …`; `A\|B` → `\|\|`, `A&B` → `&&` of the members' tests; a literal or an enum case → `$x === 'a'`, `$x === Suit::Hearts`; `class<Foo>` → `\is_string($x) && \is_a($x, Foo::class, true)` and bare `class` → `\is_string($x) && (\class_exists($x) \|\| \interface_exists($x))`, as since §11.2; `list` → `\is_array($x) && \array_is_list($x)`; a tuple `(int, string)` → `\is_array($x) && \array_is_list($x) && \count($x) === 2 && \is_int($x[0]) && \is_string($x[1])`. A conjunct the operand's static type already settles is dropped: on an `array` operand, `is list` is `\array_is_list($x)` alone. | Every form is the line a PHP developer writes, and PHPStan narrows each of them on the output; a tuple's test is O(arity), its members fixed by the type. |
+| **Uncheckable types: `P3011`** | `list<T>` with `T` other than `mixed`; `map<K, V>` with a key or value other than `mixed`; a `Closure(A): R` with a signature; `bytes` (a PHP string at runtime; `strings.md` §6 makes `as string` on a `bytes` operand the one exception); a tuple with an uncheckable member; `Foo<Bar>` whose arguments do not follow from the operand's static type; an alias expanding to any of these. The message names the test that exists: "`list<string>` cannot be tested at runtime in O(1): test `is list` and build the typed value, or check the elements yourself". No opt-out, no depth allowance. A type parameter stays `P3003`. | The deep check is writable in Phaenon as it is in PHP — `\is_array($x) && \array_is_list($x) && \array_all($x, \is_string(...))` — and PHPStan 2.1 narrows through neither it nor a library call, so the hand-written form tells the truth about what the checker knows afterwards. Hack chose shallow `is` on generics for the same reason (§9 question 6, answered twice). |
+| **`Foo<Bar>`** | Allowed, and compiled to `$x instanceof Foo`, when the operand's static type fixes the arguments: `Repository<User>\|null` tested with `is Repository<User>`, or a union whose `Repository` member has them. Otherwise `P3011`, with the fix "test `is Repository` and read the arguments from the value, or hold a `class<T>` (§11.2)". After `instanceof` on an operand that does not fix them, the type's parameters are their bounds, as PHPStan has it. | Kotlin's rule for erased generics: the test is allowed where erasure loses nothing. |
+| **`as` and `as?`** | `$x as int` → `\is_int($x) ? $x : throw new \TypeError('expected int, got ' . \get_debug_type($x))`; `$x as? int` → `\is_int($x) ? $x : null`. A compound type uses the same `is` form in the condition. A test the static type settles is reported as always true or always false, as `is` is today. | `cond ? $x : throw …` is PHP 8's own idiom for a checked value; `get_debug_type()` gives the message `TypeError` would have given. |
+| **The operand: `P3012`** | A compound test, an `as` or an `as?` writes its operand more than once, so the operand is a variable, a property fetch or a static property fetch, a constant-index read of one of these (`$row['id']`, `$this->items[0]`), or a chain of them; never a call, a `new`, an operator or an assignment. Anything else is `P3012`: "the operand of `as` is evaluated twice; assign it to a variable first". A single-function test (`is int`, `is Foo`) takes any expression. | A compiler temporary (`\is_int($__v = f()) ? $__v : …`) is the machine-written output D9 forbids; binding the value first is what the hand-written line does. |
+| **Narrowing** | After `is list`, the operand is `list<mixed>`, or `list<T>` when it was `array<T>`; after `is array` it is `array<mixed, mixed>`, or what it was; after `as string` on `bytes`, `string`. A hand-written `array_all(...)` narrows nothing beyond that. | Parity with PHPStan on the output (`checker.md` §9): the checker may be stricter than PHPStan, never more lenient, and PHPStan narrows `is_array`, `array_is_list`, `is_int` and `instanceof` but not `array_all`. |
+| **`\Phaenon\Type` removed** | The class, its stub in the compiler and its tests leave `phaenon/runtime`; the emitter writes no call into any package (roadmap D24). §5.5's hoisting and §6's `--runtime-guards` are withdrawn unbuilt; §7's monomorphisation closes with them. | A guard on `list<T>` is the deep check by another name, and a guard on a scalar is the native parameter type PHP already enforces. Monomorphisation was an optimisation of reified instantiations, which went with §11.2. |

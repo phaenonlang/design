@@ -254,7 +254,7 @@ call, and PHP code reads the output as the static call.
 - **To PHP:** a `list<T>` or `map<K, V>` parameter erases to `array`, with the docblock PHPStan
   reads (`list<T>` / `array<K, V>`), so PHPStan on the output keeps the distinction. PHP callers
   pass arrays; the checker's `--runtime-guards` (generics.md §6, not built) would be where a
-  boundary check could go.
+  boundary check could go *(withdrawn 2026-11-08, generics.md §11.4)*.
 - **From PHP:** a vendor function returning `array` is `array` (legacy); one with a docblock is
   typed by it, as today. The overlay keeps teaching the checker what PHPStan knows by extension
   (`array_map` preserving lists, `explode` returning a non-empty list, …).
