@@ -314,6 +314,9 @@ PHP and the findings beside the source.
   - The release URL carries the version, so the names do not. phaenon.dev takes both by
     version, like the binaries.
   - The CLI's other commands (`lsp`, `trace`, `fix`, `fmt`, `migrate`) are not linked in.
+- **The language is the compiler's** (2026-11-09): the playground compiles what `phn build`
+  compiles, so since roadmap D26 and D27 a leftover `is`, `as` or `fun` is `P1001` there too, and
+  the page's examples declare methods without a keyword and test types with PHP's own tests.
 
 ## 4. PHP's rewriting tools: `phn fix`
 
@@ -336,8 +339,9 @@ phn fix -- tools/rector/vendor/bin/rector process
    - A change inside one verbatim span, or between two spans with nothing generated in between, is
      applied to the source at the mapped offset.
    - A change that touches generated text is not carried back. Generated text is a docblock the
-     compiler wrote, the `public function` of a `fun`, an erased type or an import the compiler
-     added. The change is reported with its position traced to the source:
+     compiler wrote, the `public function` it writes for a method declared without them (for a
+     `fun` until 2026-11-09), an erased type or an import the compiler added. The change is
+     reported with its position traced to the source:
      `src/Foo.phn:12: php-cs-fixer changed generated text (phpdoc_align); not applied`.
 4. **Rebuild and check.** `phn build` runs again, so the outputs are compiled sources once more.
    Where the tool has a check mode, the command then runs a second time in it, and any change it
@@ -423,8 +427,10 @@ Done in slice 3 (2026-11-03), with these settlements:
     or when several rectors name the same node.
   - Any other tool's changes are reported as before, without a rule.
 - **A method's modifiers stay the source's text** when they are already in PSR-12 order: the
-  emitter replaces only `fun`. The output is the same byte for byte (core's 800 and tq-cli's 859
-  outputs), but Rector's removal of a `static` is now carried. It used to be one of 344 refusals.
+  emitter replaces only `fun` (since D27, 2026-11-09, it inserts `function`, and `public` where
+  the source writes no visibility). The output is the same byte for byte (core's 800 and
+  tq-cli's 859 outputs), but Rector's removal of a `static` is now carried. It used to be one of
+  344 refusals.
 - **The measure, on a copy of core's tree:**
 
   | Run | Carried | Refused in round 1 | Left after the rounds |
@@ -457,16 +463,18 @@ The first layer is native, with no options:
 
 | Construct | Canonical spelling |
 |---|---|
-| type parameters | `class Box<T of Item>`, `fun first<T>(list<T> $xs): ?T` |
+| type parameters | `class Box<T of Item>`, `first<T>(list<T> $xs): ?T` |
 | type arguments | `list<User>`, `map<string, list<int>>`: no space inside `<>`, one after a comma |
 | tuple and closure types | `(int, string)`, `Closure(int, string...): bool` |
-| expression body | `fun name(): string => $this->name;`, a continuation one level in |
-| `throws` | `fun find(Id $id): User throws NotFound\|Conflict {` |
-| `is`, `as` | `$x is list<int>`, `$x as? User` |
-| `concurrently`, `spawn` | `concurrently (timeout: 5) {`, `spawn $job->run()` |
+| expression body | `name(): string => $this->name;`, a continuation one level in |
+| `throws` | `find(Id $id): User throws NotFound\|Conflict {` |
+
+*The rows of `is` and `as` went with roadmap D26 (2026-11-09), those of `concurrently` and `spawn`
+with D25 (2026-11-08).*
 
 This layer changes whitespace only, plus the brace and `{}` forms, which are layout too. Turning a
-block into `=> expr` stays `phn migrate`'s job, because it changes the code.
+block into `=> expr` stays `phn migrate`'s job, because it changes the code. *Since 2026-11-09 it
+also rewrites the spellings D26 and D27 withdrew, the one change of code it makes (§5.6).*
 
 PhpStorm's Reformat Code writes this same layer (the plugin's formatter), and the two share their
 golden files.
@@ -503,9 +511,9 @@ With these settlements:
     as it is. It covers:
     - type parameter lists, type arguments (on types, calls and `new`), tuple and closure types,
       and type aliases;
-    - `throws`, `is`, `as` and `as?`;
+    - `throws`, and `is`, `as` and `as?` until 2026-11-09;
     - an expression body's `=>`;
-    - `concurrently` and `spawn`.
+    - `concurrently` and `spawn` until 2026-11-08.
 
     The tokens must come out as they went in (a `>>` counts as the `>` `>` it closes).
   - The rest of a `.phn` is the project's PHP style, which the second layer writes.
@@ -541,6 +549,43 @@ With these settlements:
 - **php-cs-fixer on the `.phn` itself**, with an open tag prepended and Phaenon's syntax masked as
   comments? The fixers move and respace comments, and every one of them would be looking at code
   that is not the code. On the compiled output, their assumptions hold.
+
+### 5.6 The withdrawn spellings (2026-11-09)
+
+Roadmap D26 and D27 withdrew `is`, `as`, `as?` and `fun`, and the trees migrated before them hold
+those spellings: `fun` heads about 10,000 declarations in the six dogfood trees, 3,414 in core.
+Their migration must be mechanical, so `phn fmt`'s first layer rewrites them, before anything
+else, as it replaces tabs. Each rewrite means what its spelling meant: it is the PHP the
+emitter wrote for it.
+- **`fun`** is dropped before a method's name — `fun name(` → `name(`, `static fun create(` →
+  `static create(`, `protected fun apply(` → `protected apply(` — and becomes `function` where
+  `functions.md` §1.1 requires the keyword: before a function outside a class, and before a
+  method named after a modifier, `const`, `Closure`, `function` or `fn`.
+- **`is`, `as` and `as?`** become the PHP test each one compiled to, the table of `generics.md`
+  §11.4:
+
+  | Written | Rewritten |
+  |---|---|
+  | `$x is string`, `$x is Foo`, `$x is null` | `is_string($x)`, `$x instanceof Foo`, `$x === null` |
+  | `$x is ?Foo`, `$x is int\|string` | `$x === null \|\| $x instanceof Foo`, `is_int($x) \|\| is_string($x)` |
+  | `$x is list` | `is_array($x) && array_is_list($x)`; `array_is_list($x)` on an array operand |
+  | `$x is Suit::Hearts`, `$x is 'a'` | `$x === Suit::Hearts`, `$x === 'a'` |
+  | `$x as int` | `is_int($x) ? $x : throw new \TypeError('expected int, got ' . get_debug_type($x))` |
+  | `$x as? Foo` | `$x instanceof Foo ? $x : null` |
+  | `$b is string`, `$b` a `bytes` | `mb_check_encoding($b, 'UTF-8')` |
+  | `$b as string`, `$b` a `bytes` | `mb_check_encoding($b, 'UTF-8') ? $b : throw new \ValueError('not valid UTF-8')` |
+
+  The other rows of §11.4, `class<Foo>` and tuples among them, are rewritten the same way. The
+  functions are written unqualified, as a person writes them (the emitter wrote `\is_int()`), and
+  the project's fixer adds the `\` its style may want; in a file whose namespace declares a
+  function of the same name they are qualified. A compound test is parenthesised where the expression around it binds tighter. The
+  rewrite reads the operand's type (an `array` operand, a `bytes` one), so it needs the checked
+  program, which an editor's server has.
+- **What has no rewrite is reported**, `P1001` at the expression: a test on a type `P3011`
+  refused, or on an operand `P3012` refused. No such test ever compiled, so a tree that built
+  holds none.
+- **`phn fmt --check`** reports a withdrawn spelling as it reports a file out of the first
+  layer's layout, and fails.
 
 ## 6. Editors
 
@@ -751,6 +796,10 @@ Phaenon's syntax:
 - `concurrently` and `spawn`;
 - `bytes`, tuples and closure types.
 
+*Since 2026-11-09 (roadmap D26, D27) the grammar reads a method without a keyword as a declaration
+with its type parameters, parameters, return type and `throws`; the `fun`, `is`, `as` and `as?`
+rules are gone, as `concurrently` and `spawn` went on 2026-11-08.*
+
 These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
 reads as a type in a parameter list, a property and a class header alike. Where PHP has the
 construct, the rules use its scope names, so themes colour Phaenon as they colour PHP.
@@ -849,7 +898,7 @@ Done in slice 2 (2026-11-03), with these settlements:
 - **Holds count in coverage.** The draft left them out as generated text. A coverage run shows
   otherwise. The executable lines a coverage driver reports on holds are code the source line is:
   - an expression body's `return …;`;
-  - an empty body's closing brace (`fun __construct(…) {}`);
+  - an empty body's closing brace (`__construct(…) {}`);
   - the continuation lines of a folded pipeline.
 
   Generated text that is not code (the header, imports, docblocks) is never executable, so it never
@@ -887,7 +936,7 @@ Done in slice 2 (2026-11-03), with these settlements:
   to.
 - **Proof on the dogfood trees:**
   - tq-cli's suite, run under PCOV in a throwaway container:
-    - all 2,054 JUnit test cases land on their `fun` line;
+    - all 2,054 JUnit test cases land on their method's line;
     - of the 449 positions in the failure texts, 418 now point into a `.phn` and 31 into vendor
       PHP, none into a compiled tree;
     - all 569 Cobertura classes resolve to a `.phn`, and the root's totals equal the sum of the
@@ -1332,8 +1381,9 @@ hold the checker to "never more lenient". Each place that may throw is a throw p
 - **Explicit, from the language:**
   - `/` or `%` with a divisor that may be zero: `DivisionByZeroError`;
   - a `match` without `default` that is not exhaustive: `UnhandledMatchError`;
-  - `as`: `TypeError` (`as?` throws nothing);
-  - `concurrently`: implicit, since it rethrows the first failure of its tasks.
+  - `as`: `TypeError` (`as?` throws nothing), until D26 withdrew it (2026-11-09);
+  - `concurrently`: implicit, since it rethrows the first failure of its tasks, until D25
+    withdrew it (2026-11-08).
 
 Why implicit throw points: PHP has no checked exceptions, so a function that declares nothing may
 throw anything. Reading it as "throws nothing" would call nearly every catch dead. Read as
@@ -1620,3 +1670,4 @@ Reviewed 2026-11-03.
 | T14 | **A `list-types` type is spelled only as deep as the code uses it**, the checker deciding what a use needs, with no depth cap and no class suggested (§8.2) | authors type what the code uses: on core, typed by hand, it brings 16 types back as written and none wider; a cap at two leaves its over-precise two-level types and gives tq-cli 101 findings; deep data such as a configuration tree needs neither a class nor a deep type |
 | T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |
 | T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
+| T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, and each leftover `is`, `as` and `as?` to the PHP test it compiled to, reporting `P1001` only where none exists (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has exactly one PHP form, the one the emitter wrote |
