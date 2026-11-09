@@ -88,7 +88,8 @@ Vendor code is loaded lazily, and nothing is cached between runs.
 **Editors**:
 - **The checker stays on the command line.** The PhpStorm plugin gives `.phn` PhpStorm's PHP
   toolchain through PSI, but the checker's findings appear only in the terminal.
-- **PhpStorm has an LSP client API** since 2023.2. The plugin builds against 2025.1.
+- **PhpStorm has an LSP client API** since 2023.2. The plugin builds against 2026.1.4, its floor
+  since 0.6.0: the release that renamed the client API and deprecated the old names.
 - **VS Code has nothing for `.phn`.** Its PHP extensions (Intelephense, PHP Tools) read PHP files
   that start with the open tag.
 
@@ -763,10 +764,9 @@ With these settlements:
   and the server then advertises diagnostics and code actions alone. Overriding the descriptor's
   support properties is not enough: PhpStorm 2026.2 replaced them with an `LspCustomization`
   whose defaults turn on every feature the server advertises, from document symbols to inlay
-  hints. PhpStorm 2025.1, which the plugin builds against, reads the properties, which the plugin
-  sets as well.
-- **The LSP part is optional**, on `com.intellij.modules.ultimate`, the module both 2025.1 and
-  2026.2 declare for the API.
+  hints. Older releases read the properties, which the plugin sets as well.
+- **The LSP part is optional**, on `com.intellij.modules.ultimate`, the module every supported
+  release declares for the API.
 - **The compiler** is the setting (Settings | Languages & Frameworks | Phaenon), else
   `$PHN_BINARY`, else the project's `vendor/bin/phn`, else `phn` on the PATH. The same page
   turns build on save off. The status bar shows the last build.
