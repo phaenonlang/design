@@ -18,7 +18,7 @@ decision wins.** A superseded decision keeps its row and names what superseded i
 | Document | Holds | Decisions |
 |---|---|---|
 | `language-overview.md` | The scope: what stays from PHP, what is removed, what is added | in each feature's document |
-| `roadmap.md` | The plan: milestones M0–M7 and the PHP release milestones with their status, the working method | §1 (D1–D27) |
+| `roadmap.md` | The plan: milestones M0–M7 and the PHP release milestones with their status, the working method | §1 (D1–D28) |
 | `generics.md` | Type parameters, variance, erasure to PHP, `class<T>`, interop with docblock generics | §11 |
 | `collections.md` | `list<T>`, `map<K, V>`, tuples, shapes and the legacy `array` | §7 |
 | `strings.md` | Text and `bytes` | §6 |
@@ -26,7 +26,7 @@ decision wins.** A superseded decision keeps its row and names what superseded i
 | `concurrency.md` | `concurrently { }` blocks and `spawn` over amp v3 and Revolt; withdrawn until PHP core has a scheduler | §15 (C1–C10), §16, §17 |
 | `checker.md` | The type checker: its types, program model, checks and diagnostics, PHPStan parity | §9; open questions in §10 |
 | `line-map.md` | The compiled layout, and the line map that leads positions in compiled PHP back to the source | §6 |
-| `tooling.md` | Distribution, the Composer plugin, `phn fix`, `phn fmt`, `phn lsp`, the editors, CI, the codemods | §14 (T1–T17) |
+| `tooling.md` | Distribution, the Composer plugin, `phn fix`, `phn fmt`, `phn lsp`, the editors, CI, the codemods | §14 (T1–T18) |
 | `php-versions.md` | The target PHP version, following PHP's releases, lowering what is newer than the target | §9 |
 | `AGENTS.md` | The guide for coding agents working in this repository (`CLAUDE.md` includes it) | |
 

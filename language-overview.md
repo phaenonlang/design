@@ -86,6 +86,10 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 
 - Extension `.phn`; one file = one compilation unit = one emitted `.php` beside it (gitignored),
   the way `.js` sits beside `.ts`. Composer autoloads the `.php`.
+  *Amended 2026-11-01 (roadmap D12): the `.php` is written into a sibling output directory,
+  `src/` → `.src/`. Amended 2026-11-10 (roadmap D28): the outputs are gitignored but in a library
+  published for PHP projects at large, which may commit them so that it installs as plain PHP
+  (`tooling.md` §3.7).*
 - `phn build` compiles a package; `phn check` type-checks without emitting; `phn watch` does both
   on change. Type errors mean **no output** for that file.
 - Emitted files start with a header comment naming the source and the compiler version, and

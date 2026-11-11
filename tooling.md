@@ -1,7 +1,7 @@
 # Phaenon — Tooling and distribution (draft 0.1)
 
 Status: **reviewed 2026-11-03** (decisions §14) · M6. Companion: `roadmap.md` D2, D8, D10, D12, D13,
-D17, D19 and §3 (M6); `line-map.md` (positions in compiled code); `functions.md` §5 (the canonical
+D17, D19, D28 and §3 (M6); `line-map.md` (positions in compiled code); `functions.md` §5 (the canonical
 source layout).
 
 This document is the design. §13 lists the questions of the review, §14 the decisions. Where it departs from what the
@@ -16,6 +16,9 @@ M6 makes Phaenon something a project installs, not something a developer builds 
 Composer package, `phaenon/phn`, brings the compiler binary and a Composer plugin. The plugin
 compiles every installed package that has a `phaenon.json`, and the project itself, when Composer
 writes the autoloader. So `composer require` is the whole setup, and a library ships only its `.phn`.
+
+*One exception since roadmap D28 (2026-11-10): a library published for PHP projects at large may
+commit its compiled outputs and be installed without the plugin (§3.7, T18).*
 
 PHP's own tools keep working on Phaenon code because they keep working on the compiled PHP.
 Positions already come back to the source through the line map (D19). With M6, *edits* come back
@@ -105,7 +108,8 @@ the VS Code extension as a `.vsix`.
 ### Goals
 
 1. A project adopts Phaenon with `composer require phaenon/phn`, and a library ships `.phn` only
-   (D13) and is consumed with `composer require` alone.
+   (D13) and is consumed with `composer require` alone. *One exception since roadmap D28
+   (2026-11-10): a library published for PHP projects at large may commit its outputs (§3.7).*
 2. Every PHP tool a project runs keeps working with its own configuration:
    - analysers and test runners on the outputs, positions mapped back (D19);
    - rewriting tools on the outputs, edits mapped back (§4).
@@ -138,7 +142,9 @@ the VS Code extension as a `.vsix`.
 - **It requires `phaenon/runtime` at the same minor version** (§3.4). *Not since T16 (2026-11-08):
   the plugin requires no package and suggests `phaenon/debug`.*
 - **It goes in `require`, not `require-dev`.** The production build (`composer install --no-dev`)
-  is where outputs are made. The running application never calls it.
+  is where outputs are made. The running application never calls it. *The other way round in a
+  library that commits its outputs (D28, §3.7): its outputs are made before it is published, so the
+  compiler is a development requirement there.*
 
 ### 3.2 The binary
 
@@ -238,6 +244,9 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
   one), and a root its dist archive leaves out (`tests/`) is skipped.
 - **The root project's build can be turned off** with `extra.phaenon.build: false`, for a project
   whose own workflow builds it (Q4).
+- **An installed package's committed roots are not built** (D28, 2026-11-10). The roots its
+  `phaenon.json` lists under `committed` are left as installed, with no stamp; §3.7 says what that
+  means for each rule above. The root project is built as before, whatever it commits.
 
 ### 3.4 Versions
 
@@ -250,7 +259,9 @@ retired.*
   builds the whole vendor tree at install, so the runtime always matches the compiler that wrote
   every call into it.
 - **A library states the compiler range it needs.** It requires `phaenon/phn` with the range its
-  sources compile with (`^0.4`), as a PHPStan extension requires PHPStan.
+  sources compile with (`^0.4`), as a PHPStan extension requires PHPStan. *A library that commits
+  its outputs (D28, §3.7) requires one exact release under `require-dev`, which binds none of its
+  consumers, and states the releases that cannot read its sources as a `conflict` (T18).*
 - **`phn check` reads `installed.json`** and reports two errors, `P4013` and `P4014`:
   - a file that uses `concurrently` where `phaenon/concurrent` is not installed (the vault's M5
     item);
@@ -318,6 +329,216 @@ PHP and the findings beside the source.
 - **The language is the compiler's** (2026-11-09): the playground compiles what `phn build`
   compiles, so since roadmap D26 and D27 a leftover `is`, `as` or `fun` is `P1001` there too, and
   the page's examples declare methods without a keyword and test types with PHP's own tests.
+
+### 3.7 A library that commits its outputs (D28; draft, 2026-11-10)
+
+D13 is the rule: a library ships `.phn` only, and the plugin builds it where it is installed. The
+rule asks every consumer to take the plugin: an `allow-plugins` entry, a binary downloaded at
+install, a build at every autoload dump. A project written in Phaenon has all three already. A
+project that wants the library and nothing else has none of them, and a library published for PHP
+projects at large should not charge its users for the language it is written in. **Such a library
+may commit its compiled outputs**, and is then installed as the plain PHP it compiles to (D24).
+Applications, and libraries whose consumers are Phaenon projects, stay with D13.
+
+The outputs have to be in a commit. Packagist ships what the tagged commit holds (§1): it has no
+upload that could carry files git never sees, as `npm publish` carries a `dist/`. What is left to
+choose is which commits hold them, and here it is every commit of the main branch; holding them
+on release commits only was weighed and not taken (below).
+
+Klass8s, the framework for writing Kubernetes manifests as PHP classes, is the first. It is also
+meant to show the language, which is why the layout below keeps the `.phn` in `src/`, where a
+reader of the repository looks first.
+
+**The repository:**
+
+- **The layout is D12's.** Sources in `src/`, outputs in the sibling `.src/`, Composer's autoload
+  on `.src/`, as in any Phaenon project. The one difference is that `.src/` is tracked: the
+  compiled files and the copies of every other file under the root. `.tests/` stays ignored and is
+  built in CI.
+- **`phaenon.json` names the committed roots:**
+
+  ```json
+  {"roots": {"src": ".src", "tests": ".tests"}, "committed": ["src"]}
+  ```
+
+  `committed` lists source roots, each of them a key of `roots`; any other entry is an error of
+  the project file. Without the key, or with an empty list, the project is D13's. The key names
+  roots and not the whole package because a library commits what its consumers load, not its
+  tests.
+- **`phaenon/phn` is a development requirement, at one exact version** (the numbers below are
+  examples: the first release that knows the key is not named yet):
+
+  ```json
+  {"require-dev": {"phaenon/phn": "0.5.2"}, "conflict": {"phaenon/phn": "<0.5"}}
+  ```
+
+  It stands under `require-dev`, never `require`, and is allowed in the library's own
+  `allow-plugins`. Composer installs no development requirement of a dependency, so a consumer
+  gets no plugin, no binary and no question. The version is exact because two releases can write
+  different bytes for the same source: 0.4.0 and 0.4.1 differ in their line maps. A package
+  version pins its binary by checksum (§3.2), so the constraint names the compiler that wrote the
+  committed bytes. *(Amends §3.1 and §3.4 for such a library.)*
+- **No `composer.lock` is committed**, as in any library. The pin is the constraint, in
+  `composer.json`, where a reader of the repository sees it.
+- **A compiler upgrade is one pull request**: the new version in `require-dev` and the `.src/` it
+  writes. The plugin builds the library's own project at the dump (T4), so the install that brings
+  the new release regenerates `.src/`, and the pin and the outputs land in one commit by
+  themselves. A bump that changes the constraint alone, an automated one included, fails the gate
+  wherever the new release writes other bytes, as it should.
+- **A `conflict` states the compilers that cannot read the sources**: `phaenon/phn` below the
+  release the sources need, and never below the first release that knows `committed`. A consumer
+  written in Phaenon reads the library's `.phn` (below), so it needs a compiler that can. Composer
+  applies a `conflict` only where the other package is installed: a project without the plugin is
+  untouched by it.
+- **`.gitignore`** lists `/.tests/` and `.phn-build`, and not `/.src/`. The stamp is listed
+  because a build of the checkout as an installed package, made before the key was set, may have
+  left one in `.src/` (§3.3).
+- **`.gitattributes`** marks the outputs as generated:
+
+  ```gitattributes
+  /.src/** linguist-generated
+  ```
+
+  GitHub then shows the compiled files collapsed in a pull request's diff and keeps the compiled
+  PHP out of the repository's language statistics. For git and for Composer nothing changes: the
+  files are tracked, diffed and archived like any other. This answers D13's objection that
+  committed outputs double every review. The review is of the `.phn`; the collapsed PHP is there
+  to be opened when a reviewer wants to see what the compiler wrote.
+- **The dist archive holds `phaenon.json`, `src/` and `.src/`, and leaves out `tests/`.**
+  - The three are needed: the outputs are what runs, each output's line map names its `.phn`
+    (`line-map.md` §3.1), and a Phaenon consumer's checker reads the sources through the project
+    file.
+  - `.src/` is a dot-directory, and a habit of PHP libraries drops those from the archive
+    (`/.* export-ignore`). Nothing run on a checkout would notice, since `export-ignore` changes
+    the archive only; the first to find out would be the projects that install a tagged release.
+    So the gate looks at the archive too.
+  - `tests/` is left out because the plugin builds every root of an installed package that the
+    key does not name (below): with `tests/` in the archive, every Phaenon consumer would fetch
+    the binary and compile the library's tests at each dump.
+
+**The gate is the state of the tree.** The library's CI builds, and then asks git whether
+anything under `.src/` differs from what was committed:
+
+```sh
+composer install                             # the pinned phaenon/phn; the plugin builds every root
+vendor/bin/phn build                         # no paths, no --emit-on-error
+# … every other step that builds: phn fmt --check, phn fix --check, the suite
+git diff --exit-code -- .src                 # no committed output was changed or removed
+test -z "$(git status --porcelain -- .src)"  # and none was added
+git archive HEAD | tar -t                    # must list phaenon.json, src/, .src/ and no tests/
+```
+
+- **The two git commands come after every step that builds.** A stale output shows as a modified
+  file, a missing one as an untracked file, an orphan as a deleted one, since the build removes an
+  output that has no source; a stale copy of a mirrored file shows as modified too.
+- **The explicit `phn build` is there for two reasons.** The gate must not rest on the plugin
+  having run (an install with `--no-plugins` builds nothing). And `phn build` without
+  `--emit-on-error` fails on a file the checker rejects (D10), where `phn fmt` and `phn fix` write
+  such a file's output all the same. It takes no paths: given paths, a build mirrors nothing and
+  removes no orphan.
+- **Why the tree, and not a comparison before anything has built.** The plugin is not the only
+  writer of the outputs in a CI job: `phn fmt --check` and `phn fix --check` rebuild them as well,
+  and so does any script that builds before the suite. A rule about one writer protects nothing,
+  and a comparison made after any of them has run passes on what that step has just written. The
+  state of the tree catches every writer, orphans, stale copies and a file with errors, and it
+  needs no change to the plugin in the library's own project and no new mode of `phn`.
+- **`phn build --check`** (no paths, no `--emit-on-error`) is the same question asked locally,
+  writing nothing. It is not the gate: it compares the tree with what the build would write, and
+  any step that has built before it has already made the two equal. §7.1's `--check
+  --emit-on-error` is for a project that builds with its findings, which a library that ships its
+  outputs does not.
+- **It runs in one job**, the one that installs the dependencies as Composer resolves them, with
+  no `PHN_BINARY`. A job that tests against the lowest dependencies does not run it.
+- **It is a required check, branches merge up to date with the main branch or through a merge
+  queue, and a release is tagged only on a commit that passed it.** One file's output can depend
+  on another file's declarations (the emitter decides imports and lowers generics through the
+  program), so two pull requests can each pass and leave the main branch stale once both are
+  merged. And since `.src/` is collapsed in review, the gate is the only control on the bytes a
+  plain PHP consumer runs: an output edited by hand does not survive it.
+- **Its one known limit.** The bytes depend on the compiler and on the declarations of the
+  library's dependencies, which the imports and the lowering of generics read. The exact version
+  fixes the first, not the second: a dependency's release can turn the gate red with no commit in
+  the library. The answer then is to rebuild and commit.
+
+**The plugin, where the library is installed:**
+
+- **The roots under `committed` are left as installed**: not built, and no `.phn-build` stamp
+  (§3.3) written into them. A root the key does not name is built as §3.3 says when the install
+  has it, which is why the archive leaves `tests/` out. `phn build --vendor` does the same.
+- **A package whose installed roots are all committed is nothing to build.** Alone, it makes the
+  plugin neither fetch the binary nor run it (§3.3).
+- **A package that names a root and ships no output for it is an error.** Where a root under
+  `committed` is installed and its output directory is missing, or one of its `.phn` has no `.php`
+  there, the dump fails as a failed build does, with a message that names the package and the
+  root. The plugin does not build the root instead: the same release is broken for every consumer
+  without the plugin, and a build here would hide that from the consumers able to report it. The
+  check is of presence only, so it needs no compiler: the plugin makes it before it fetches a
+  binary, and `phn build --vendor` makes it when run by hand. Whether an output is current is the
+  library's gate to say, since a consumer's compiler may write other bytes.
+- **Two readers of the project file.** For that check the plugin's PHP reads `roots` and
+  `committed` and nothing else, whatever other keys the file has; the compiler stays the reader
+  of everything. The plugin's suite holds both to the same fixtures.
+- **Only a package says it, about itself.** The key is read from the package's own `phaenon.json`.
+  A root project cannot declare another package's outputs committed, and cannot ask for a
+  committed root to be rebuilt. `extra.phaenon.build: false` (§3.3) is a different switch: the
+  root project turning off the plugin's build of itself, whatever it commits.
+- **Presence does not stand in for the key.** A D13 library checked out as a path repository has
+  an ignored `.src/` its developer built, which the plugin must rebuild; a committed `.src/` it
+  must leave. The two look the same on disk, so the package says which it is.
+
+**In the library's own checkout nothing changes.** T4 stands: the plugin builds the project at
+every dump, the committed roots included, as `phn build`, `phn watch` and the editor's build on
+save do. That is how the outputs are made and kept current while working. PHPUnit, PHPStan and
+php-cs-fixer run on the outputs, and their positions come back through `phn trace` (§7.1).
+
+**A compiler from before the key** refuses a project file with a key it does not know:
+
+- **In the library's own checkout** every command fails on it, and the plugin's build fails the
+  dump. So the key is set only once the version in `require-dev` is the first release that knows
+  it.
+- **Where the library is installed**, it prints a warning at each dump and leaves the package out
+  of the build, with its outputs as installed. Its plugin still fetches the binary for the
+  package, and its checker reads the package from `.src/`, as it reads any PHP package.
+- **The `conflict` keeps such a compiler out**, which is why its floor is never below the first
+  release that knows `committed`.
+
+**For a consumer written in Phaenon:**
+
+- **Its checker reads the library's sources.** §3.3's mapping from an installed package's outputs
+  to its sources holds for a committed root as for any other. A Phaenon consumer reads Phaenon, as
+  it does for a library of D13: the types a docblock cannot carry (`bytes`, which erases to
+  `string`) are not lost, and one kind of library is not read differently from the other.
+- **What runs is the library's output**, written by the compiler the library pinned for the target
+  the library names (D17), not by the consumer's compiler. Under D13 one compiler writes the whole
+  vendor tree; here a committed package is the exception to that.
+- **The floor has no upper bound.** Before 1.0 a compiler release may withdraw syntax, as 0.4.0
+  withdrew `fun`, `is` and `as`. A consumer on a newer compiler may then need a newer release of
+  the library, one whose sources `phn fmt` has respelled. A plain PHP consumer never meets this.
+- **`phaenon/debug` works as before** for a consumer that wants it: the map at the end of each
+  output names the `.phn` beside it in the package.
+- **A path repository's checkout is the library's working tree.** The consumer's checker reads its
+  `.phn` as they stand, while what runs is the `.src/` of its developer's last `phn build` or
+  `phn watch`, since the consumer's plugin does not build it.
+
+**Considered and not taken:**
+
+| Alternative | Why not |
+|---|---|
+| The outputs committed only on release commits, by a CI job that builds and tags | It spares the main branch the second diff and rules out drift by hand. But a consumer of the development branch, or of a path repository, gets no outputs at all; and the tags sit on commits outside the main branch's history, where release tooling such as release-please tags |
+| The checker reads a committed package from its outputs | It is what a compiler from before the key does, and it checks against exactly the PHP that runs. But `bytes` and whatever else a docblock cannot carry would be lost at the package's boundary, and a library would be read as Phaenon or as PHP depending on how it is published |
+| A committed `composer.lock` as the pin | It would fix the dependencies' declarations too, the limit above. But a library keeps no lock, so that its suite meets the versions its consumers resolve; the compiler's version would sit in a file no reader opens; and an upgrade would be a lock diff, not one line of `composer.json` |
+
+**What it costs:**
+
+- The outputs drift when the gate is skipped: a library that merges without it ships PHP that is
+  not what its sources say.
+- Every change of a source carries a second, generated diff in the history, collapsed in review
+  but there in `git log` and in a clone's size.
+- A Phaenon consumer runs the output of the library's pinned compiler, and gets a fix of the
+  emitter only when the library is released again with it.
+- A dependency's release can turn the gate red with no commit in the library.
+- A Phaenon consumer on a compiler newer than the library's sources allow waits for the library's
+  next release.
 
 ## 4. PHP's rewriting tools: `phn fix`
 
@@ -905,7 +1126,8 @@ As planned, debugging is not in this slice (§6.3).
 
   This matters because GitHub drops annotations on files that are not in the repository. The
   compiled outputs are gitignored, so a PHPStan finding on compiled code that is not traced is not
-  shown at all.
+  shown at all. *In a library that commits its outputs (D28, §3.7) an untraced finding is shown,
+  but on a generated file a pull request collapses: the findings are traced there as well.*
 - **Coverage.** `phn trace` translates Clover and Cobertura XML too:
   - every compiled line counts as the source line its forward lookup gives, holds included;
   - the compiled lines of one source line merge into one, covered when any of them is, with the
@@ -981,6 +1203,11 @@ install`, so nothing else needs to install it.
 
 A `setup-phn` action waits until a project runs `phn` without Composer. **(Amends roadmap M6's
 "GitHub Action".)**
+
+**A library that commits its outputs** (D28, 2026-11-10) ends one job with the gate of §3.7: after
+every step that builds, the three above among them, git finds nothing changed under `.src/`, and
+the dist archive holds what a consumer needs. Any other project needs none, since its outputs are
+built where they are used.
 
 ### 7.3 Containers
 
@@ -1578,6 +1805,9 @@ results:
 | CI | the reusable workflows' steps from §7.2 |
 | Inherited `CLAUDE.md` | the guide a service inherits shows the idioms in Phaenon |
 
+*D28 (2026-11-10) changes nothing here: a service is an application, so its outputs stay in the
+ignore files and are built at the dump.*
+
 **What stays as it is:**
 - `contracts/` stays PHP. The contracts-codegen workflow and the subtree split read it as PHP;
   revisit after M6.
@@ -1671,6 +1901,34 @@ checkouts until the packages were on Packagist (v0.2.0, 2026-11-06), and moved t
 10. **The roadmap's M6 entry.** "GitHub Action" becomes the CI formats plus Tequila's reusable
     workflows (§7.2), and "Docker base image update" becomes no base-image change (§7.3). Confirm.
 
+Asked by D28 (2026-11-10), about a library that commits its outputs (§3.7):
+
+11. **The compiler such a library can be read by.** Its `require-dev` binds none of its consumers,
+    while a Phaenon consumer's checker reads an installed package's `.phn` (§3.3) and may meet
+    syntax its compiler does not know: under D13 the library's `require` on `phaenon/phn` ruled
+    that out (§3.4).
+    - (a) The checker reads the sources, and the library states the releases that cannot read
+      them as a `conflict`, which Composer applies only where the plugin is installed.
+    - (b) The checker reads a package with committed roots from its outputs, as it reads any PHP
+      package.
+
+    *Answered by T18 (2026-11-10): (a), the floor never below the first release that knows
+    `committed`.*
+12. **How such a library pins its compiler.**
+    - (a) A committed `composer.lock`.
+    - (b) One exact version of `phaenon/phn` in `require-dev`, and no lock.
+
+    *Answered by T18 (2026-11-10): (b).*
+
+Open:
+
+13. **Unknown keys in an installed package's project file** (2026-11-10). A compiler refuses a
+    `phaenon.json` with a key it does not know. That is right for the project it builds. For an
+    installed package it turns every key a later release adds into a warning at each dump and a
+    package read as PHP, on every consumer whose compiler is older. Should an installed
+    package's project file be read tolerantly? `committed` does not wait for the answer: the
+    library's `conflict` keeps the compilers that do not know it out (§3.7).
+
 ## 14. Decisions
 
 Reviewed 2026-11-03.
@@ -1694,3 +1952,4 @@ Reviewed 2026-11-03.
 | T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |
 | T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
 | T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, lifts `function` off every method the grammar allows (modifiers as written), and rewrites each leftover `is`, `as` and `as?` to the PHP test it compiled to, the type-dependent ones only with the checked program, reporting `P1001` only where no rewrite was made (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has a PHP form, the one the emitter wrote. Lifting `function` too gives a tree one spelling of the keyword, and makes PHP code pasted into a `.phn` idiomatic on its first format |
+| T18 | **A library may commit its outputs; where it is installed, the plugin leaves its committed roots alone** (2026-11-10; roadmap D28, an exception to D13; amends §3.1 and §3.4 for such a library; answers Q11 and Q12; §3.7). `phaenon.json`'s `"committed": ["src"]` lists the source roots whose outputs the repository tracks. In an installed package the plugin and `phn build --vendor` leave those roots as installed, with no stamp, and build the others as before; a package whose installed roots are all committed is nothing to build; a root under `committed` that is installed without its outputs fails the dump with an error naming the package and the root. Only a package's own `phaenon.json` says it; `extra.phaenon.build: false` stays the root's switch for its own build. **In the library's own checkout nothing changes**: T4 stands, and the plugin builds every root at the dump. **The gate is the state of the tree**: after every build its CI job runs, the plugin's and an explicit `phn build` (no paths, no `--emit-on-error`) among them, `git diff --exit-code -- .src` and an empty `git status --porcelain -- .src`, and the dist archive lists `phaenon.json`, `src/` and `.src/` and no `tests/`; it is a required check, merges are up to date, and a release is tagged only on a commit that passed it. **The compiler is one exact version of `phaenon/phn` in `require-dev`, and no `composer.lock` is committed.** **A Phaenon consumer's checker reads the library's `.phn`**, and the library declares a `conflict` on `phaenon/phn` below the release its sources need, never below the first that knows `committed`. `.gitignore` lists `/.tests/` and `.phn-build`, and `.gitattributes` marks `/.src/**` as `linguist-generated` | A project that only wants the library should not need a compiler plugin to install it, and Packagist ships what the tagged commit holds. The key is needed because a committed `.src/` and a locally built one look the same on disk; it names roots because tests are not committed. The dump fails on missing outputs because the release is broken for every consumer without the plugin, and a build would hide it. *The gate*: `phn fmt --check` and `phn fix --check` rebuild the outputs as the plugin does, so a rule about one writer protects nothing and a comparison made after any of them passes on what it wrote; the state of the tree catches every writer, orphans, stale copies and a file with errors (D10), and needs no change to the plugin in the root project and no new mode of `phn`. With T4 standing, the install that brings a new compiler regenerates `.src/`, so the pin and the outputs land in one commit by themselves. *The pin*: compiler releases differ in the bytes they write, and an exact version in `composer.json` makes an upgrade one visible change, the constraint and the regenerated `.src/` in one pull request; a bump without the outputs fails the gate. A committed lock was not taken: a library keeps none, and the pin would sit where no reader looks. Its one advantage is the known limit of the choice: the bytes also depend on the dependencies' declarations (imports, the lowering of generics), so a dependency's release can turn the gate red with no commit in the library, and the answer is to rebuild and commit. *The sources*: a Phaenon consumer reads Phaenon, as for a library of D13, so what a docblock cannot carry (`bytes`) is not lost and one kind of library is not read differently from the other; reading a committed package from its outputs was not taken for that reason. The `conflict` binds only where the plugin is installed, and its floor keeps out the compilers that refuse the key, which would read the package from `.src/` and fetch a binary for nothing. Its cost: a floor has no upper bound, and before 1.0 a release may withdraw syntax, so a Phaenon consumer on a newer compiler may need a newer release of the library, whose sources `phn fmt` has respelled; a plain PHP consumer is untouched |
