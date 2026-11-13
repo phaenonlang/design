@@ -253,7 +253,9 @@ property, static property, method, static method; `parent` without a parent; `se
 outside a class; unknown named argument; duplicate `use`; unused `use` (warning).
 
 **Calls** — too few / too many arguments; argument type not acceptable; named argument after
-unpacking; variadic/by-ref mismatches; call on `mixed`/`null`/non-object; calling a non-static
+unpacking; a named argument or placeholder for a parameter an argument or placeholder before it
+fills (PHP's "Named parameter $x overwrites previous argument", `P2010` as for an unknown name,
+`php-versions.md` §9); variadic/by-ref mismatches; call on `mixed`/`null`/non-object; calling a non-static
 method statically and vice versa; instantiating an abstract class, interface, or enum; calling a
 private/protected member from outside; `new` with wrong constructor arguments; invoking a
 non-callable; first-class callable on an unknown function.
