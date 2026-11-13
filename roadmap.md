@@ -404,9 +404,10 @@ go-ahead:
    other key. A package whose installed roots are all committed is nothing to build, so it alone
    makes the plugin neither fetch the binary nor run it. The root project is built as before.
    *Added 2026-11-13 (T18):* where a committed root holds the stamp of an earlier build, in a
-   checkout or a linked checkout, the plugin, in PHP, or `phn build --vendor` where the dump
-   runs it, removes the files no source stands behind and the stamp; shared trees hold the two
-   to each other, and a real source upgrade under Composer is in the suite of step 3. In the
+   checkout or a linked checkout, the plugin, in PHP and at every dump, removes the files no
+   source stands behind and the stamp, as `phn build --vendor` does when run by hand; shared
+   trees hold the two to each other, and a real source upgrade under Composer is in the suite
+   of step 3. In the
    library's own project `phn build` removes a stamp from a committed root, so that the gate
    fails for a commit that tracks one.
 3. The plugin's suite (`internal/distribution`): a fixture library with committed outputs,
