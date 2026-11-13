@@ -232,6 +232,12 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
   - The root project builds exactly as `phn build` does.
 - **Each package builds for its own target** (D17: its `phaenon.json`, otherwise its composer.json's
   `require.php`), the target its CI tested.
+- **An installed package's project file may hold keys the compiler does not know** (T19,
+  2026-11-13). They are passed over, in silence, wherever the compiler or the plugin reads the
+  file of an installed package: for its build, for the check of its committed outputs (§3.7),
+  and for the sources the project's own check, build and language server read it from. The
+  root project's own file stays strict: an unknown key there is an error, which names the key
+  and the release of the compiler that read the file.
 - **Unchanged packages are skipped.** A package is rebuilt only when its sources, the `phn` version
   or its target changed since the last build, or the installed set did, which a stamp in each of its
   output directories records (`.phn-build`: the compiler's version and the digest of its binary,
@@ -246,7 +252,8 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
   whose own workflow builds it (Q4).
 - **An installed package's committed roots are not built** (D28, 2026-11-10). The roots its
   `phaenon.json` lists under `committed` are left as installed, with no stamp; §3.7 says what that
-  means for each rule above. The root project is built as before, whatever it commits.
+  means for each rule above. The root project is built as before, whatever it commits. *One thing
+  is removed from such a root: what a build of an earlier release left in it (2026-11-13, §3.7).*
 
 ### 3.4 Versions
 
@@ -392,7 +399,14 @@ reader of the repository looks first.
   untouched by it.
 - **`.gitignore`** lists `/.tests/` and `.phn-build`, and not `/.src/`. The stamp is listed
   because a build of the checkout as an installed package, made before the key was set, may have
-  left one in `.src/` (§3.3).
+  left one in `.src/` (§3.3). *Since 2026-11-13 the entry is a second guard and no longer the
+  only one: in the library's own project `phn build` removes a `.phn-build` from the output
+  directory of a root the project commits, as it removes an output with no source, and `phn
+  build --check` reports it. No build writes a stamp there, so one found there is what a build
+  as an installed package left before the root was committed. Were it tracked, the removal shows
+  in `git status` and the gate below fails until the removal is committed: no commit that passed
+  the gate tracks a stamp, with no line added to the gate. The stamp of a root the project does
+  not commit stays, as the record of the build that wrote it.*
 - **`.gitattributes`** marks the outputs as generated:
 
   ```gitattributes
@@ -430,7 +444,9 @@ git archive HEAD | tar -t                    # must list phaenon.json, src/, .sr
 
 - **The two git commands come after every step that builds.** A stale output shows as a modified
   file, a missing one as an untracked file, an orphan as a deleted one, since the build removes an
-  output that has no source; a stale copy of a mirrored file shows as modified too.
+  output that has no source; a stale copy of a mirrored file shows as modified too. *A tracked
+  `.phn-build` shows as a deleted file as well (2026-11-13): the build removes a stamp from a
+  committed root of its own project, so a release that passed the gate ships none.*
 - **The explicit `phn build` is there for two reasons.** The gate must not rest on the plugin
   having run (an install with `--no-plugins` builds nothing). And `phn build` without
   `--emit-on-error` fails on a file the checker rejects (D10), where `phn fmt` and `phn fix` write
@@ -476,8 +492,134 @@ git archive HEAD | tar -t                    # must list phaenon.json, src/, .sr
   binary, and `phn build --vendor` makes it when run by hand. Whether an output is current is the
   library's gate to say, since a consumer's compiler may write other bytes.
 - **Two readers of the project file.** For that check the plugin's PHP reads `roots` and
-  `committed` and nothing else, whatever other keys the file has; the compiler stays the reader
-  of everything. The plugin's suite holds both to the same fixtures.
+  `committed`; the compiler stays the reader of everything. *Since T19 (2026-11-13) the two read
+  an installed package's file alike: a key neither knows is passed over, and each refuses what
+  the other refuses. Until then the plugin read the two keys whatever stood beside them and the
+  compiler refused the file, so that one dump could fail where the command run by hand passed.*
+  The plugin's suite holds both to the same fixtures, each read as a project's own file and as
+  an installed package's. What "alike" rests on, and what it does not:
+  - **The two decode with different libraries**, Go's and PHP's, which do not take the same
+    text. So the compiler refuses by name what PHP's decoder refuses and Go's would read: bytes
+    that are no UTF-8, half a surrogate pair written as an escape, a key that begins with
+    U+0000, values nested more than 511 deep, and with them what Go's reads loosely, the text
+    `null` and `null` in a list of strings. All of these are errors of the root project's file
+    too. Over the fixtures, and over a corpus of 18,000 generated files, no file is read by one
+    and refused by the other. That is a measurement and not a proof.
+  - **A file the plugin refuses is refused in one of two ways.** Where it cannot tell the roots
+    (text that is no object, `roots` or `committed` that are not what they must be, a key
+    written twice), it reads nothing and leaves the package to the compiler, which warns of the
+    file. Where the roots are plain and the compiler refuses the file for a key beside them, the
+    compiler leaves the package out and so does the plugin; a package with nothing to build then
+    makes the dump fetch no compiler for the sake of the warning, which the plugin gives under
+    `-v`.
+  - **Should the two ever differ**, the package is the compiler's: the plugin tells the compiler
+    it runs which packages it has itself looked at (below), and the compiler does for every
+    other all that the plugin did not.
+- **What a build of an earlier release left in a committed root is removed** *(2026-11-13; the
+  one exception to "left as installed")*. A library that moves from D13 to this section was built
+  where it is installed, and an upgrade does not always start from an empty directory. An upgrade
+  from an archive replaces the package's directory. A source install is a git checkout: git
+  writes the files the new release tracks over the earlier build's outputs, which the earlier
+  release ignored, and leaves the rest of that build beside them, untracked: its stamp, and the
+  outputs of the sources the release dropped, which the autoloader still finds. A class the
+  library removed keeps loading, and nothing says so. So where the output directory of a
+  committed root holds a `.phn-build`, in a package an earlier build can have survived in, the
+  files no source stands behind are removed, then the stamp. A line names the package and the
+  stamp, and a line each names the files removed: it is printed once in a package's life, and
+  the files were untracked, so nothing can say afterwards what went. The next dump finds no stamp
+  and says nothing.
+  - **A stamp counts only where an earlier build can have survived.** Composer updates an
+    archive, and a path repository it copies, by removing the directory and installing anew:
+    nothing of an earlier build is ever there, and a stamp found there came with the files, from
+    a release that tracks one or from a checkout that holds one. Such a stamp is left alone with
+    everything beside it, and nothing is said. A stamp is taken for an earlier build's in the two
+    kinds of install that keep their directory: a checkout of the package's repository (Composer
+    records `installation-source: source`), which is updated in place, and a path repository
+    linked to a checkout, which Composer never empties. A package Composer records nothing of is
+    not known to be either, and is left alone. The first text of this rule called the stamp "the
+    proof" in every install; a review showed an archive that shipped a stamp beside an output
+    whose source it left out, and the plugin removing that output at every fresh install.
+  - **The stamp does not get into a release** that passed its gate: the build removes one from a
+    committed root of its own project (above). What is left is a release whose gate was skipped
+    and that tracks a stamp, installed as a checkout by a project that never built it: the stamp
+    is then removed as an earlier build's would be, the checkout is modified, and a `composer
+    update` of the package made without interaction fails on "has uncommitted changes" until the
+    package's directory is removed. Neither the plugin nor the compiler asks git whether a file
+    is tracked: that would close this, and was not taken, since it would make a compiler step
+    depend on a second tool for a release that broke its own rule.
+  - **The rule is the build's own** (D12): a file stays when the root has a file of the same
+    path, or, for a `.php`, the `.phn` it is compiled from; every other file goes, with the
+    directories that empties. No second definition of an orphan exists. In a path repository
+    linked to a checkout the files removed are therefore the ones the library's own `phn build`
+    removes there.
+  - **It takes no compiler**, as the check of presence takes none: the plugin does it in PHP,
+    at every dump and before it resolves a binary, so a package whose installed roots are all
+    committed stays nothing to build, and what is cleared does not depend on which compiler the
+    project has. `phn build --vendor` has the same pass for when it is run by hand. When the
+    plugin runs it, for the packages that are built, it names in the environment variable
+    `PHN_EARLIER_BUILDS_CLEARED` the packages it has itself looked at, and the compiler leaves
+    the committed roots of those alone: done by both, a warning came twice in every such dump.
+    The hand-off is by package and not for the whole run, so that a package whose file the
+    plugin could not read is cleared, or warned of, by the compiler in the same dump. The
+    variable is the plugin's word to the compiler and no setting of a project: a value that
+    names no installed package leaves nothing out. The split was first drawn the other way, the
+    plugin leaving the pass to the compiler in a dump that built anything; a compiler older than
+    the plugin, which a checkout's own build or `PHN_BINARY` easily is, has no such pass, and the
+    class the library dropped then kept loading in silence. The plugin's suite holds the two
+    implementations to the same trees, the lines they print included, and to this: the plugin
+    may refuse where the compiler removes, and never removes where the compiler refuses.
+  - **Never the project's own directory.** A package whose directory is the project's root, or
+    cannot be told from it, is not cleared, whatever `installed.json` says of its path.
+  - **This removal asks that the whole project file be understood.** A package whose file has
+    a key the reader does not know is read, checked and built as any other (T19). The clean-up
+    of an earlier build removes nothing from it: a key a later compiler adds may change what
+    stands behind a file, and a deletion does not rest on a file its reader understands in part.
+    Where such a package holds a stamp, a warning names the key and says what can be done. The
+    ordinary build of a root the package does not commit is not meant: it removes the outputs
+    that have no source, as every build does.
+  - **The check of presence comes first.** A dump that fails for a package without its outputs
+    removes nothing, in that package or in any other, as it builds nothing.
+  - **It removes nothing it is not sure of.** A file goes only when its absence from the root is
+    proved: its name is missing from a directory that can be read and searched, or its path runs
+    through a file. In each of the cases below nothing is removed from the root, the stamp stays,
+    and a warning says why and what can be done, at each dump. The advice is one that leads to a
+    dump that says nothing, and the suite follows each: a package that is no link is removed and
+    installed again; in a linked checkout the library's own `phn build` removes the same files
+    once what stands in the way is put right; where that build does not look at the directory
+    either (a root the checkout lacks, a root or output directory that is a link), the stamp and
+    what lies beside it are removed by hand; under `open_basedir`, `phn build --vendor` is run:
+    - the root or its output directory is a symbolic link, or lies behind one inside the
+      package: such a link may lead anywhere, into another package's outputs for one, and the
+      build itself fails on a root that is a link and removes nothing through an output
+      directory that is one. The package's own directory may be a link, which is how Composer
+      installs a path repository;
+    - the install has no such root: with no sources every output would look like an orphan;
+    - a directory of the outputs cannot be read or searched: the list of what would go must be
+      whole before the first file goes;
+    - the absence of a source cannot be proved: a link among the sources that leads nowhere,
+      under whatever spelling the file system takes its name for, or a directory the root
+      reaches through a link, or its nested `vendor/`, that cannot be read or searched;
+    - PHP runs under `open_basedir`, where a path it may not look at reads as one that does not
+      exist (the plugin's side only).
+
+    A directory of the root itself that cannot be read or searched is not among them: the check
+    of presence walks the root first, the plugin leaves such a package to the compiler, and the
+    compiler fails the dump on it, as it did before. A symbolic link in the output directory is
+    neither followed nor removed, since a build writes none. Only regular files go. A file that
+    cannot be removed is a warning and not a failed dump: the dump fails for a broken release or
+    a failed build, and a leftover that stays is where the project stood before. The stamp then
+    stays too, so that the next dump tries again.
+  - **What it does not reach.** An earlier release that did not ignore its outputs: its build's
+    files are then untracked files the new release's checkout would overwrite, git refuses the
+    checkout, and Composer's update fails before any dump. D12 has a library ignore its
+    outputs, so such a release was out of step already; the way out is to remove the package's
+    directory and install again. An install made with `--no-plugins` keeps the leftovers until
+    `phn build --vendor` is run, or a dump with the plugin.
+  - **Quiet runs and dry runs.** Under `--quiet` the removal is made and nothing is printed,
+    while an error is printed there. `composer dump-autoload --dry-run` removes as a dump does:
+    Composer dispatches the same event in a dry run and the event does not say so, which is also
+    why the plugin builds in one. `composer install --dry-run` and `update --dry-run` dump
+    nothing, and nothing runs.
 - **Only a package says it, about itself.** The key is read from the package's own `phaenon.json`.
   A root project cannot declare another package's outputs committed, and cannot ask for a
   committed root to be rebuilt. `extra.phaenon.build: false` (§3.3) is a different switch: the
@@ -486,7 +628,8 @@ git archive HEAD | tar -t                    # must list phaenon.json, src/, .sr
   an ignored `.src/` its developer built, which the plugin must rebuild; a committed `.src/` it
   must leave. The two look the same on disk, so the package says which it is.
 
-**In the library's own checkout nothing changes.** T4 stands: the plugin builds the project at
+**In the library's own checkout nothing changes** *(but for a stamp found in a committed root,
+which the build removes: 2026-11-13, above)*. T4 stands: the plugin builds the project at
 every dump, the committed roots included, as `phn build`, `phn watch` and the editor's build on
 save do. That is how the outputs are made and kept current while working. PHPUnit, PHPStan and
 php-cs-fixer run on the outputs, and their positions come back through `phn trace` (§7.1).
@@ -501,6 +644,10 @@ php-cs-fixer run on the outputs, and their positions come back through `phn trac
   package, and its checker reads the package from `.src/`, as it reads any PHP package.
 - **The `conflict` keeps such a compiler out**, which is why its floor is never below the first
   release that knows `committed`.
+- *That first release is also the first to pass over a key it does not know in an installed
+  package's file (T19, 2026-11-13). So what this paragraph describes ends with `committed`
+  itself: every compiler that can read a library with committed outputs reads its file whatever
+  keys later compilers add to it.*
 
 **For a consumer written in Phaenon:**
 
@@ -527,6 +674,11 @@ php-cs-fixer run on the outputs, and their positions come back through `phn trac
 | The outputs committed only on release commits, by a CI job that builds and tags | It spares the main branch the second diff and rules out drift by hand. But a consumer of the development branch, or of a path repository, gets no outputs at all; and the tags sit on commits outside the main branch's history, where release tooling such as release-please tags |
 | The checker reads a committed package from its outputs | It is what a compiler from before the key does, and it checks against exactly the PHP that runs. But `bytes` and whatever else a docblock cannot carry would be lost at the package's boundary, and a library would be read as Phaenon or as PHP depending on how it is published |
 | A committed `composer.lock` as the pin | It would fix the dependencies' declarations too, the limit above. But a library keeps no lock, so that its suite meets the versions its consumers resolve; the compiler's version would sit in a file no reader opens; and an upgrade would be a lock diff, not one line of `composer.json` |
+| A warning about an earlier build's leftovers, and nothing removed (what the plugin did until 2026-11-13) | "Left as installed" then holds without exception, and the plugin deletes nothing. But the class the library dropped loads until the project reinstalls the package, the warning comes at every dump until then, and in a path repository's checkout until its developer deletes the stamp by hand |
+| The leftovers documented as a limit, with no code | They concern source installs across the one release in which a library starts committing. But the stale class is silent, and the project that meets it has no way to know why a removed class still exists |
+| The compiler removes the leftovers in every dump, the plugin fetching it for that | One implementation of the build's rule. But a package whose roots are all committed would no longer be nothing to build: every Phaenon consumer of such a library would fetch a binary on its account |
+| The plugin looks for a stamp, which is one stat and removes nothing, and runs the compiler only where it finds one | It answers the objection above, and leaves one implementation of the removal: the two that exist disagreed in a review on trees no vector held (a link leading nowhere under another letter case, a directory that can be read and not searched), and such disagreements would not exist. A project that holds a genuine stamp built that package before, so it has had a compiler. But not always the same one, and not always still: a project that pins no release and names its compiler by `PHN_BINARY` in one job and not in the next, or whose cache is gone, would fail a dump for want of a binary it needs for nothing else. Weighed as close, and not taken while the shared trees and a differential run over random trees hold the two together; it is the first thing to take if they drift |
+| The plugin and the compiler ask git which files a checkout tracks, and remove only the others | It is the exact definition of what an earlier build left, and it would spare a stamp or a file that a release tracks. But it makes a removal depend on a second tool being there and answering, in the compiler too, for a release that broke its own gate; the build's removal of a stamp from a committed root closes the common way a stamp gets tracked |
 
 **What it costs:**
 
@@ -539,6 +691,17 @@ php-cs-fixer run on the outputs, and their positions come back through `phn trac
 - A dependency's release can turn the gate red with no commit in the library.
 - A Phaenon consumer on a compiler newer than the library's sources allow waits for the library's
   next release.
+- The plugin deletes files in an installed package *(2026-11-13)*: in a root it otherwise leaves
+  alone, and, through a path repository, in a developer's working tree. It does so only in a
+  checkout or a linked checkout. There, beside a stamp, a file a release ships in a committed
+  root without a source goes too, and so does a file something else put there (a patch applied
+  to the installed package). The library's gate rules the first out, since the build would
+  remove the file and the tree would differ, so it meets a release that skipped its gate; the
+  checkout is then modified, and a `composer update` made without interaction fails on it.
+- The build's rule exists twice, in Go and in PHP, and PHP cannot ask the system why a stat
+  failed: it proves an absence from the directory's own listing. Shared trees hold the two
+  together, and a change of either starts as one.
+- A dry run of the dump removes, and a quiet one removes without a word.
 
 ## 4. PHP's rewriting tools: `phn fix`
 
@@ -1920,14 +2083,16 @@ Asked by D28 (2026-11-10), about a library that commits its outputs (§3.7):
 
     *Answered by T18 (2026-11-10): (b).*
 
-Open:
-
 13. **Unknown keys in an installed package's project file** (2026-11-10). A compiler refuses a
     `phaenon.json` with a key it does not know. That is right for the project it builds. For an
     installed package it turns every key a later release adds into a warning at each dump and a
     package read as PHP, on every consumer whose compiler is older. Should an installed
     package's project file be read tolerantly? `committed` does not wait for the answer: the
     library's `conflict` keeps the compilers that do not know it out (§3.7).
+
+    *Answered by T19 (2026-11-13): yes for a key the compiler does not know, in an installed
+    package's file only, and for nothing else in it; the removal of an earlier build's leftovers
+    stays with the whole file understood.*
 
 ## 14. Decisions
 
@@ -1952,4 +2117,5 @@ Reviewed 2026-11-03.
 | T15 | **The repositories go public under MIT now** (2026-11-06; supersedes T1). `phaenon/phn`, `phaenon/runtime` and `phaenon/concurrent` are published on Packagist like any open-source package, and nothing of the language goes through Tequila's package registry. The plugin downloads the binary from the GitHub release by default; phaenon.dev stays the mirror (`extra.phaenon.binary-url`, §3.2) and the playground (§3.6). The PhpStorm plugin and the VS Code extension are published to their marketplaces | The site is live, v0.2.0 is out and the compiler builds the dogfood trees, so the language can be tried as it is; and a language is better judged in the open, where its design and its decisions can be read and argued with while they are still being made |
 | T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
 | T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, lifts `function` off every method the grammar allows (modifiers as written), and rewrites each leftover `is`, `as` and `as?` to the PHP test it compiled to, the type-dependent ones only with the checked program, reporting `P1001` only where no rewrite was made (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has a PHP form, the one the emitter wrote. Lifting `function` too gives a tree one spelling of the keyword, and makes PHP code pasted into a `.phn` idiomatic on its first format |
-| T18 | **A library may commit its outputs; where it is installed, the plugin leaves its committed roots alone** (2026-11-10; roadmap D28, an exception to D13; amends §3.1 and §3.4 for such a library; answers Q11 and Q12; §3.7). `phaenon.json`'s `"committed": ["src"]` lists the source roots whose outputs the repository tracks. In an installed package the plugin and `phn build --vendor` leave those roots as installed, with no stamp, and build the others as before; a package whose installed roots are all committed is nothing to build; a root under `committed` that is installed without its outputs fails the dump with an error naming the package and the root. Only a package's own `phaenon.json` says it; `extra.phaenon.build: false` stays the root's switch for its own build. **In the library's own checkout nothing changes**: T4 stands, and the plugin builds every root at the dump. **The gate is the state of the tree**: after every build its CI job runs, the plugin's and an explicit `phn build` (no paths, no `--emit-on-error`) among them, `git diff --exit-code -- .src` and an empty `git status --porcelain -- .src`, and the dist archive lists `phaenon.json`, `src/` and `.src/` and no `tests/`; it is a required check, merges are up to date, and a release is tagged only on a commit that passed it. **The compiler is one exact version of `phaenon/phn` in `require-dev`, and no `composer.lock` is committed.** **A Phaenon consumer's checker reads the library's `.phn`**, and the library declares a `conflict` on `phaenon/phn` below the release its sources need, never below the first that knows `committed`. `.gitignore` lists `/.tests/` and `.phn-build`, and `.gitattributes` marks `/.src/**` as `linguist-generated` | A project that only wants the library should not need a compiler plugin to install it, and Packagist ships what the tagged commit holds. The key is needed because a committed `.src/` and a locally built one look the same on disk; it names roots because tests are not committed. The dump fails on missing outputs because the release is broken for every consumer without the plugin, and a build would hide it. *The gate*: `phn fmt --check` and `phn fix --check` rebuild the outputs as the plugin does, so a rule about one writer protects nothing and a comparison made after any of them passes on what it wrote; the state of the tree catches every writer, orphans, stale copies and a file with errors (D10), and needs no change to the plugin in the root project and no new mode of `phn`. With T4 standing, the install that brings a new compiler regenerates `.src/`, so the pin and the outputs land in one commit by themselves. *The pin*: compiler releases differ in the bytes they write, and an exact version in `composer.json` makes an upgrade one visible change, the constraint and the regenerated `.src/` in one pull request; a bump without the outputs fails the gate. A committed lock was not taken: a library keeps none, and the pin would sit where no reader looks. Its one advantage is the known limit of the choice: the bytes also depend on the dependencies' declarations (imports, the lowering of generics), so a dependency's release can turn the gate red with no commit in the library, and the answer is to rebuild and commit. *The sources*: a Phaenon consumer reads Phaenon, as for a library of D13, so what a docblock cannot carry (`bytes`) is not lost and one kind of library is not read differently from the other; reading a committed package from its outputs was not taken for that reason. The `conflict` binds only where the plugin is installed, and its floor keeps out the compilers that refuse the key, which would read the package from `.src/` and fetch a binary for nothing. Its cost: a floor has no upper bound, and before 1.0 a release may withdraw syntax, so a Phaenon consumer on a newer compiler may need a newer release of the library, whose sources `phn fmt` has respelled; a plain PHP consumer is untouched |
+| T18 | **A library may commit its outputs; where it is installed, the plugin leaves its committed roots alone** (2026-11-10; roadmap D28, an exception to D13; amends §3.1 and §3.4 for such a library; answers Q11 and Q12; §3.7). `phaenon.json`'s `"committed": ["src"]` lists the source roots whose outputs the repository tracks. In an installed package the plugin and `phn build --vendor` leave those roots as installed, with no stamp, and build the others as before; a package whose installed roots are all committed is nothing to build; a root under `committed` that is installed without its outputs fails the dump with an error naming the package and the root. Only a package's own `phaenon.json` says it; `extra.phaenon.build: false` stays the root's switch for its own build. **In the library's own checkout nothing changes**: T4 stands, and the plugin builds every root at the dump. **The gate is the state of the tree**: after every build its CI job runs, the plugin's and an explicit `phn build` (no paths, no `--emit-on-error`) among them, `git diff --exit-code -- .src` and an empty `git status --porcelain -- .src`, and the dist archive lists `phaenon.json`, `src/` and `.src/` and no `tests/`; it is a required check, merges are up to date, and a release is tagged only on a commit that passed it. **The compiler is one exact version of `phaenon/phn` in `require-dev`, and no `composer.lock` is committed.** **A Phaenon consumer's checker reads the library's `.phn`**, and the library declares a `conflict` on `phaenon/phn` below the release its sources need, never below the first that knows `committed`. `.gitignore` lists `/.tests/` and `.phn-build`, and `.gitattributes` marks `/.src/**` as `linguist-generated`. *Amended 2026-11-13:* **one thing is removed from a committed root, what a build of an earlier release left there.** Where the root's output directory holds a `.phn-build`, in a package an earlier build can have survived in (a checkout of its repository, or a path repository linked to one; never an archive or a copy, whose directory Composer empties), the files no source stands behind are removed, by the build's own rule (D12), then the stamp, every file named: by the plugin, in PHP, at every dump and before it resolves a binary, and by `phn build --vendor` when that is run by hand (the plugin tells the one it runs, through `PHN_EARLIER_BUILDS_CLEARED`, which packages it has looked at, and that one leaves those alone and no other). Never in the project's own directory. It comes after the check of presence, never in a dump that fails, only for a project file with no key the reader does not know (T19), and only where the absence of each source is proved. A root or output directory that is a symbolic link or lies behind one, a root the install lacks, a directory of the outputs that cannot be read, a source whose absence cannot be proved and PHP under `open_basedir` each leave the whole root as it is, with a warning that says what to do; a symbolic link in the output directory is neither followed nor removed; a file that cannot be removed is a warning, and the stamp then stays. **In the library's own project the build removes a stamp from a committed root**, so that the gate fails for a commit that tracks one | A project that only wants the library should not need a compiler plugin to install it, and Packagist ships what the tagged commit holds. The key is needed because a committed `.src/` and a locally built one look the same on disk; it names roots because tests are not committed. The dump fails on missing outputs because the release is broken for every consumer without the plugin, and a build would hide it. *The gate*: `phn fmt --check` and `phn fix --check` rebuild the outputs as the plugin does, so a rule about one writer protects nothing and a comparison made after any of them passes on what it wrote; the state of the tree catches every writer, orphans, stale copies and a file with errors (D10), and needs no change to the plugin in the root project and no new mode of `phn`. With T4 standing, the install that brings a new compiler regenerates `.src/`, so the pin and the outputs land in one commit by themselves. *The pin*: compiler releases differ in the bytes they write, and an exact version in `composer.json` makes an upgrade one visible change, the constraint and the regenerated `.src/` in one pull request; a bump without the outputs fails the gate. A committed lock was not taken: a library keeps none, and the pin would sit where no reader looks. Its one advantage is the known limit of the choice: the bytes also depend on the dependencies' declarations (imports, the lowering of generics), so a dependency's release can turn the gate red with no commit in the library, and the answer is to rebuild and commit. *The sources*: a Phaenon consumer reads Phaenon, as for a library of D13, so what a docblock cannot carry (`bytes`) is not lost and one kind of library is not read differently from the other; reading a committed package from its outputs was not taken for that reason. The `conflict` binds only where the plugin is installed, and its floor keeps out the compilers that refuse the key, which would read the package from `.src/` and fetch a binary for nothing. Its cost: a floor has no upper bound, and before 1.0 a release may withdraw syntax, so a Phaenon consumer on a newer compiler may need a newer release of the library, whose sources `phn fmt` has respelled; a plain PHP consumer is untouched. *The earlier build (2026-11-13)*: a library that starts committing was built where it is installed until then, and a source install, a git checkout, keeps what that build wrote and the new release does not track: the output of a class the library dropped still loads, in silence. A warning was tried first; it asked every such project to reinstall the package, came at each dump until it did, and in a path repository's checkout until the stamp was deleted by hand. A stamp alone is not proof of an earlier build, since a file of that name can come with a release or with Composer's copy of a checkout; it is taken for one only in an install that keeps its directory across an update, and the build keeps it out of a release by removing it from a committed root of its own project, where nothing writes one. The rule is the build's, so that in a checkout nothing goes that the library's own `phn build` would keep. The plugin does it without a compiler, at every dump, so that such a package stays nothing to build and a compiler older than the plugin changes nothing, and is held to the compiler by shared trees: it may refuse where the compiler removes, never the reverse, which is also why a removal asks that the whole project file be understood, where reading, checking and building pass over a key they do not know (T19). What it costs: the plugin deletes in a directory it otherwise leaves alone, a developer's working tree included; beside a stamp a file shipped without a source goes too, which the library's gate rules out; a dry run of the dump removes, and a quiet one says nothing. What it does not reach: a release that did not ignore its outputs, whose checkout git refuses before any dump; and a release that tracks a stamp because its gate was skipped, whose checkout is left modified |
+| T19 | **An installed package's project file may hold keys the compiler does not know; the root project's may not** (2026-11-13; answers Q13; amends §3.3 and §3.7). Wherever the compiler reads the `phaenon.json` of an installed package (the build of installed packages, the check of committed outputs, the sources the project's own check, build and language server read a package from) a key of the file's object that it does not know is passed over. The plugin's reader does the same, and the two now give one answer for an installed package. The root project's own file stays strict: an unknown key is an error, and the error names the key and the release of the compiler that read the file, saying that a newer one may know it. **Only an unknown key is passed over.** Still refused in an installed package, with the compiler's warning and the package left out: a known key with a value it cannot have; a key under a known key that is not known; a key that is a known key but for its letter case (`Roots`), since passing it over would leave the package unbuilt in silence; a key written twice; text after the object; roots that overlap; and what is no project file for either reader, text that is not UTF-8, the text `null`, `null` in a list of strings. An unknown key under a known key is named with it in the error (`unused.later`). **The removal of an earlier build's leftovers (T18) asks for more**: the clean-up removes nothing from a package whose file has an unknown key, and a warning says so; its build, which removes the outputs without a source from a root it builds as every build does, and the check of its committed outputs go on as for any package. **A key passed over is not reported** at a dump; the plugin names it under `-v`. **The rule for keys to come**: a new key is one an older compiler may pass over safely, given the library's `conflict` floor; a change that must never be passed over is made as a new shape of a known key's value, which every compiler from the first tolerant release on refuses loudly. **The first release that knows `committed` is the first tolerant one** | Who can act decides it. A project's author corrects a key misspelt in their own file, and wants to be told; told by which compiler, too, since an editor's language server found on `PATH`, or `PHN_BINARY`, may be an older release than the one the project pins, and to it a key of a newer release reads as misspelt. A consumer cannot change a library's file: a refusal there is a warning at each dump for something not theirs to mend and, for a library that ships its sources alone, a package that is not built at all. The risk is an older compiler passing over a key that changes what the file means. It is carried where the same risk is carried for syntax an older compiler cannot parse: by the library's `conflict` on `phaenon/phn`, which Composer's resolver applies before anything is installed. A version field in the file was weighed and not taken: it would state a second time what `conflict` states, written by the same hand, and it would act after installation where `conflict` acts before. The rule for keys to come follows from this, and keeps a loud failure available: the readers refuse an unknown shape of a known key, so a meaning that no compiler may miss is put there and not under a new key. The removal stays with the whole file understood because a deletion is not undone by a later compiler: building a package under an older reading of its file gives outputs the next build corrects, while a file removed under it is gone. The timing costs nothing: no release reads `committed` and refuses unknown keys in a package, so every compiler that can install a library with committed outputs also reads the keys later compilers add. A key written twice was an error of neither reader before; the compiler took the later value or merged the two and the plugin took the later, so the two could read one file differently, and it is refused by both, in the root project's file too |
