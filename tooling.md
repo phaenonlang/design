@@ -167,6 +167,9 @@ the VS Code extension as a `.vsix`.
      version in `composer/checksums.json`. A workflow then builds the five binaries and the
      playground's two assets (§3.6) on the PR's branch and commits their checksums, with the
      runtime constraints of §3.4 and the main line's branch alias, both at the release's minor.
+     *Between two releases the alias may stand a line ahead (T20, 2026-11-13): the change that
+     adds a key to `phaenon.json` moves it to the line of the release the key comes in, which the
+     next release then is (§3.7).*
   2. **Merging it is the release.** The push of the merge builds the assets again from the merged
      commit and goes on only when they match the pins: release-please tags the commit `vX.Y.Z`
      and makes the release, the assets go onto it, then onto phaenon.dev. It is one workflow
@@ -261,7 +264,8 @@ retired.*
 - **A library states the compiler range it needs.** It requires `phaenon/phn` with the range its
   sources compile with (`^0.4`), as a PHPStan extension requires PHPStan. *A library that commits
   its outputs (D28, §3.7) requires one exact release under `require-dev`, which binds none of its
-  consumers, and states the releases that cannot read its sources as a `conflict` (T18).*
+  consumers, and states the releases that cannot read its sources as a `conflict` (T18).* *Its own
+  build checks that `conflict` (T20, 2026-11-13; §3.7).*
 - **`phn check` reads `installed.json`** and reports two errors, `P4013` and `P4014`:
   - a file that uses `concurrently` where `phaenon/concurrent` is not installed (the vault's M5
     item);
@@ -366,7 +370,8 @@ reader of the repository looks first.
   roots and not the whole package because a library commits what its consumers load, not its
   tests.
 - **`phaenon/phn` is a development requirement, at one exact version** (the numbers below are
-  examples: the first release that knows the key is not named yet):
+  examples: the first release that knows the key is not named yet; *since 2026-11-13 the
+  compiler's table of keys names it, 0.5.0: T20, below*):
 
   ```json
   {"require-dev": {"phaenon/phn": "0.5.2"}, "conflict": {"phaenon/phn": "<0.5"}}
@@ -389,7 +394,7 @@ reader of the repository looks first.
   release the sources need, and never below the first release that knows `committed`. A consumer
   written in Phaenon reads the library's `.phn` (below), so it needs a compiler that can. Composer
   applies a `conflict` only where the other package is installed: a project without the plugin is
-  untouched by it.
+  untouched by it. *The library's own build checks this line (T20, 2026-11-13; below).*
 - **`.gitignore`** lists `/.tests/` and `.phn-build`, and not `/.src/`. The stamp is listed
   because a build of the checkout as an installed package, made before the key was set, may have
   left one in `.src/` (§3.3).
@@ -459,6 +464,115 @@ git archive HEAD | tar -t                    # must list phaenon.json, src/, .sr
   library's dependencies, which the imports and the lowering of generics read. The exact version
   fixes the first, not the second: a dependency's release can turn the gate red with no commit in
   the library. The answer then is to rebuild and commit.
+
+**The library's build checks the `conflict`** *(T20, 2026-11-13)*. Of everything this section asks
+of the repository, the `conflict` was the one line nothing enforced. Without it Composer installs
+the library beside any compiler; too low, it lets in a release that cannot read the project file
+as written. Such a release refuses the file, and where an installed package's unknown keys are
+passed over (§13, question 13) it reads the file without the key and says nothing. Either way it
+happens in the project of someone who cannot repair the library. So the line is checked where it
+is written.
+
+- **The compiler knows the release each key came in.** A table beside its reader of `phaenon.json`
+  gives every key the first release of `phaenon/phn` that reads it: `roots`, `exclude` and `php`
+  0.1.0, `fmt` and `unused` 0.2.0, `committed` 0.5.0. A key cannot be added without its release,
+  since a test compares the table with the keys the reader knows. The *floor* of a project file is
+  the newest of those releases among the keys the file uses, the keys of its objects included.
+  The same test holds the table to the changelog: a release made under another number than the
+  table assumed turns the release's own CI red, with the repair, which is in the table. What no
+  test sees is when a key was merged, since nothing in the tree says it: a key given a release
+  that was already made passes, and that release, which does not read the key, is then let in.
+  Whoever reviews a change that adds a key checks the release it is given by hand.
+- **`phn build` fails unless `composer.json` keeps out every release from before the floor.** In a
+  project that names a root under `committed` and has a `composer.json` beside its
+  `phaenon.json`, the project's whole build (no paths) and `phn build --check` read the `conflict`
+  on `phaenon/phn` there, the package's name in any letter case, as Composer reads it, and of two
+  spellings in one file the last, as Composer takes it. They try
+  each release from before the floor against the constraint. One the constraint does not hold
+  fails the command, with status 1 and one line: what `composer.json` says, the releases let in,
+  the key and its release, and the line to write. The line names the entry as the file writes it,
+  so that following it replaces the entry that fails, whatever the letter case of its name.
+
+  ```text
+  composer.json: "conflict": {"phaenon/phn": "<0.4"} does not keep this package from being installed beside phaenon/phn 0.4.1 or 0.4.0, which cannot read its phaenon.json: the key "committed" is known from 0.5.0 on; write "phaenon/phn": "<0.5.0" under "conflict"
+  ```
+- **It fails a plain build, and does not only warn.** The gate is the state of the tree after an
+  explicit `phn build`, and that step's exit status is part of it already (above). A warning would
+  be a line in a CI log, and a failure under `--check` alone would stand outside the gate, which
+  `--check` is not. As a failure of `phn build` the check joins the gate with no line added to it.
+  It reaches the plugin's build at the dump as well (T4): `composer install` in the library's own
+  checkout fails until the line is written.
+- **The outputs are written all the same**, or compared under `--check`. What is wrong is
+  `composer.json`; the tree is as any build leaves it, and work on it goes on while the line is
+  missing.
+- **The question is asked of the releases that exist.** "Every version below the floor" is more
+  than the `conflict` has to hold: Composer installs releases. Those from before a key are a
+  closed list, because every release is cut from the main branch and so knows every key merged
+  before it. The compiler carries the list, a test holds it to the changelog, and a new key
+  extends it up to the last release without the key. `<0.5`, `<0.5.0`, `<=0.4.99` and
+  `<0.5 || >=9` hold the same releases and pass alike; `<0.4`, `0.3.*` and no `conflict` at all do
+  not. Pre-releases and branches are not asked about: `phaenon/phn` publishes no pre-release, and
+  a project on a branch of the compiler has left the releases by its own choice. A release cut
+  from an older commit, should there ever be one, is added to the list.
+- **The line the check asks for does not keep the main branch out.** Composer takes a branch for
+  its alias, and a `conflict` that holds the alias holds the branch. The compiler's `dev-main`
+  was aliased to the line of the last release (§3.2), so between the merge of a key and its
+  release a `conflict` below the key's release kept out every project on the main branch, whose
+  compiler reads the key: `<0.5.0` against `0.4.x-dev`. So the change that adds a key moves the
+  alias to the line of the release the key comes in, and a test of the compiler fails for a key
+  whose release is above the alias. The release PR's workflow does not move it back: a key is a
+  `feat`, the next release is that minor, and the alias it writes is the one that is there.
+- **The constraint is read as Composer reads it, or not at all.** The compiler depends on no
+  package, and Composer's own reader is PHP, so the compiler has a reader of its own: the
+  comparisons, `~`, `^`, wildcards, hyphen ranges, alternatives, a `v`, stability suffixes and
+  flags, build metadata and branches, with Composer's bounds (`<0.5.0` is a bound at
+  `0.5.0.0-dev`, so it holds no pre-release of 0.5.0 either). It reads less than Composer: no
+  inline alias, no numeric branch (`0.5.x-dev`), no version made of a date, and none of the few
+  spellings whose reading turns on a space. Nor does it read alternatives of which one is a range
+  that ends before it begins: Composer joins neighbouring ranges into one, and with such a range
+  what it makes of the constraint is not what the alternatives say.
+- **That it does not read differently is measured, not proved.** A table of constraints, each
+  with the versions that satisfy it, is held to the `composer/semver` inside a real Composer by
+  the compiler's suite, in CI, with whatever Composer the runner has. And on 2026-11-13 the
+  reader was compared with Composer 2.9.5 (`composer/semver` 3.4.4) over 1,800,000 generated
+  constraints: both read 388,732 and gave one answer for every version tried, and the reader
+  read none that Composer refuses. The comparisons before that one found three kinds of
+  difference, a false pass among them (the joined ranges); each is refused now and stands in the
+  table. A difference found later is a bug of the reader and goes the same way.
+- **A constraint it does not read fails the build too**, as one that "cannot be judged", quoted
+  with the reason; a `composer.json` that cannot be read does the same. It is not reported as too
+  low, which it may not be. It is not passed either: nothing is known to be kept out, and a
+  spelling the reader lacks would be the way around the check. What Composer itself refuses
+  (`~>0.4`) is among these, and every other one has a spelling the reader does read.
+- **Who is asked: the library of this section**, a project that names a root under `committed`.
+  An application is installed by nobody. A library that ships its sources alone (D13) states its
+  compilers in `require` (§3.4), and that floor is not checked here. `"type": "project"` is not
+  consulted: the key already says that others install the package. Without a `composer.json`
+  there is nothing to check.
+- **Who is not.** An installed package, ever: its release is not the installing project's to
+  repair, and Composer has applied whatever its `composer.json` says. And no other command:
+  `phn check`, `phn watch`, the language server's build on save and a build of some paths say
+  nothing of it. The finding is about `composer.json`; one command reports it, once, and a build
+  on save does not fail for a line of another file. For the same reason it has no diagnostic
+  code: it is a failure of the build, as a stale output is under `--check`.
+- **What it does not check.** That the sources' syntax asks for a newer compiler than the keys
+  do: "below the release the sources need" stays the author's to state, and the floor checked is
+  the least the `conflict` can have. That `require-dev` names a release at or above the floor: a
+  compiler below it refuses the project file in the library's own checkout (below). And the upper
+  side of the constraint, which may hold more releases than it need. A package that `replace`s
+  `phaenon/phn` is asked for the `conflict` like any other, though no compiler installs beside
+  it: nobody has reason to write that.
+
+Considered for the check and not taken:
+
+| Alternative | Why not |
+|---|---|
+| A warning at `phn build`, a failure under `--check` only | It would spare a local build the red status. But the gate does not run `--check`, so the library's CI would pass with the line missing, and the warning is read by nobody |
+| The check in the Composer plugin, with Composer's own `composer/semver` | It needs no second reader of the constraint grammar. But the gate must not rest on the plugin having run (an install with `--no-plugins` builds nothing), the explicit `phn build` of the gate is the compiler, and the table of the keys' releases belongs with the compiler's reader of the file: the plugin would hold a copy, or ask the binary |
+| Every version below the floor, in Composer's order, and not every release | It needs no list of releases and is simpler to state. But it refuses `<=0.4.99`, which holds every release there is, and it asks for an algebra of ranges where the list needs only Composer's own question, one version at a time, which vectors can hold to Composer exactly |
+| Every package that is not `"type": "project"` | It would also reach a library that ships its sources alone. Such a library needs no `conflict`, its `require` binding every consumer; and an application that does not state its type would be asked for a line it has no use for |
+| `phn check` and the language server report it as well | The editor would show it. But it is one mistake about `composer.json`, reported by the command the gate runs; twice in a CI job, and at every save, is noise |
+| A constraint the reader does not read is a warning | The build would not fail for the reader's limits. But the constraint is then unverified at the one place it is verified, and the reader's limits become the way to pass |
 
 **The plugin, where the library is installed:**
 
@@ -1953,3 +2067,4 @@ Reviewed 2026-11-03.
 | T16 | **`phaenon/phn` requires no package** (2026-11-08; roadmap D24, amends §3.1 and §3.4). The plugin's `require` on `phaenon/runtime` goes, and so do `P4013` and `P4014`. `phaenon/runtime` is renamed `phaenon/debug`, the old name abandoned on Packagist in its favour, suggested by the plugin without a version pin: the line map format is `v1`, independent of the compiler's minor, so the lockstep ends with the requirement; `phaenon/concurrent` is abandoned (D25). | The compiled output depends on nothing but PHP, so the compiler's package has nothing to require on the project's behalf; what is left is a debugging aid a team opts into, and its name should say so. |
 | T17 | **The withdrawn spellings are rewritten, not hand-edited** (2026-11-09; roadmap D26, D27). `phn fmt`'s first layer rewrites `fun` to a method without a keyword or to `function`, lifts `function` off every method the grammar allows (modifiers as written), and rewrites each leftover `is`, `as` and `as?` to the PHP test it compiled to, the type-dependent ones only with the checked program, reporting `P1001` only where no rewrite was made (§5.6). `phn migrate` lifts `function` off methods and keeps it on functions (`functions.md` §1.3). The LSP, the playground (§3.6) and both editors' grammars follow the language (roadmap §3, *Reads as PHP*) | A codebase crosses a change of spelling with one command: the dogfood trees declare about 10,000 methods with `fun`, and every test the operators allowed has a PHP form, the one the emitter wrote. Lifting `function` too gives a tree one spelling of the keyword, and makes PHP code pasted into a `.phn` idiomatic on its first format |
 | T18 | **A library may commit its outputs; where it is installed, the plugin leaves its committed roots alone** (2026-11-10; roadmap D28, an exception to D13; amends §3.1 and §3.4 for such a library; answers Q11 and Q12; §3.7). `phaenon.json`'s `"committed": ["src"]` lists the source roots whose outputs the repository tracks. In an installed package the plugin and `phn build --vendor` leave those roots as installed, with no stamp, and build the others as before; a package whose installed roots are all committed is nothing to build; a root under `committed` that is installed without its outputs fails the dump with an error naming the package and the root. Only a package's own `phaenon.json` says it; `extra.phaenon.build: false` stays the root's switch for its own build. **In the library's own checkout nothing changes**: T4 stands, and the plugin builds every root at the dump. **The gate is the state of the tree**: after every build its CI job runs, the plugin's and an explicit `phn build` (no paths, no `--emit-on-error`) among them, `git diff --exit-code -- .src` and an empty `git status --porcelain -- .src`, and the dist archive lists `phaenon.json`, `src/` and `.src/` and no `tests/`; it is a required check, merges are up to date, and a release is tagged only on a commit that passed it. **The compiler is one exact version of `phaenon/phn` in `require-dev`, and no `composer.lock` is committed.** **A Phaenon consumer's checker reads the library's `.phn`**, and the library declares a `conflict` on `phaenon/phn` below the release its sources need, never below the first that knows `committed`. `.gitignore` lists `/.tests/` and `.phn-build`, and `.gitattributes` marks `/.src/**` as `linguist-generated` | A project that only wants the library should not need a compiler plugin to install it, and Packagist ships what the tagged commit holds. The key is needed because a committed `.src/` and a locally built one look the same on disk; it names roots because tests are not committed. The dump fails on missing outputs because the release is broken for every consumer without the plugin, and a build would hide it. *The gate*: `phn fmt --check` and `phn fix --check` rebuild the outputs as the plugin does, so a rule about one writer protects nothing and a comparison made after any of them passes on what it wrote; the state of the tree catches every writer, orphans, stale copies and a file with errors (D10), and needs no change to the plugin in the root project and no new mode of `phn`. With T4 standing, the install that brings a new compiler regenerates `.src/`, so the pin and the outputs land in one commit by themselves. *The pin*: compiler releases differ in the bytes they write, and an exact version in `composer.json` makes an upgrade one visible change, the constraint and the regenerated `.src/` in one pull request; a bump without the outputs fails the gate. A committed lock was not taken: a library keeps none, and the pin would sit where no reader looks. Its one advantage is the known limit of the choice: the bytes also depend on the dependencies' declarations (imports, the lowering of generics), so a dependency's release can turn the gate red with no commit in the library, and the answer is to rebuild and commit. *The sources*: a Phaenon consumer reads Phaenon, as for a library of D13, so what a docblock cannot carry (`bytes`) is not lost and one kind of library is not read differently from the other; reading a committed package from its outputs was not taken for that reason. The `conflict` binds only where the plugin is installed, and its floor keeps out the compilers that refuse the key, which would read the package from `.src/` and fetch a binary for nothing. Its cost: a floor has no upper bound, and before 1.0 a release may withdraw syntax, so a Phaenon consumer on a newer compiler may need a newer release of the library, whose sources `phn fmt` has respelled; a plain PHP consumer is untouched |
+| T20 | **The library's own build checks its `conflict`** (2026-11-13; §3.7; makes T18's `conflict` a checked rule). The compiler gives every key of `phaenon.json` the first release of `phaenon/phn` that reads it (`committed`: 0.5.0); the floor of a project file is the newest of them among the keys it uses. In a project that names a root under `committed` and has a `composer.json`, `phn build` without paths and `phn build --check` fail, after they have written or compared the outputs, unless the `conflict` on `phaenon/phn` holds every release from before the floor. The one line they print names what `composer.json` says, the releases let in, the key, its release and the line to write. **The question is asked of the releases that exist**, a list the compiler carries, each tried against the constraint as Composer tries it: `<0.5.0`, `<0.5` and `<=0.4.99` pass alike. **The constraint is read as Composer reads it, or not at all**, by a reader of the compiler's own; one it does not read, and a `composer.json` that cannot be read, fail the build as what "cannot be judged". Never asked of an installed package or of a project that commits nothing, nor by `phn check`, `phn watch` and the language server. **The change that adds a key moves the alias of the compiler's `dev-main` to the line of the key's release** (amends §3.2), and a test fails for a key above the alias | The `conflict` was the one line of §3.7 that nothing enforced, and it carries more once an installed package's unknown keys are passed over (question 13): a compiler from before a key then reads the library without the key and says nothing. A missing or low floor shows in a consumer's project, where nobody can repair it; the library's build is where someone can. *A failure of the plain build*: the gate is the state of the tree after an explicit `phn build`, whose exit status is part of it already, so the check joins the gate with no line added; a warning would be a line in a CI log, and `--check` is not the gate. The outputs are written because the tree is not what is wrong. *Releases, not every version below the floor*: Composer installs releases, and those from before a key are a closed list, every release being cut from the main branch; the stricter question refuses `<=0.4.99`, which holds them all. *A reader in the compiler*: it depends on no package, and the gate must not rest on the plugin having run, so Composer's own library was not the way. Vectors hold the reader to the `composer/semver` of a real Composer in CI, and it refuses what it is not sure of, since a constraint misread as safe passes a library that lets an old compiler in. That it reads as Composer does is measured and not proved: a comparison of 2026-11-13 with Composer 2.9.5 over 1,800,000 generated constraints left no difference among the 388,732 both read, after earlier ones had found three kinds, one a false pass; a refusal fails the build so that the reader's limits are not the way around the check. *Only the library of §3.7*: an application is installed by nobody, and a library that ships its sources binds its consumers by `require`. *The alias*: Composer takes a branch for its alias, which stood at the last release's line, so the `conflict` the check asks for kept out every project on the main branch between a key's merge and its release, although that compiler reads the key. Its limit: it checks the floor the keys ask for, not the one the sources' syntax may ask for |
