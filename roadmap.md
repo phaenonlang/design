@@ -428,8 +428,9 @@ go-ahead:
    finds `.src/` as committed; the library's gate fails a pull request that changes a `.phn`
    without its output.
 
-*Open:* `tooling.md` §13, question 13: whether an installed package's project file is read
-tolerantly of keys the compiler does not know.
+*Answered 2026-11-13 (`tooling.md` T19, question 13):* an installed package's project file is
+read tolerantly of keys the compiler does not know, the root project's stays strict, and nothing
+is removed from a package whose file has such a key.
 
 ### M7 — Tequila on Phaenon
 - Service by service: the largest, most representative one first, then the rest via the template.
