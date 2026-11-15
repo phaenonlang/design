@@ -365,9 +365,10 @@ final class Orders
 - **`...` as the last entry** leaves the shape unsealed: `array{id: int, ...}` admits keys it
   does not name. The lattice and the docblock parser already have it (`types.Shape.Unsealed`,
   set from `parseShape`, printed back by the lattice's printer): reading a key a sealed shape
-  does not name is `P2313`, on an unsealed one it is `mixed`. PHPStan's typed form,
-  `...<K, V>`, is not read by the docblock parser today (`P4001`, and the tag is dropped), so it
-  is not syntax either (`checker.md` §10).
+  does not name is `P2313`, on an unsealed one it is `mixed`. Since it may hold any key it does
+  not name, with any value, it is no shape that gives such a key a type (`checker.md` §3.3).
+  PHPStan's typed form, `...<K, V>`, is not read by the docblock parser today (`P4001`, and the
+  tag is dropped), so it is not syntax either (`checker.md` §10).
 - **A trailing comma** is allowed, and a shape may span lines, an entry per line. `array{}` is
   the empty array.
 - **Only `array{…}`.** `list{…}`, `non-empty-array{…}` and `object{…}` stay docblock vocabulary:
@@ -526,26 +527,23 @@ outside the program, whether a type remembers its alias, `@phpstan-type` in the 
 what a run over given paths does not see).
 
 Found while building (2026-11-15), about the lattice's shape, which the syntax made easier to
-write and did not change:
+write and did not change. *Closed the same day* (`checker.md` §9, *A shape is held as PHPStan
+holds it*): an unsealed shape and `array<string, mixed>` accepted where a shape is expected, the
+suite that holds what a shape accepts to PHPStan (`shapes-held.phn`, the docblock spelling of
+`shapes.phn`'s cases), and the inference of a type argument through a shape (`generics.md`
+§3.4). What is left:
 
-- **A shape is checked more leniently than PHPStan checks it**, in five places, each a parity
-  gap of the kind `checker.md` §9 forbids, none of them new with the syntax:
-  - a shape that admits other keys (`array{id: int, ...}`) is accepted where a sealed one is
-    expected;
-  - `array<string, mixed>` is accepted where a shape is expected;
+- **A shape is still checked more leniently than PHPStan checks it**, in three places, each a
+  parity gap of the kind `checker.md` §9 forbids, none of them new with the syntax:
   - a key is still read from a shape after `unset` removed it;
   - reading a key an unsealed shape does not name gives `mixed` without a word, where PHPStan
     reports an offset that might not exist;
   - destructuring an optional key (`['name' => $n] = $row`) is accepted as if the key were
     there.
-- **No suite holds the assignability of shapes to PHPStan.** The parity run skips every corpus
-  file with Phaenon-only syntax, a `type` declaration among it, and the emitter's goldens are
-  checked for what PHPStan reports on a correct program, not for what it would report on a wrong
-  one. No suite found the five gaps above. A corpus of wrong programs, compiled with their
-  errors and held to PHPStan line by line, would have.
-- **A type argument is not inferred through a shape.** `first<T>(Page<T> $page): ?T` called with
-  a `Page<Row>` gives `P3010`, and `T` is `mixed`: inference reads type arguments off classes,
-  lists and maps, and does not look into the entries of a shape for a type parameter.
+- **What a test proves of an offset stays with the offset** (`checker.md` §10). After
+  `isset($a['id']) && is_int($a['id'])`, PHPStan passes an `array<string, mixed>` for
+  `array{id: int}`, and the checker, which narrows `$a['id']` and not `$a`, reports it: stricter
+  than PHPStan, as the parity rule allows, and found nowhere in the dogfood trees.
 
 ### 6.9 What building it settled (2026-11-15)
 

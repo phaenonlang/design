@@ -103,7 +103,15 @@ for the emitted PHP signature.
   implements this because vendor docblocks declare variance; M3 adds the syntax.
 - `callable(A): R <: callable(B): S` iff `B <: A` (contravariant parameters) and `R <: S`.
 - shapes: `array{a: int} <: array{a: int|string}`; a shape is a subtype of `array<K, V>` when every
-  key and value fits; optional keys are `?` and a missing key is not `null`.
+  key and value fits; optional keys are `?` and a missing key is not `null`. *2026-11-15 (§9, "A
+  shape is held as PHPStan holds it"):* a key more than the expected shape names is fine, but for
+  a tuple, which is exact (`collections.md` §2.4). An unsealed shape may hold any key it does not
+  name, with any value: against a shape, an entry it does not name must be optional and take
+  `mixed`; against an iterable it is iterated with what it does not name, so
+  `array{a: int, ...}` is no `iterable<string, int>`; against `array<K, V>` only its named
+  entries are compared, as PHPStan compares them. A general array is a shape only when the shape
+  is unsealed and each entry is optional and takes the array's values where its keys reach it.
+  `IsAcceptable` adds what PHPStan accepts of a general array that might be the shape.
 - `int <: float` **only** in parameter and return positions under PHP's widening rule, exposed as
   `IsAcceptable(arg, param)` — never in `IsSubtype`. `strict_types=1` is the only mode.
 - literals: `3 <: int`, `'a' <: string`, `'Foo' <: class-string` iff `Foo` is a known class.
@@ -456,9 +464,11 @@ turned it into a test.
   `P2001` naming the class PHP would look for (`App\Closure`). This narrows `generics.md` §11's
   "the checker accepts a bare `Closure` everywhere": the emitter passes plain PHP through, so
   the checker reads it as PHP does. A class newer than the target is `P4011`, not `P2001`.
-- **A general array is accepted for a shape it may well be.** `array<string, string>` passes for
-  `array{spec: string, declared: string}` when its keys and values can be the shape's, as PHPStan
-  accepts it; `array<string, mixed>` still fails against `array<string, int>`.
+- **A general array is accepted for a shape it may well be.** *(Superseded 2026-11-15 by "A shape
+  is held as PHPStan holds it", below: PHPStan 2.2 and 2.3 report the call.)*
+  `array<string, string>` passes for `array{spec: string, declared: string}` when its keys and
+  values can be the shape's, as PHPStan accepts it; `array<string, mixed>` still fails against
+  `array<string, int>`.
 - **Static methods may use the class's type parameters** (`P3008` stays for static properties
   only): late static binding resolves them, which is how the `aggregateClass(): class<T>` idiom
   works (`generics.md` §11.2).
@@ -747,6 +757,48 @@ turned it into a test.
   holds under the name, wherever an interface sits; every interface's follows because PHP links
   the class against each of them, and a class whose two interfaces disagree fits one at best. What
   the check does not reach yet is in §10.
+- **A shape is held as PHPStan holds it** (2026-11-15; `P2103`, `P2201`, `P2202`, PHPStan's
+  `argument.type`, `assign.propertyType`, `return.type`). Building named shapes found the checker
+  more lenient than PHPStan about what a shape accepts, in two places no suite could see: the
+  parity run reads no file with a `type` declaration, and none it reads passed a general or an
+  unsealed array for a shape (`collections.md` §6.8). The rules are PHPStan's, established by
+  probes of what it reports at level max and by its source (`ConstantArrayType::accepts()`, and
+  `inferTemplateTypes()` for `generics.md` §3.4); PHPStan 2.2 and 2.3 give the same answers.
+  PHPStan asks the value it is given whether it has each key the shape names, yes, maybe or no;
+  it lets a maybe pass for an optional entry only, and then holds the value that would be there
+  to the entry's type with no maybe allowed:
+  - *A general array* might have any key of its key type. An entry its keys can reach must be
+    optional, but offset 0 of a list that is not empty, and must accept the array's value type
+    outright: `array<string, mixed>` and `array<string, int|string>` fail an `int` entry. An
+    entry its keys cannot reach is passed over when optional. So `array<string, int>` fails
+    `array{a: int}` and passes for `array{a?: int}`, `array{a?: int, ...}` and `array{}`, and
+    `non-empty-list<int>` passes for `list{int}`. The rule of 2026-10-29 above accepted any
+    general array whose keys and values could be the shape's; no parity run held it to PHPStan.
+  - *An unsealed shape* may hold any key it does not name, with any value: PHPStan's answer for
+    such a key is maybe, and the value `mixed`. So `array{id: int, ...}` fails
+    `array{id: int, name?: string}` and passes for `array{id: int}` and
+    `array{id: int, name?: mixed}`. A sealed shape with more keys than the expected one passes,
+    as before.
+  - *A list shape takes a list*, as `list<V>` does. Here the checker is stricter than PHPStan,
+    which holds a general array to the entries alone: an `array<int, int>` may be `[5 => 1]`,
+    which no list is.
+  - *A shape unpacked into an array literal keeps its entries*, as PHP spreads them and PHPStan
+    types them: integer keys numbered anew from where the literal stands, string keys kept and a
+    later one winning, an optional string entry joined with what the literal held under its key.
+    `[...$pair]` of a tuple is the tuple; it had been a general array that the old rule happened
+    to accept.
+  - *`intval()` of a bool or of null is `int<0, 1>`*, PHPStan's `0|1`. mongodb-odm caches a pair
+    under the int of a flag, `$cache[$class][intval($allowAbstract)] = …`; under the stub's `int`
+    the write made a general array of the pair, which the stricter rule refused, four findings
+    PHPStan does not make on the compiled factories.
+
+  Why PHPStan's rules, which the parity rule would let be stricter: they are its reading of
+  "might have the key", which is sound, and code PHPStan passes at level max should pass here.
+  The one acceptance that may fail at run time, an unsealed shape for `array<K, V>`, was already
+  the checker's and is PHPStan's; it stays. The six dogfood trees give the same findings, and the
+  same compiled output, before and after. `shapes-held.phn` holds every case to PHPStan in the
+  docblock spelling, `shapes.phn` the same cases in the syntax of a named shape, wrong programs
+  among them, which the emitter's goldens, being correct programs, could not.
 
 ## 10. Open questions
 
@@ -761,7 +813,21 @@ turned it into a test.
   ...<string, int>}` for further keys of a known type. The docblock parser reads the bare `...`
   only: the typed form is `P4001`, and its tag is dropped. Named shapes take the grammar the
   docblock has (`collections.md` §6.1), so neither spelling has it. Reading it means a key and a
-  value type on the lattice's shape, in the docblock and in the syntax alike.
+  value type on the lattice's shape, in the docblock and in the syntax alike. The rule that then
+  applies is PHPStan 2.3's, probed on 2026-11-15: an expected shape with a typed rest holds to it
+  each key the given shape has beyond the named ones, and the given shape's own rest, so
+  `array{id: int, ...}` fails `array{id: int, ...<string, mixed>}`, its rest's keys being
+  `int|string`; PHPStan 2.2 lets that one pass.
+- **What a test proves of an offset** (2026-11-15). After `isset($a['id'])` and
+  `is_int($a['id'])`, PHPStan's type of `$a` is `array<string, mixed>&hasOffsetValue('id',
+  int)`, which passes for `array{id: int}`. The checker narrows the offset (`$a['id']` is an
+  `int`) and not the array, so the call is reported: stricter than PHPStan, which §9 allows.
+  None of the dogfood trees holds such a call. A reading built on 2026-11-15, which wrote what the
+  environment knew of the offsets into the array's type where the array is held to a declared
+  one, was set aside: it gained nothing on the dogfood, and it accepted what PHPStan reports
+  after a write through a reference to the array (`$alias = &$a; $alias['id'] = 'x';`), a write
+  the checker's narrowing of offsets does not see either. Doing it needs the typed rest above,
+  for the keys the test did not prove, and that narrowing made sound first.
 - **Keys a sealed shape does not name** (2026-11-15). A literal with a key more than the shape
   names is accepted where the shape is expected (§9), while reading that key from the shape is
   `P2313`. A shape somebody named is a contract in a way an ad-hoc docblock is not, and

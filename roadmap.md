@@ -475,9 +475,8 @@ alias among them, is in `tooling.md` §6.2. The rest of step 5, and step 6, are 
 *Open:* `generics.md` §9, questions 9 to 13 (aliases of sources outside the program, whether a
 type remembers its alias, `@phpstan-type` in the output, a name declared twice and an alias
 outside PSR-4 in a run over given paths); `checker.md` §10 (the typed rest of an unsealed shape,
-keys a sealed shape does not name); `collections.md` §6.8 (five places where a shape is checked
-more leniently than PHPStan checks it, the suite that would hold shapes to PHPStan, a type
-argument inferred through a shape).
+keys a sealed shape does not name); `collections.md` §6.8 (three places where a shape is still
+checked more leniently than PHPStan checks it, and what a test proves of an offset).
 
 ### M7 — Tequila on Phaenon
 - Service by service: the largest, most representative one first, then the rest via the template.
