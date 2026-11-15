@@ -393,9 +393,12 @@ once.
 
 So a codebase migrated in this milestone is not reformatted again by any planned step.
 
-### Committed outputs — designed 2026-11-10, not started
+### Committed outputs — designed 2026-11-10; the compiler and the plugin built, the target not started
 What D28 asks of the tools (`tooling.md` §3.7, T18). The language does not change, and neither
-does any project that leaves the key out. Each step is its own PR, begun on a maintainer's
+does any project that leaves the key out. Steps 1 to 3 are built (phaenon #20 and #23), with the
+library's own check of its `conflict` (T20, phaenon #26) and, of step 4, the compiler's README
+and AGENTS.md; they come with 0.5.0, the first release that knows `committed`. phaenon.dev's
+part of step 4, and step 5, are not started. Each step is its own PR, begun on a maintainer's
 go-ahead:
 1. The compiler: `phaenon.json`'s `committed`, read and validated (an entry that is not one of
    `roots` is an error of the project file); `phn build --vendor` leaves the roots it names as
