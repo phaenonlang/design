@@ -406,11 +406,15 @@ turned it into a test.
   parameter types the parameter and the property (`phn migrate` lifts it into the declaration).
 - **Extensions come from `php`** (2026-10-29). The embedded stubs are php-src's; the classes,
   functions and constants of every other extension the local `php` has loaded — ext-mongodb,
-  redis, amqp, apcu — are generated from its reflection, once per extension and PHP version,
-  and cached under the user's cache directory (`program.LoadExtensions`; `PHN_PHP` names another
-  binary). `php` is the oracle for what exists. Reflection carries no docblocks, so a generated
-  stub has no generics; the overlay refines what matters. Without a `php` on `PATH` the checker
-  warns once (`P4007`) and knows php-src only.
+  redis, amqp, apcu — are generated from its reflection, once per extension version, PHP version
+  and generator, and cached under the user's cache directory (`program.LoadExtensions`; `PHN_PHP`
+  names another binary). *Since 2026-11-15* a cached file's name also carries a hash of the
+  script that writes it, so that a fix to the generator reaches every machine with nothing to
+  delete by hand: a `phn` whose script differs reads none of the files an older one wrote and
+  writes its own. Those older files are left in place, since a machine may run two versions of
+  `phn`, which would otherwise delete each other's. `php` is the oracle for what exists.
+  Reflection carries no docblocks, so a generated stub has no generics; the overlay refines what
+  matters. Without a `php` on `PATH` the checker warns once (`P4007`) and knows php-src only.
 - **A trait sees its users.** A method the trait body calls on `$this`, `self` or `static` and
   the trait does not declare is looked up in the classes using the trait, as PHPStan does by
   analysing a trait in each user's context. *Properties too* (2026-11-06): a property the body
