@@ -7,7 +7,8 @@ migration and shapes (§2, §4–§6) stand; lists and maps are transformed with
 chained with pipes and partial application (`roadmap.md` D20, `php-versions.md` §5.4).
 **Amended 2026-11-05** (§7): `array<V>`, a bare `array`, shapes and the docblock vocabulary.
 **Amended 2026-11-15** (§6, §7; `roadmap.md` D29): a shape gets syntax with a name, in a `type`
-declaration, and an alias belongs to its namespace; designed, not built.
+declaration, and an alias belongs to its namespace; built in the compiler the same day (§6.9),
+the editors to follow.
 Nothing is implemented yet beyond what M3 already has (the keywords `list` and `map` in type
 positions, their erasure to `array`, the lattice's array types).
 
@@ -315,8 +316,8 @@ at level 8 — the same question as mongodb-odm (vault `open-items`) will come u
 **Decided 2026-11-05, amended 2026-11-15 (roadmap D29): a shape gets syntax only with a name.**
 `array{id: int, name?: string}` is Phaenon syntax in the right-hand side of a `type` declaration
 and nowhere else. Everywhere else a shape is docblock vocabulary, as the decision of 2026-11-05
-(§6.7) had it for every shape. Designed, not built: on 2026-11-15 `type Row = array{…};` is still
-`P1000`.
+(§6.7) had it for every shape. Built in the compiler on 2026-11-15; §6.9 holds what building it
+settled, and wins where it differs from §6.1 to §6.6.
 
 **A shape is a static type, erased at compile time.** It compiles to `array` in the signature and
 to the shape in the docblock PHPStan reads, and to nothing that runs: no check, no descriptor, no
@@ -520,8 +521,94 @@ So `@param array{name: string, age?: int} $row` stays the way to write one, read
 ### 6.8 Open
 
 `checker.md` §10 for the shape itself (the typed rest of an unsealed shape, keys a sealed shape
-does not name); `generics.md` §9, questions 9 to 11, for the alias (aliases of sources
-outside the program, whether a type remembers its alias, `@phpstan-type` in the output).
+does not name); `generics.md` §9, questions 9 to 13, for the alias (aliases of sources
+outside the program, whether a type remembers its alias, `@phpstan-type` in the output, and
+what a run over given paths does not see).
+
+Found while building (2026-11-15), about the lattice's shape, which the syntax made easier to
+write and did not change:
+
+- **A shape is checked more leniently than PHPStan checks it**, in five places, each a parity
+  gap of the kind `checker.md` §9 forbids, none of them new with the syntax:
+  - a shape that admits other keys (`array{id: int, ...}`) is accepted where a sealed one is
+    expected;
+  - `array<string, mixed>` is accepted where a shape is expected;
+  - a key is still read from a shape after `unset` removed it;
+  - reading a key an unsealed shape does not name gives `mixed` without a word, where PHPStan
+    reports an offset that might not exist;
+  - destructuring an optional key (`['name' => $n] = $row`) is accepted as if the key were
+    there.
+- **No suite holds the assignability of shapes to PHPStan.** The parity run skips every corpus
+  file with Phaenon-only syntax, a `type` declaration among it, and the emitter's goldens are
+  checked for what PHPStan reports on a correct program, not for what it would report on a wrong
+  one. No suite found the five gaps above. A corpus of wrong programs, compiled with their
+  errors and held to PHPStan line by line, would have.
+- **A type argument is not inferred through a shape.** `first<T>(Page<T> $page): ?T` called with
+  a `Page<Row>` gives `P3010`, and `T` is `mixed`: inference reads type arguments off classes,
+  lists and maps, and does not look into the entries of a shape for a type parameter.
+
+### 6.9 What building it settled (2026-11-15)
+
+The compiler has named shapes as §6.1 to §6.6 describe them. Building them settled what the text
+left unsaid; where a sentence here differs from one above, this one is what the compiler does.
+The rules of the alias itself are `generics.md` §11.7.
+
+- **A quoted key is taken as written.** The docblock grammar reads the text between the quotes
+  and nothing else, so the syntax does the same, and an escape sequence in a key (`\'`, `\\`,
+  `\n` in double quotes) is a syntax error: with one, the two spellings of a shape would be two
+  different keys, and `phn migrate` could not move a shape without rewriting it. A backslash that
+  escapes nothing is itself, so `'App\Entity\User'` is a key.
+- **An integer key is one PHP stores as an integer.** Unquoted, a key is a decimal integer
+  without a leading zero (`0`, `-1`); `007`, `0x10` and `1_000` are syntax errors. Quoted, a key
+  is that integer only where PHP itself would store it as one: `'7'` is the key 7, while
+  `'07'`, `'-0'` and `'+1'` are strings, as PHP and PHPStan have them. The docblock reader
+  follows the same rule; it had read all three as integers.
+- **The brace after `array` in a return type.** §6.1 says the first entry is met as a
+  statement, and a label gives the message. An entry with an optional key begins as a valid PHP
+  statement does (`FOO ?: f();`), and an empty shape is an empty body. So the parser takes the
+  brace for a shape only when what follows it can begin nothing else: `key:`, a quoted or
+  integer key and its colon, `...`; `key?:` when no `;` stands directly inside the braces;
+  `{}` when a body, an arrow or, on a method without a body, a `;` follows it. It then reads
+  the shape, so that the body after it is read as a body, and reports the shape when the file
+  is parsed, an earlier syntax error still being the first. Everywhere else a brace after
+  `array` outside a `type` declaration is the shape's error at once.
+- **Hyphenated names are not syntax, so two of §6.1's three exclusions are caught by name.**
+  `list{…}` and `object{…}` in a `type` declaration are syntax errors that say they stay
+  docblock vocabulary, and so are `non-empty-array{…}` and `non-empty-list{…}`, recognised as
+  the sequence of tokens they are. A malformed entry is reported for what it is: a key a
+  docblock writes bare and the syntax quotes (`a-b`), a number that is no integer key, an entry
+  without a key, the end of the file.
+- **A shape that names no key is emitted as `array<mixed>`.** `array{...}` is any array, and
+  PHPStan at level max reports the shape for the value type it does not state. The emitted
+  docblock holds the same type with it stated; diagnostics print the shape as written.
+- **The expansion holds no word PHPStan would resolve in the using file.** A class is written
+  by its qualified name, `Closure` among them (`\Closure(int): int`, and `\Closure` in the
+  signature), and `bytes` is written `string`, as for a type spelled in a signature (§4). A
+  callable among the members of a union stands in parentheses, `(\Closure(int): int)|null`:
+  without them PHPStan reads the union as the return type.
+- **A docblock's mention of an alias is expanded on its line.** The emitter rewrites a
+  docblock in place and keeps its line breaks. A generic alias written with its type arguments
+  over several lines therefore keeps its name in the output, where PHPStan does not know it;
+  the arguments, on their own lines, are expanded. Write the mention on one line.
+- **`phn migrate`**, beyond §6.6:
+  - an alias is lifted with the aliases it names, or not at all; one that names itself, or
+    that mentions a type parameter of its class (`@phpstan-type Boxed array{value: T}`), stays;
+  - a tag with a description after its type stays, since a `type` declaration has no place
+    for it;
+  - a name is taken, besides the cases of §6.6, when the file imports another type under it,
+    and when the class declares it twice in different letter cases;
+  - a signature that a lifted alias types is lifted with it: `@return Row` over `array`
+    becomes `: Row`;
+  - an import from the class's own namespace under another name becomes `use NS\Row as R;`;
+  - an import is lifted when the alias it names is lifted by the same run, or already is a
+    `type` of that namespace from an earlier one;
+  - an alias that a class outside the run still imports stays a tag, with a note naming the
+    importer, as an import stays whose alias did: neither side is left naming what the other
+    no longer declares. The run reads the project's other files that hold an import tag to
+    know;
+  - without the program's other files nothing is lifted, since whether the name is free
+    cannot be known; and a run over part of a namespace does not see the tags of the classes it
+    never loads, so a collision it missed is `P2511` at the next check.
 
 ## 7. Decisions (reviewed 2026-10-30)
 
@@ -573,4 +660,5 @@ outside the program, whether a type remembers its alias, `@phpstan-type` in the 
   Python's tuples, the ones most people know by that name, are exact; a tuple of unknown length
   is a `list<T>`. The checker is stricter than PHPStan here, which §9 of `checker.md` allows.
 - 2026-11-15: named shapes and namespace-level aliases designed (§6, `generics.md` §11.6,
-  roadmap D29), not built. The roadmap's *Named shapes* entry lists the work.
+  roadmap D29) and built in the compiler (§6.9, `generics.md` §11.7). The roadmap's *Named
+  shapes* entry lists what is left: the editors, the documentation, the dogfood trees.

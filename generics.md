@@ -606,6 +606,11 @@ Asked by §11.6 (2026-11-15), about aliases of a namespace:
    rule of placement: an alias sits in the file PSR-4 gives its name, so that it is found as a
    class is. That costs nothing to find, and it takes away the natural place for a type,
    beside the class that returns it. To be settled by measuring when the table is built.
+   *Measured 2026-11-15, on core's 811 sources under two prefixes:* a run over one path that
+   names something which is no class reads them in about 25 ms, and a run that names classes
+   alone reads nothing; a check of the whole project, which holds the sources already, pays one
+   walk of their directories, about 8 ms in a second. At that cost the reading stays and no rule
+   of placement is made (§11.7). The question is kept for a tree an order of magnitude larger.
 10. **Does a type remember its alias?** An alias expands when it is resolved, so a diagnostic and
     the server's hover print the expansion: `expects array{id: int, name?: string}`, not
     `expects Row`. A named shape would read better by its name. That asks the lattice to carry
@@ -615,6 +620,19 @@ Asked by §11.6 (2026-11-15), about aliases of a namespace:
     that uses an alias, with the expansion as its body, would shorten the docblocks and need no
     `@phpstan-import-type` between classes. Not taken now: §11's reason holds, and the
     expansion is already built. To be weighed on the first dogfood tree that names its shapes.
+
+Left by building §11.6 (2026-11-15), about a run over given paths, which checks the files it was
+given and loads the rest by name:
+
+12. **A name declared twice is not reported in a run over a path.** `P2511` is reported at the
+    second declaration when its file is checked. In a run over a path the other file is read on
+    demand and not checked, so of two aliases of one name the run reports the collision only when
+    both files are among its paths. A run over the project reports it always. The same is true
+    of two classes.
+13. **An alias outside the directories of a PSR-4 prefix is not found on demand.** The reading
+    of §11.7 follows the PSR-4 prefixes that have a source root: a source Composer loads
+    through `files` or a classmap, and a source of a project without a project file, are read
+    only when something names a class of theirs. A run over the project has them.
 
 ---
 
@@ -829,7 +847,8 @@ alias. A named shape that a public method returns is useless unless the caller's
 it, and until now an alias was seen only in the file that declared it: on the compiler of
 2026-11-15 another file of the same namespace gets `P2001 unknown class App\Pair`
 (`internal/program`: a file's `Scope` holds its aliases, and `FileAlias` looks nowhere else).
-Designed, not built. Where this table and the text above differ, this table wins.
+Built in the compiler on 2026-11-15. Where this table and the text above differ, this table
+wins; where §11.7, which holds what building it settled, differs from this table, §11.7 wins.
 
 | Topic | Decision | Why |
 |---|---|---|
@@ -845,3 +864,21 @@ Designed, not built. Where this table and the text above differ, this table wins
 | **Generic aliases** | Unchanged: `type Page<T> = array{items: list<T>, total: int};`, bounds and defaults as before, the implied `K of int\|string` for a map key (`collections.md` §2). A shape may use the alias's type parameters; the shape's syntax stands in the right-hand side only, not in a bound or a default | Nothing in them depended on the file |
 | **`phn migrate`** | Lifts `@phpstan-type` and `@psalm-type` into `type` declarations before the class that carried them, and `@phpstan-import-type` into `use`, or into nothing within one namespace. PHPStan's aliases are scoped to a class, so a name that two classes of a namespace declare, or that a class of the namespace bears, is not lifted: the tags stay, read as today, with a note. An inline docblock shape stays a docblock (`collections.md` §6.6). Amends §11.1's *What is lifted* and *Spelling* rows | The tags are the aliases PHP code has. The tool cannot invent a name for a shape, nor decide which of two declarations is renamed |
 | **Tools** | `phn fmt` spaces a shape as it spaces type arguments (`tooling.md` §5.1). `phn lsp` goes to an alias's declaration from any file and completes aliases in type positions with their `use`, as it completes classes (`tooling.md` §6.1). The PhpStorm plugin and the VS Code grammar read a shape inside a `type` declaration, which both already take whole, and the plugin resolves an alias's name across files (`tooling.md` §6.2, §6.6) | A syntax nobody's editor knows is not shipped (`collections.md` §7) |
+
+### 11.7 What building §11.6 settled (2026-11-15)
+
+The compiler has aliases as §11.6 describes them, and named shapes (`collections.md` §6.9).
+What the table left unsaid, or said otherwise, is here.
+
+| Topic | Decision | Why |
+|---|---|---|
+| **How an alias is found, outside the program** (amends §11.6) | A name under a PSR-4 prefix whose directories have a source root (the project file's, or an installed Phaenon package's) is first loaded as a class is, from the file the maps give it: that file holds the class, or the alias of that name, or neither, and only its declarations say which. A name that is neither a class nor an alias then has the `type` declarations of the prefix's directories read, once. Of those sources only the ones that may declare an alias are parsed, which a scan of their text decides: `type`, a name, then `=` or `<`, the keyword in any letter case and with the blanks and comments the lexer passes over between the tokens. The scan may report a file that declares nothing and never misses one the parser reads a declaration in. A directory without a source root holds PHP, which declares no alias, and is never read | "The first name that the maps give no class for" was not enough: an alias kept in the file PSR-4 gives its name (`Row.phn` for `type Row`) has a file in the maps, was taken for a class to be loaded later, and was `P2001` in a run over a path while the project's run found it; and it was found after all once another alias of the directory had been read. A path's findings must not depend on how `phn` was called, nor on the order of the names. "Sources without aliases cost nothing" did not survive either: any tree names something that is no class sooner or later, and the first such name costs a walk of the directories (§9, question 9, has the numbers) |
+| **On a collision the class wins** (amends *One name, one declaration*) | A name declared as an alias and as a class-like is `P2511` at the alias, the message naming the class's file and line, and in type positions the name is read as the class. An alias declared twice is `P2511` at the second, naming the first. The code is the one that already said "already declared"; no new one was needed | With the alias winning, as it did while aliases were looked up first, every `new Thing()` and `$thing->size` in every file that imports the name failed far from the mistake, and one name meant two things in one file, a type where it was written as a type and a class where it was instantiated. With the class winning there is one finding, at the declaration that has to change |
+| **An alias under a name its file imports** | `use App\Models\Row;` followed by `type Row = …;` is `P2511` at the alias, the message quoting the import and its line. The name stays the import's | PHP refuses a class declared under a name its file imports, for the reason that holds here: the name would mean two things in one file. Unreported, the import wins in a type position, as for any class name, and the file's own alias is never what its own signatures mean |
+| **No alias mentions itself** (the code) | `P2015`, at each alias of the cycle: `type Ping = list<Pong>;` and `type Pong = ?Ping;` are two findings | Each of the two declarations is wrong on its own, and a reader of one file should not need the other to learn it |
+| **PHP names no alias** | A type written in a `.php` file, in a signature or a docblock, is never looked up as an alias: there it is a class or nothing | PHP has no aliases and would look for a class; PHPStan reads the docblock the same way. It also keeps the docblocks of the vendor code out of the lookup |
+| **A `type` declaration takes its docblock with it, and takes no attribute** (amends *Erasure, unchanged*) | The docblock above a `type` declaration is removed from the output with the declaration. An attribute on one is a syntax error | "Leaves no trace" has to include the comment: left behind, it documents whatever declaration comes next, and a `@deprecated` over an alias deprecated the class after it for PHPStan and for reflection. An attribute had the same fate, landing on the next function, and an erased name has nothing that could carry one |
+| **An import that only erased names use is left out of the output** (amends *`use` of an alias*) | Besides the import of an alias itself, the emitter leaves out an import whose every use is in text the output does not have: a namespace through which only aliases are named (`use App\Orders;` for `Orders\Row`), a class named only among an alias's type arguments (`Page<Customer>`, whose expansion writes the class by its qualified name), only in a `type` declaration, or only among the type arguments of a call, and a docblock mention the emitter expands away. An import the output still uses anywhere stays, in a signature, a `new`, an attribute, a docblock or a `{@see}`; so does one nothing uses at all, which is the checker's to report (`P2013`) | An unused import in the output is not PHP a person wrote, and it is not harmless: a fixer that removes unused imports takes it out of the output, `phn fix` carries the removal into the source, and the source, which does use the import, no longer compiles. The uses are counted by the checker's own rule for a use, so the two cannot disagree about what one is |
+| **A docblock's mention of an alias** | Resolved where the docblock stands: a type parameter of the declaration it documents and the class's own `@phpstan-type` come first, then the alias, as in a signature. It is expanded in place (`collections.md` §6.9) | The emitter translates a docblock's vocabulary textually; the alias is the one word that needs the program to translate |
+| **The language server** | Go to definition, from a type position or from the `use`; hover, the declaration with the type it stands for, its type parameters and its docblock's summary; completion, among the classes, with the import. Completion offers the aliases the program has read, so those of an installed package appear once something names one | The server reads the project, whose aliases it has; a package's are read on demand, as its classes are |
+| **`phn migrate`** | `collections.md` §6.9 holds the rules that building the lift added to §6.6 | They are about the tags, which are shapes' more often than not |
