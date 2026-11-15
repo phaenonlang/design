@@ -681,12 +681,27 @@ turned it into a test.
   first one it breaks is the one reported, so a method that breaks its parent and an interface
   the parent implements is one finding, against the parent. A parent class's private method is
   overridden by nothing, and a farther parent's method is the business of the nearer class that
-  overrides it. PHP's rule on the erased types stays as it was, and beyond it an override is an
-  error where its written types are certainly apart from the overridden member's; a type that may
-  fit passes. So `foo(list<string> $x)` under `foo(list<int> $x)` is an error, while
-  `map<string, mixed>` or a shape where a vendor parent has a bare `array`, `class<User>` for its
-  `class-string` and a method type parameter the override renames all pass. Two types are apart
-  part by part:
+  overrides it, but for a constructor's signature.
+
+  A constructor is free of a concrete parent's signature, as PHP leaves it, and is held to the
+  abstract constructor that parent implements, the nearest one up the parent classes however far
+  up it sits, and to every interface's. PHP holds it to the top-most abstract constructor, its
+  prototype; the two differ only where a nearer abstract constructor widened a farther one, and
+  there the override is held to the nearer, as PHPStan holds it to the nearest constructor's
+  signature. A constructor's `final` and its visibility are compared with the nearest
+  constructor's, as any method's are.
+
+  PHP's rule is applied to the written types erased, docblock types included, not to the native
+  types PHP sees, and stays as `main` had it: an override whose erased written type does not fit
+  the overridden one's is an error. Beyond it an override is an error where its written types are
+  certainly apart from the overridden member's. So `foo(list<string> $x)` under
+  `foo(list<int> $x)` is an error, while `map<string, mixed>` or a shape where a vendor parent has
+  a bare `array`, `class<User>` for its `class-string` and a method type parameter the override
+  renames all pass. A written type that may fit and does not erase to a fit is an error all the
+  same: `User|null` for `User`, or `iterable<int>` for `list<int>`, both under a native `mixed`,
+  is `P2502`, where PHPStan, which reports the "no" of its three-valued comparison and lets the
+  "maybe" pass unless `reportMaybesInMethodSignatures` is on, is silent. Two types are apart part
+  by part:
   - a type parameter stands for its bound, and a union is apart from a type when each of its
     members is;
   - arrays, shapes and iterables are compared by key and value, entry by entry where a shape
@@ -696,27 +711,42 @@ turned it into a test.
   - a type argument follows its variance, and an invariant one must be the same type, except
     `int|string`, which cannot be told from PHPStan's benevolent `array-key`, and one with a
     member the comparison cannot decide (`mixed`, `never`, `static`), which goes with any;
-  - two different enum cases are apart, of one enum or of two, and a case meets a class as its
-    enum does;
+  - two different enum cases are apart, of one enum or of two; an alias constant of a case is
+    that case (`const Red = self::Hearts` makes `Suit::Red` a `Suit::Hearts`); a case meets a
+    class as its enum does;
   - a class is compared with a generic ancestor by the arguments it passes up its `@extends` and
-    `@implements` (`ArrayIterator<int, Cat>` is no `Iterator<int, Dog>`), and a Traversable
-    class with an iterable by the key and value its Traversable ancestor is given
-    (`Generator<int, Cat>` is no `iterable<Dog>`); an ancestor given no arguments decides
-    nothing;
+    `@implements` (`ArrayIterator<int, Cat>` is no `Iterator<int, Dog>`). An ancestor given no
+    arguments decides nothing. A generic class written without its arguments is the class with
+    its bounds, and an argument left out takes its bound with the arguments before it: the
+    `TIterator` of a `LimitIterator<int, Dog>` is an `Iterator<int, Dog>`;
+  - a Traversable class is compared with an iterable by the key and value its Traversable
+    ancestor is given (`Generator<int, Cat>` is no `iterable<Dog>`), read from its `@implements`
+    and `@extends`, where PHPStan reads its `getIterator()`'s declared type. The two part in both
+    directions: a class declaring `@implements IteratorAggregate<int, Open>` whose
+    `getIterator()` returns a bare `Iterator` is reported against an `iterable<string, Open>`,
+    and PHPStan is silent; a class passing `IteratorAggregate` no arguments whose `getIterator()`
+    declares an `Iterator<int, Cat>` passes against an `iterable<Dog>`, which PHPStan reports.
+    `IteratorAggregate::getIterator()` is declared `Traversable`, as PHP and PHPStan declare it;
   - callables are compared by signature.
 
-  Static methods are held to the same rule, as PHP holds their signatures to their parent's;
-  PHPStan compares them only under `reportStaticMethodSignatures`, so the checker is stricter
-  there, as the parity rule allows. Why: a list, a map, a tuple and a shape all erase to `array`,
-  so the erased comparison alone passed overrides whose compiled docblocks PHPStan rejects, and
-  the checker may not be more lenient than PHPStan. Reporting every type not known to fit was the
-  other way, and it was not taken: it would report the child that narrows what a library left
-  open, which working code is full of and which PHPStan passes, since its rules report the "no"
-  of its three-valued comparison and let the "maybe" pass. The nearest class method comes first
-  because it is the one PHP links the class against, the method its parent holds under the name,
-  wherever an interface sits; every interface's follows because PHP links the class against each
-  of them, and a class whose two interfaces disagree fits one at best. What the check does not
-  reach yet is in §10.
+  Static methods are held to the same rule, as PHP holds their signatures to their parent's.
+  PHPStan reports a static method whose native types break its parent's and lets its docblock
+  types pass; the checker holds them to the docblock rule as well, stricter than PHPStan, as the
+  parity rule allows. Why: a list, a map, a tuple and a shape all erase to `array`, so the erased
+  comparison alone passed overrides whose compiled docblocks PHPStan rejects, and the checker may
+  not be more lenient than PHPStan. The rule on the erased written types is kept, though it is
+  stricter than PHPStan: comparing the native types instead, with the test of two types being
+  apart for the rest, would lose real findings, such as a `Repository<User>` whose `find()` says
+  `?User` where its parent's promises the `T` that is `User` there, and that test does not decide
+  every kind PHPStan's "no" covers (a class that is not Traversable against an iterable), which
+  the erased rule does. Its known rough edge is `?T` for `T`: it passes where `T` is unbounded,
+  both erasing to `mixed`, and is reported where `T` is bounded or closed, so an override of
+  PHP's own `current()` or `key()`, or of an `offsetGet()` declared without null, that adds
+  `null` is an error under a closed argument (`ArrayIterator<int, User>`). The nearest class
+  method comes first because it is the one PHP links the class against, the method its parent
+  holds under the name, wherever an interface sits; every interface's follows because PHP links
+  the class against each of them, and a class whose two interfaces disagree fits one at best. What
+  the check does not reach yet is in §10.
 
 ## 10. Open questions
 
@@ -800,12 +830,35 @@ turned it into a test.
     `int|string` passes as PHPStan's benevolent `array-key` would: `Box<int|string>` for a
     `Box<int>` passes, which PHPStan reports. Telling them apart needs the type model to mark the
     benevolent union, as PHPStan does.
-  - *Methods a trait brings in*, and *a parent's method against an interface the child adds*
-    (`class C extends P implements I {}`, where `P::foo()` does not fit `I::foo()`), are not
-    compared at all, not even by PHP's rule on the erased types, though PHP refuses to link such
-    a class.
+  - *What a trait brings in* is compared in part. A trait's abstract constructor, used by an
+    abstract class, binds the classes below it as any abstract constructor does. Not compared, not
+    even by PHP's rule on the erased types: a method a trait brings in against the parent's
+    method it overrides, a class's own method against the abstract one its trait declares, and a
+    method a trait brings in against an interface of the class; nor *a parent's method against an
+    interface the child adds* (`class C extends P implements I {}`, where `P::foo()` does not fit
+    `I::foo()`). PHP refuses to link each such class.
   - *Subtyping outside overrides does not map inherited type arguments*: it steps up from a class
     to a generic ancestor without the arguments the class passes it, so `ArrayIterator<int, Cat>`
     still passes where `Iterator<int, Dog>` is declared, for a return or an argument, where
     PHPStan reports `return.type`. The override check asks the test of two types being apart for
     that reason; the rest of the checker does not yet.
+  - *Inference from bounds is one pass.* A class template the constructor's arguments leave
+    unbound takes what the bound of a bound template says of it, as PHPStan infers it; a template
+    named only in the bound of a template so inferred stays at its bound. A template's default
+    that names an earlier template (`@template U = T`) is taken as written, `T` not replaced by
+    the argument it took.
+  - *The SPL overlay types what binds the templates, not every member.* The generic SPL, DOM and
+    date classes have PHPStan's templates and the members that carry them in (the wrapping
+    iterators' constructors, `WeakReference::create()`, the DOM lists' accessors, the read
+    methods PHPStan types); the rest keep PHP's types, where PHPStan's stubs say more:
+    `SplObjectStorage::attach()` and `getInfo()`, the lists' `push()` and `pop()`, `DatePeriod`'s
+    getters. `SplStack` and `EmptyIterator` take no arguments. The overlay patches methods only,
+    so `DOMNode::$childNodes` and `$attributes` are PHP's bare `DOMNodeList` and
+    `DOMNamedNodeMap`, which yield `DOMNameSpaceNode|DOMNode` and `DOMNode` where PHPStan reads
+    `DOMNode` and `DOMAttr`.
+  - *An override of PHP's own methods that return null past the end.* `current()` and `key()` of
+    an iterator are `TValue` and `TKey`, and the `offsetGet()` the overlay declares without null
+    is `TValue`, as PHPStan reads them, though PHP returns null past the end or for an offset not
+    held. An override that adds `null` is reported under a closed argument by the rule on the
+    erased types (§9), where PHPStan passes it. Whether `T|null` for a closed `T`, under a native
+    `mixed` on both sides, should pass is open.
