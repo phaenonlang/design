@@ -549,9 +549,12 @@ The plugin reads `throws` and its names as an erased construct (navigable, count
 Imports), hands PhpStorm's parser a block for an expression body, and formats `.phn` with the
 canonical style of §5.
 
-`nothrow` (§4.5, 2026-11-15; not built) is to both editors what `throws` is, without the names:
-the plugin erases the word where it erases a `throws` clause, and the VS Code grammar reads it
-where it reads `throws`, under the same scope name (`tooling.md` §6.6).
+`nothrow` (§4.5, 2026-11-15) is to both editors what `throws` is, without the names: the plugin
+erases the word where it erases a `throws` clause, in any letter case, and its exception filter
+takes it for a clause that names nothing; the VS Code grammar reads it where it reads `throws`,
+under the same scope name (`tooling.md` §6.6). The grammar matches the word in lower case, as it
+matches `throws` and every word Phaenon adds, so a `NoThrow` that the compiler reads as the
+clause is coloured there as a name.
 
 *2026-11-15 (F15, roadmap D30):* both words are written in lower case. The VS Code grammar reads
 them in lower case only, which is now the language's rule. The plugin erases them in any case,
