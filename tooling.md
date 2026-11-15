@@ -968,7 +968,13 @@ The first layer is native, with no options:
 | a shape in a `type` declaration (D29, 2026-11-15; not built) | `type Row = array{id: int, name?: string};`: nothing inside the braces, a space after a colon and a comma, `?` against its key; a shape over several lines keeps its line breaks |
 | expression body | `name(): string => $this->name;`, a continuation one level in |
 | `throws` | `find(Id $id): User throws NotFound\|Conflict {` |
-| `nothrow` (2026-11-15, `functions.md` F14) | `find(Id $id): ?User nothrow {`: as `throws`, one space before the word, on the signature's line |
+| `nothrow` (2026-11-15, `functions.md` F14) | `find(Id $id): ?User nothrow {`: as `throws`, one space before the word |
+
+These spellings are the spacing within a line, and the spacing changes no line break a construct
+is written with. A `throws` or `nothrow` that stands on a line of its own after the signature
+stays there, with its indentation, and only the spaces within its line become canonical
+(`throws A|B`); the body's brace then joins the clause's line, as it joins the line a signature
+ends on.
 
 *The rows of `is` and `as` went with roadmap D26 (2026-11-09), those of `concurrently` and `spawn`
 with D25 (2026-11-08).*

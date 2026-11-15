@@ -391,8 +391,8 @@ keeps its tags too, with a note: `nothrow` is lifted from a sole tag. Beside the
 With a description it stays, as any tag does. Over a `.phn` declaration that already says
 `nothrow`, a `@throws void` beside it says nothing more and is removed, while a tag that names
 what escapes stays, with a note, for the checker to report (`P2320`): lifting it would write
-`nothrow|X`. `phn fmt` lays `nothrow` out as `throws`: one space before it, on the signature's
-line (`tooling.md` §5.1).
+`nothrow|X`. `phn fmt` lays `nothrow` out as `throws`: one space before it when it stands on the
+signature's line; written on a line of its own, it stays there (`tooling.md` §5.1).
 
 **Overrides.** `nothrow` adds no rule of its own.
 - **A method that declares nothing takes the declaration of the method it overrides**, a
