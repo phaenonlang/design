@@ -1344,9 +1344,10 @@ Phaenon's syntax:
 *Since 2026-11-09 (roadmap D26, D27) the grammar reads a method without a keyword as a declaration
 with its type parameters, parameters, return type and `throws`; the `fun`, `is`, `as` and `as?`
 rules are gone, as `concurrently` and `spawn` went on 2026-11-08.*
-*2026-11-15 (`functions.md` F14; not built):* `nothrow` is read where `throws` is, in a function's
-or a method's head, under the scope name `throws` has; the PhpStorm plugin's lexer erases it
-where it erases a `throws` clause.
+*2026-11-15 (`functions.md` F14):* `nothrow` is read where `throws` is, in a function's or a
+method's head, under the scope name `throws` has, and in lower case only, as every word the
+grammar adds; the PhpStorm plugin's lexer erases it where it erases a `throws` clause, in any
+letter case, as the compiler reads it.
 
 These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
 reads as a type in a parameter list, a property and a class header alike. Where PHP has the
