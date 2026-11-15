@@ -583,13 +583,39 @@ The rules of the alias itself are `generics.md` §11.7.
   docblock holds the same type with it stated; diagnostics print the shape as written.
 - **The expansion holds no word PHPStan would resolve in the using file.** A class is written
   by its qualified name, `Closure` among them (`\Closure(int): int`, and `\Closure` in the
-  signature), and `bytes` is written `string`, as for a type spelled in a signature (§4). A
-  callable among the members of a union stands in parentheses, `(\Closure(int): int)|null`:
-  without them PHPStan reads the union as the return type.
-- **A docblock's mention of an alias is expanded on its line.** The emitter rewrites a
-  docblock in place and keeps its line breaks. A generic alias written with its type arguments
-  over several lines therefore keeps its name in the output, where PHPStan does not know it;
-  the arguments, on their own lines, are expanded. Write the mention on one line.
+  signature), and `bytes` is written `string`, as for a type spelled in a signature (§4).
+- **The expansion is written for where the alias stood.** An alias stands for a type of any
+  form, and `?` or a neighbour in a union would bind to a part of it:
+  - `?Alias` is the nullable of what the alias stands for, as a type: over a union,
+    `int|string|null`, in the signature and in the docblock; over a nullable type, `?int` in
+    the signature and `int|null` in the docblock, not `??int`; over an intersection,
+    `(\A&\B)|null` in both, PHP's DNF; over a closure signature, `?\Closure` and
+    `(\Closure(int): int)|null`. `?` stays before a type that takes it, `?array{id: int}`;
+  - among the members of a union or an intersection, what the alias stands for is bracketed
+    where it would merge with its neighbours: an intersection in a union
+    (`int|(\A&\B)`), a closure signature in either, a union in an intersection. A union
+    among the members of a union stays bare;
+  - a closure type's return is bracketed whenever its text is a union, written or expanded:
+    `\Closure(U): (int|string)`. Without the brackets PHPStan reads the union as
+    `(\Closure(U): int)|string`.
+
+  The same holds in a docblock written by hand: `?Value` and `Both|null` are expanded with
+  their place known.
+- **A docblock's mention of an alias written over several lines is expanded on one.** The
+  emitter rewrites a docblock in place and keeps its line count, and an expansion has no line
+  break. So a generic alias written with its type arguments on lines of their own is expanded
+  on a single line, and the lines the mention gave up stay in the docblock as bare ` *` lines
+  before the tag:
+
+  ```
+   * @param Page<            *
+   *     Customer            *
+   * > $p                    * @param array{items: list<\App\Customer>, total: int} $p
+  ```
+
+  What follows the type on its last line, the parameter's name, stays beside the type, and a
+  bare line above a tag changes nothing PHPStan reads. A docblock that opens on the tag's line
+  opens on a line of its own instead. The alias never reaches the output by name.
 - **`phn migrate`**, beyond §6.6:
   - an alias is lifted with the aliases it names, or not at all; one that names itself, or
     that mentions a type parameter of its class (`@phpstan-type Boxed array{value: T}`), stays;
@@ -604,8 +630,13 @@ The rules of the alias itself are `generics.md` §11.7.
     `type` of that namespace from an earlier one;
   - an alias that a class outside the run still imports stays a tag, with a note naming the
     importer, as an import stays whose alias did: neither side is left naming what the other
-    no longer declares. The run reads the project's other files that hold an import tag to
-    know;
+    no longer declares. To know, the run reads the project's other files that hold an import
+    tag: with a project file, the files of its roots; without one, as in a PHP project
+    migrated for the first time, the files of the directories the nearest `composer.json`
+    autoloads, under `autoload` and `autoload-dev` (PSR-4 and PSR-0 directories, the
+    classmap's entries, `files`). Where neither says where the project's code is, the files
+    that may import an alias cannot be known, and no alias is lifted: each stays a tag with a
+    note that says so;
   - without the program's other files nothing is lifted, since whether the name is free
     cannot be known; and a run over part of a namespace does not see the tags of the classes it
     never loads, so a collision it missed is `P2511` at the next check.
