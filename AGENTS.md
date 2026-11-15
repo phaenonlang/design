@@ -21,3 +21,6 @@ commit rules are in the compiler repo: read `../phaenon/AGENTS.md` first.
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, … with a body that says
   what changed and why), with no attribution lines and no `Co-Authored-By`: the repository will be
   public.
+- Every pull request targets `main`, never the branch of another open pull request: GitHub
+  closes a stacked pull request for good when the branch under it is deleted. A change that
+  depends on an unmerged one goes into the same pull request, or waits for the merge.
