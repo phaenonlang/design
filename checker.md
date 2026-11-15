@@ -241,6 +241,9 @@ compatibility with the overridden member (parameter contravariance, return covar
 static-ness, readonly) is checked for **checked** classes only — PHP fatals at runtime on the
 same conditions, so the checker reports them as errors.
 
+*2026-11-13: which declarations a method is compared with, and how Phaenon's types are held where
+they say more than PHP's, are in §9 ("An override is held to every declaration it overrides").*
+
 ## 5. Checks
 
 Every check has a stable code. Families: `P1` syntax and removed constructs, `P2` types and flow,
@@ -667,6 +670,49 @@ turned it into a test.
   (`strings.md` §6); without the literal it narrows nothing, since `mb_internal_encoding()` decides
   at run time. PHPStan has no `bytes`, so parity is not at stake there. A leftover `is` or `as` is
   `P1001`, and `P3011` and `P3012` are retired.
+- **An override is held to every declaration it overrides, and to Phaenon's types** (2026-11-13,
+  completed 2026-11-15; `P2502`, PHPStan's `method.childParameterType` and
+  `method.childReturnType`). A method is compared with the nearest declaration up its parent
+  classes, even where an interface sits nearer, and with every interface's declaration of it; the
+  first one it breaks is the one reported, so a method that breaks its parent and an interface
+  the parent implements is one finding, against the parent. A parent class's private method is
+  overridden by nothing, and a farther parent's method is the business of the nearer class that
+  overrides it. PHP's rule on the erased types stays as it was, and beyond it an override is an
+  error where its written types are certainly apart from the overridden member's; a type that may
+  fit passes. So `foo(list<string> $x)` under `foo(list<int> $x)` is an error, while
+  `map<string, mixed>` or a shape where a vendor parent has a bare `array`, `class<User>` for its
+  `class-string` and a method type parameter the override renames all pass. Two types are apart
+  part by part:
+  - a type parameter stands for its bound, and a union is apart from a type when each of its
+    members is;
+  - arrays, shapes and iterables are compared by key and value, entry by entry where a shape
+    names them;
+  - two classes neither of which extends the other are apart, unless one is an interface that a
+    subclass of the other could add;
+  - a type argument follows its variance, and an invariant one must be the same type, except
+    `int|string`, which cannot be told from PHPStan's benevolent `array-key`, and one with a
+    member the comparison cannot decide (`mixed`, `never`, `static`), which goes with any;
+  - two different enum cases are apart, of one enum or of two, and a case meets a class as its
+    enum does;
+  - a class is compared with a generic ancestor by the arguments it passes up its `@extends` and
+    `@implements` (`ArrayIterator<int, Cat>` is no `Iterator<int, Dog>`), and a Traversable
+    class with an iterable by the key and value its Traversable ancestor is given
+    (`Generator<int, Cat>` is no `iterable<Dog>`); an ancestor given no arguments decides
+    nothing;
+  - callables are compared by signature.
+
+  Static methods are held to the same rule, as PHP holds their signatures to their parent's;
+  PHPStan compares them only under `reportStaticMethodSignatures`, so the checker is stricter
+  there, as the parity rule allows. Why: a list, a map, a tuple and a shape all erase to `array`,
+  so the erased comparison alone passed overrides whose compiled docblocks PHPStan rejects, and
+  the checker may not be more lenient than PHPStan. Reporting every type not known to fit was the
+  other way, and it was not taken: it would report the child that narrows what a library left
+  open, which working code is full of and which PHPStan passes, since its rules report the "no"
+  of its three-valued comparison and let the "maybe" pass. The nearest class method comes first
+  because it is the one PHP links the class against, the method its parent holds under the name,
+  wherever an interface sits; every interface's follows because PHP links the class against each
+  of them, and a class whose two interfaces disagree fits one at best. What the check does not
+  reach yet is in §10.
 
 ## 10. Open questions
 
@@ -721,3 +767,21 @@ turned it into a test.
   PHPStan reports `catch.neverThrown`. The checker is more lenient than PHPStan in that case,
   which the parity rule forbids; reading every declaration an override inherits, in PHPStan's
   order, closes it.
+- **What the override check does not reach** (2026-11-15, §9). Each is more lenient than PHPStan
+  or PHP, and each is left for a change of its own:
+  - *Object shapes and intersections* are not decided by the test of two types being apart:
+    `object{a: string}` for an `object{a: int}`, or `Box<string>&Tag` for a `Box<int>&Tag`,
+    passes, where PHPStan 2.3.3 reports `method.childReturnType`.
+  - *`int|string` and `array-key`* are one union on the lattice, so an invariant argument written
+    `int|string` passes as PHPStan's benevolent `array-key` would: `Box<int|string>` for a
+    `Box<int>` passes, which PHPStan reports. Telling them apart needs the type model to mark the
+    benevolent union, as PHPStan does.
+  - *Methods a trait brings in*, and *a parent's method against an interface the child adds*
+    (`class C extends P implements I {}`, where `P::foo()` does not fit `I::foo()`), are not
+    compared at all, not even by PHP's rule on the erased types, though PHP refuses to link such
+    a class.
+  - *Subtyping outside overrides does not map inherited type arguments*: it steps up from a class
+    to a generic ancestor without the arguments the class passes it, so `ArrayIterator<int, Cat>`
+    still passes where `Iterator<int, Dog>` is declared, for a return or an argument, where
+    PHPStan reports `return.type`. The override check asks the test of two types being apart for
+    that reason; the rest of the checker does not yet.
