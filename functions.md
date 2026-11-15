@@ -1,9 +1,9 @@
 # Phaenon — Functions design (draft 0.1)
 
-Status: **draft** · 2026-11-01, extended 2026-11-02, §1 rewritten 2026-11-09 · covers the
-spelling of declarations, closures where PHP only allows constant expressions, expression bodies,
-`throws`, and the layout of a declaration. Companion: `language-overview.md` §3–5, `roadmap.md`
-D15, D18, D27.
+Status: **draft** · 2026-11-01, extended 2026-11-02, §1 rewritten 2026-11-09, `nothrow` added
+2026-11-15 · covers the spelling of declarations, closures where PHP only allows constant
+expressions, expression bodies, `throws` and `nothrow`, and the layout of a declaration.
+Companion: `language-overview.md` §3–5, `roadmap.md` D15, D18, D27.
 
 Phaenon's additions so far were types; this document adds two pieces of syntax that are not
 types. Both compile to PHP a person would write, and plain PHP stays valid Phaenon (the
@@ -40,6 +40,7 @@ function headline(Report $report): string => strtoupper($report->title());
   `[attributes] [modifiers] [&]name[<type parameters>](parameters)[: type] [throws A|B]` and
   followed by its body: a block, an expression body `=> expr;` (§3), or `;` for an abstract or
   interface method. `&` before the name returns by reference, as `function &name()` does.
+  *Since 2026-11-15 `nothrow` may stand in the clause's place (§4.5).*
 - **How the parser tells it from a property.** After the attributes and modifiers, a name
   followed by `(`, or by a balanced `<…>` and then `(`, is a method; anything else begins a
   property's type (`Foo $x`, `?Foo $x`, `list<int> $xs`, `(A&B)|null $x`). A constant starts
@@ -224,7 +225,8 @@ static of(string $s): self => new self(trim($s));
 
 - A named function or method — a method with or without `function`, a function with it — may
   have **one expression** for its body:
-  `=> expr;` takes the place of the block, after the return type and the `throws` clause (§4).
+  `=> expr;` takes the place of the block, after the return type and the `throws` clause (§4),
+  or `nothrow` (§4.5).
 - The expression is **returned**, unless the return type is `void` or `never`: then it is only
   evaluated. A `never` body is a `throw` or a call that never returns, as in a block.
 - **Not allowed** on constructors and destructors, whose rules on returned values are PHP's own
@@ -294,7 +296,7 @@ above. The line count holds.
 
 `phn migrate` lifts the `@throws` tags without a description into the clause, several tags into
 one union; a tag with a description stays in the docblock, as a typeless `@param` keeps its
-prose (D14).
+prose (D14). *2026-11-15 (F14):* a bare `@throws void` becomes `nothrow` (§4.5).
 
 ### 4.4 Why
 
@@ -303,6 +305,94 @@ with the migration, and an exception type is a type. A bare `@throws X` line wit
 docblock was considered and rejected: `@` is PHP's error-suppression operator, so inside a body
 the line would be ambiguous, and it would be a third comment syntax that is neither PHP nor a
 declaration, invisible to every tool but Phaenon's.
+
+### 4.5 `nothrow`
+
+*Added 2026-11-15 (F14). Designed, not built: on the compiler of 2026-11-15 a `nothrow` after a
+return type is `P1000`.*
+
+```php
+// in a class body
+find(int $id): ?User nothrow { … }
+name(): string nothrow => $this->name;
+abstract supports(Command $c): bool nothrow;
+```
+
+**Spelling.**
+- `nothrow` stands where a `throws` clause stands: after the return type, or after the parameter
+  list when there is none, before the body, the arrow or the `;`. It is the clause spelling of
+  PHPStan's `@throws void`, which §8 recorded as having none.
+- It is a **contextual keyword**, a keyword in that position only and in any case, recognised by
+  the parser as `throws` is (§8): a function, a constant or a class named `nothrow` keeps
+  compiling.
+- **`nothrow` and `throws` together are a syntax error.** One says that nothing escapes, the
+  other names what does.
+- Named functions and methods only, as `throws`; a closure keeps a docblock.
+
+**Meaning.** Exactly what `@throws void` means to the throw analysis (`tooling.md` §9.1), and no
+more:
+- **It is held to the explicit throw points.** A `throw`, a call to something that declares
+  exceptions, and the points the language makes explicit (a `/` or `%` whose divisor may be zero,
+  a `match` without `default` that is not exhaustive) are each `P2405`, an error reported at the
+  throw point. The code exists, for the docblock form.
+- **A call to a function that declares nothing does not break it.** Such a call is an implicit
+  throw point, and no finding is built on those.
+- **A call to a `nothrow` function is not a throw point.** That is what the word buys its
+  callers: a `catch` around such calls alone is dead, `P2403`, a `catch (\Throwable)` included.
+- **It is not a guarantee.** A `TypeError` out of a callee that declares nothing, an `Error` PHP
+  raises on its own, a failed allocation: none of them is ruled out. `nothrow` says that the
+  body lets nothing escape that the checker can name. A `throws A` clause is a statement of the
+  same kind, documentation the checker verifies and not Java's checked exceptions (§4.1): it does
+  not promise that only `A` leaves the function either.
+
+**Why a word of its own.**
+- `throws void` reads as a contradiction, and nothing in PHP's own vocabulary explains it: the
+  code is read more often than PHPStan's tags are recalled.
+- `throws` was itself a new contextual word in that position, where PHP's grammar admits only a
+  `{` or a `;`. A second one costs the grammar nothing more.
+- D26 holds: Phaenon adds types and the spelling of declarations, never an operation PHP lacks.
+  `nothrow` is the spelling of a declaration, it compiles to a docblock tag, and nothing runs.
+- D27 took `fun` out because a method without any keyword had the same gain. There is no such
+  spelling here: a declaration without a clause already has a meaning, "declares nothing", and a
+  call to it may throw anything (`tooling.md` §9.1). "Throws nothing" has to be written.
+- `noexcept` was not taken: in C++ a violation ends the program, a behaviour at run time, and the
+  word would promise what `nothrow` does not do.
+
+**Compilation.** `@throws void` in the declaration's docblock, written and merged as the
+`@throws` of a `throws` clause is (§4.2, §8); a docblock that already holds the tag is left as it
+is. A `@throws` tag that names a class, in the docblock of a declaration that says `nothrow`, is
+the same contradiction in two places: an error, its code assigned when it is built.
+
+**Migration.** `phn migrate` lifts a `@throws void` without a description into `nothrow` when it
+is the declaration's only `@throws` tag, as part of the lift (`--keep-docblocks` skips it).
+Today it leaves the tag with the note "no Phaenon spelling for it". `phn fmt` lays `nothrow`
+out as `throws`: one space before it, on the signature's line (`tooling.md` §5.1).
+
+**Overrides.** `nothrow` adds no rule of its own.
+- **A method that declares nothing takes the declaration of the method it overrides**, a
+  `throws` clause, `@throws` tags or `nothrow` alike (`tooling.md` §9.1). So an override without
+  a clause under a `nothrow` method is `nothrow`: a call to it is no throw point, and its body
+  is held to the explicit throw points, as PHPStan holds a body to an inherited `@throws void`.
+  *Found 2026-11-15:* the checker reads the inherited declaration at the call and not in the
+  body. An override without tags that throws, under a method that declares `@throws void`,
+  draws no `P2405`, where PHPStan 2.3.3 reports `throws.void`; and a `catch` around a call to
+  that override is `P2403` all the same. The checker is more lenient than PHPStan there, which
+  the parity rule forbids (`checker.md` §9): to be closed with `nothrow`, or before it.
+- **An override that writes its own clause is held to nothing.** `tooling.md` §9.1 calls an
+  overridable method's clause "the contract its overrides are held to", and that is why `P2404`
+  spares it; but no rule checks an override against it, and the covariance of an override's
+  `throws` is listed there as deliberately not done. Verified on the compiler of 2026-11-15 and
+  on PHPStan 2.3.3: an override that declares `throws NotFound`, and throws it, under a method
+  that declares `@throws void` draws no finding from either.
+- **What that leaves.** A `catch` around a call through the parent's type is `P2403` while a
+  subclass throws: the finding is right about the declaration and wrong about the program.
+  `nothrow` makes this easier to write than a docblock tag did. Whether an override of a
+  `nothrow` method should be refused a `throws` clause is open (`checker.md` §10).
+
+**Measured need.** On 2026-11-13 core, tq-cli and mongodb-odm held no `@throws void` at all; the
+compiler's own overlay has the tag, on `Throwable`'s getters, and stays PHP. The feature is cheap
+rather than urgent: the analysis is built, and what is added is a clause in the parser, a tag in
+the emitter, a lift in `phn migrate`, a spacing rule in `phn fmt` and a word in each editor.
 
 ## 5. Layout
 
@@ -423,6 +513,10 @@ The plugin reads `throws` and its names as an erased construct (navigable, count
 Imports), hands PhpStorm's parser a block for an expression body, and formats `.phn` with the
 canonical style of §5.
 
+`nothrow` (§4.5, 2026-11-15; not built) is to both editors what `throws` is, without the names:
+the plugin erases the word where it erases a `throws` clause, and the VS Code grammar reads it
+where it reads `throws`, under the same scope name (`tooling.md` §6.6).
+
 ## 7. Decisions
 
 | # | Decision | Why |
@@ -440,6 +534,7 @@ canonical style of §5.
 | F11 | **Methods without a keyword** (2026-11-09, roadmap D27): a declaration at class-member level is a method, `[modifiers] [&]name[<T>](…)` and its body; no visibility is `public`, written out by the emitter as PER requires; PHP's `function` stays valid on a method and is required for a name that is a modifier, `var`, `const`, `Closure`, `function` or `fn`; every other named declaration is a function and keeps `function`, one inside a method's body included | §1.1, §1.2, §1.4 |
 | F12 | **`fun` leaves the language** (2026-11-09, roadmap D27): an identifier again; a leftover `fun` declaration is `P1001`, which `phn fmt` rewrites | §1.1, §1.5 |
 | F13 | `phn migrate` lifts `function` off methods and drops a sole `public`, `--keep-public` keeps it; functions and the names of F11 keep `function` | §1.3 |
+| F14 | **`nothrow`** (2026-11-15; designed, not built): a named function or method may declare `nothrow` where a `throws` clause goes, `find(int $id): ?User nothrow { … }`. It is the clause spelling of PHPStan's `@throws void` and means what that tag means to the throw analysis: held to the explicit throw points (`P2405`), not broken by a call to a function that declares nothing, and no throw point for its callers, which makes a dead catch findable (`P2403`); not a guarantee about `TypeError` or any other implicit error, as a `throws A` clause is none. A contextual keyword in that position only; with `throws` a syntax error; compiled to `@throws void`; lifted from the tag by `phn migrate`; laid out as `throws`. It adds no override rule of its own. A word and not `throws void`, which reads as a contradiction; D26 holds, since it is the spelling of a declaration | §4.5 |
 
 ## 8. Decisions made while building D18
 
@@ -459,4 +554,4 @@ canonical style of §5.
 | `throws` lifting and `--keep-layout` (2026-11-02) | Lifting `@throws` is part of the lift (`--keep-docblocks` skips it), not of the layout | It moves a type into the signature as the generic lifts do (D14); `--keep-layout` keeps braces, docblocks' shape and bodies |
 | `never` bodies in migrate (2026-11-02) | A body that is one expression statement under `never` (`throw new X(…);`) becomes `=> …;` as under `void` | §3.1 evaluates the expression under both; §5.3 named `void` only |
 | Limits of the layout (2026-11-02) | A docblock is not collapsed when the one line would pass 120 columns; a brace moves up whatever the width; a comment between the signature and the brace keeps the block as a comment inside does; an empty body keeps its closing brace on its own line (`) {` / `}`). A multi-line expression joining the signature's line moves its continuation lines one level out; one holding a multi-line string or heredoc, whose text that would change, wraps after the arrow instead | A collapsed docblock only saves lines; a brace has no other place short of reflowing the signature, which is `phn fmt`'s work (M6). A comment there would have nowhere to go |
-| `throws` members (2026-11-02) | Class names, `self`, `static` and `parent`, and type parameters; no type arguments, no keyword types. `@throws void` and a tag naming a template left in the docblock stay in the docblock with a note | What `catch` accepts, plus the type parameters §4.1 allows; PHPStan's `@throws void` ("throws nothing") has no clause spelling |
+| `throws` members (2026-11-02) | *(Amended 2026-11-15 by F14: `@throws void` has a clause spelling, `nothrow`, and `phn migrate` lifts it; §4.5.)* Class names, `self`, `static` and `parent`, and type parameters; no type arguments, no keyword types. `@throws void` and a tag naming a template left in the docblock stay in the docblock with a note | What `catch` accepts, plus the type parameters §4.1 allows; PHPStan's `@throws void` ("throws nothing") has no clause spelling |
