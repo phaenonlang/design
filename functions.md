@@ -398,20 +398,19 @@ signature's line; written on a line of its own, it stays there (`tooling.md` §5
 - **A method that declares nothing takes the declaration of the method it overrides**, a
   `throws` clause, `@throws` tags or `nothrow` alike (`tooling.md` §9.1). So an override without
   a clause under a `nothrow` method is `nothrow`: a call to it is no throw point, and its body
-  is held to the explicit throw points, as PHPStan holds a body to an inherited `@throws void`,
-  in the overrides where the checker finds the inherited declaration; the end of this item
-  names those where it does not yet. The docblock form is held the same way: an override
+  is held to the explicit throw points, as PHPStan holds a body to an inherited `@throws void`;
+  the end of this item names the one shape where the checker does not find the inherited
+  declaration yet. The docblock form is held the same way: an override
   without tags that throws, under a method that declares `@throws void`, is `P2405` at each
   explicit throw point, where PHPStan 2.3.3 reports `throws.void`, and the message names the
   method the declaration comes from. An inherited list of classes holds the body to nothing:
   `P2404` counts only the members a declaration writes. The inherited declaration is looked for
-  along one chain: the method the override overrides, the parent class's when the parent has
-  one, then the method that one overrides, and so on. PHPStan's docblock inheritance reads more
-  than that chain: the class's own interfaces where the parent's method declares nothing, each
-  of a class's interfaces where the first to declare the method has no tag, a parent's
-  constructor, and the interface method or abstract method that a trait's method implements in
-  the class that uses it. Those overrides are not held to an inherited `@throws void` or
-  `nothrow` yet, where PHPStan reports `throws.void` (`checker.md` §10).
+  in the order PHPStan inherits a docblock in: the method the parent class holds, with what
+  that one inherits in turn, then each of the class's own interfaces in the order written. A
+  constructor reads its parent's constructor first, unless that one is private. A trait's body
+  is the exception: it is checked once, in the trait, so a trait's method that implements an
+  interface method or an abstract method saying `nothrow` is not held to it yet, where PHPStan
+  reports `throws.void` (`checker.md` §10).
 - **An override that writes its own clause is held to nothing.** `tooling.md` §9.1 calls an
   overridable method's clause "the contract its overrides are held to", and that is why `P2404`
   spares it; but no rule checks an override against it, and the covariance of an override's

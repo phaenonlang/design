@@ -1983,10 +1983,9 @@ any declaration, and nothing holds an override that declares its own clause to i
 adds no rule to the table below. The body of an override that inherits `@throws void` or
 `nothrow` is held to it as to a declaration of its own, `P2405` at each explicit throw point, as
 PHPStan 2.3.3 reports `throws.void`; the message names the method the declaration comes from
-(`functions.md` §4.5). That holds where the checker finds the inherited declaration, along one
-chain of overrides. A constructor under its parent's, a trait's method, a class with several
-interfaces, and a class whose interface alone declares what its parent's method leaves out are
-not held yet, while PHPStan reports `throws.void` in them (`checker.md` §10).
+(`functions.md` §4.5). The inherited declaration is found in the order PHPStan inherits a
+docblock in, a parent's constructor included. A trait's method is not held yet, while PHPStan
+reports `throws.void` in it (`checker.md` §10).
 
 **Deliberately not done:**
 
