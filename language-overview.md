@@ -66,7 +66,8 @@ without a keyword, `functions.md`, roadmap D27) · type tests (`instanceof`, `is
 ones since D26) · `match` · named arguments · union/intersection/DNF
 types · class names as strings (`Foo::class`, typed `class<T>`) · exceptions · generators ·
 Fibers (as the concurrency substrate; since D25, 2026-11-08, as PHP has them, no more) · the request-cycle execution model · Composer · Symfony ·
-PHPStan vocabulary (read from docblocks, not written as syntax).
+PHPStan vocabulary (read from docblocks, not written as syntax; the one exception since D29,
+2026-11-15, is a shape, written in a `type` declaration: `collections.md` §6).
 
 ## 5. Added
 
@@ -74,7 +75,8 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
 |---|---|---|
 | Type checker: inference, narrowing, flow analysis, diagnostics | `checker.md` (pending) | M2 |
 | Generics: `<T>`, bounds, variance, erased; `class<T>` as the type of `T::class`; `is`/`as` *(withdrawn 2026-11-09, D26: PHP's tests)* | `generics.md` | M3 |
-| `type` aliases | `generics.md` §2.1 | M3 |
+| `type` aliases; since D29 (2026-11-15) names of their namespace, found from any file and imported with `use` | `generics.md` §2.1, §11.6 | M3; *Named shapes* |
+| Named shapes: `type Row = array{id: int, name?: string};`, the one place a shape is syntax, while a shape nobody names stays a docblock. A shape is a static type, erased at compile time: `array` in the signature, the shape in the docblock, no check at run time (D29, 2026-11-15; designed, not built) | `collections.md` §6 | *Named shapes* |
 | `list<T>`, `map<K, V>`, literals, `array` as legacy type, `\Phaenon\Lists` / `Maps` | `collections.md` (reviewed 2026-10-30) | M4 |
 | String/`bytes` split; method syntax on primitives removed by D20 (pipes with partial application instead) | `strings.md` (reviewed 2026-10-30), `roadmap.md` D20 | M4 |
 | `phaenon/runtime`: what compiled code calls (`Type`, `Debug`) and `Bytes`' conversions; `Seq`, `Map`, `Str` removed by D20. *2026-11-08, D24: `Type` and `Bytes` removed too; `Debug` is the opt-in `phaenon/debug`, and compiled code calls nothing* | `collections.md` §3, `strings.md` §4, `roadmap.md` D20 | M4 |
@@ -90,6 +92,8 @@ PHPStan vocabulary (read from docblocks, not written as syntax).
   `src/` → `.src/`. Amended 2026-11-10 (roadmap D28): the outputs are gitignored but in a library
   published for PHP projects at large, which may commit them so that it installs as plain PHP
   (`tooling.md` §3.7).*
+  *2026-11-15 (roadmap D29): a file that holds only `type` declarations has its `.php` too, with
+  nothing in it but the header and the namespace (`generics.md` §11.6).*
 - `phn build` compiles a package; `phn check` type-checks without emitting; `phn watch` does both
   on change. Type errors mean **no output** for that file.
 - Emitted files start with a header comment naming the source and the compiler version, and

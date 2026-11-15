@@ -6,6 +6,8 @@ the method-call syntax (§3.1) are gone from the language. The types, literals, 
 migration and shapes (§2, §4–§6) stand; lists and maps are transformed with PHP's functions and
 chained with pipes and partial application (`roadmap.md` D20, `php-versions.md` §5.4).
 **Amended 2026-11-05** (§7): `array<V>`, a bare `array`, shapes and the docblock vocabulary.
+**Amended 2026-11-15** (§6, §7; `roadmap.md` D29): a shape gets syntax with a name, in a `type`
+declaration, and an alias belongs to its namespace; designed, not built.
 Nothing is implemented yet beyond what M3 already has (the keywords `list` and `map` in type
 positions, their erasure to `array`, the lattice's array types).
 
@@ -57,7 +59,7 @@ collections and runs like PHP.
 | `array<V>` | a PHP array of `V`, list or keyed: the type `map<int\|string, V>`, spelled for "the keys do not matter" | `array` | `array<V>` |
 | `array` | no element type written: in an override, the type of the method it overrides; elsewhere in a `.phn` declaration, `P2516`. A PHP API typed `array` gives `array<mixed>` | `array` | none |
 | `non-empty-list<T>` / `non-empty-map<K, V>` | refinements the checker *infers* (`count($xs) > 0`, a literal, `$xs[] = …`) and reads from docblocks; written natively as `list<T>` / `map<K, V>` | `array` | `non-empty-list<T>` / `non-empty-array<K, V>` |
-| `array{a: int, b?: string}` (shape) | read from docblocks in `.php` and `.phn` alike, as today; **not native syntax** in M4 (§6) | `array` | the shape |
+| `array{a: int, b?: string}` (shape) | native syntax **in the right-hand side of a `type` declaration and nowhere else** (2026-11-15, §6; not native syntax at all from M4 until then); read from docblocks in `.php` and `.phn` alike, as today. A static type, erased at compile time | `array` | the shape |
 | `iterable<K, V>` | `map<K, V>\|Traversable<K, V>` (M3) | `iterable` | `iterable<K, V>` |
 
 Decisions proposed with the table:
@@ -273,7 +275,12 @@ call, and PHP code reads the output as the static call.
   - `class<T>` → `class-string<T>`;
   - a tuple `(A, B)` → `array{A, B}`;
   - `Closure(A): R` → `\Closure(A): R`, which PHPStan would otherwise resolve in the file's
-    namespace.
+    namespace;
+  - the name of a `type` alias → the type it stands for (2026-11-15, §6.5), since PHPStan knows
+    no alias of a namespace.
+
+  *Amended 2026-11-15 (§6):* a shape with a name lives in a `type` declaration. The docblock is
+  where the shapes without one live, and it may name an alias.
 
   The docblock parser reads tuples. Before, `phn check` passed `@param array{by: map<string,
   int>} $x`, and PHPStan on the output reported `App\map` as an unknown class; a tuple did not
@@ -291,7 +298,10 @@ call, and PHP code reads the output as the static call.
 - A bare `array` with no docblock type becomes `array<mixed>`, unless the declaration overrides one
   whose type it inherits (2026-11-05). The opt-in codemods narrow first what they can prove
   (tooling.md §8.2).
-- Shapes stay in docblocks (§6).
+- Shapes stay in docblocks (§6). *Amended 2026-11-15:* a shape that a `@phpstan-type` or
+  `@psalm-type` tag names is lifted with its name into a `type` declaration; a shape written
+  inline in a `@param`, `@return` or `@var` stays a docblock, since the tool cannot invent a name
+  (§6.6).
 - The `array_*` → `Seq::`/`Map::` codemod is M6's `phn migrate` v1 ("where provable"), not
   M4.
 
@@ -301,6 +311,195 @@ Tequila `core`, the M4 target, in numbers (315 files, 19,909 lines in `src/`): 1
 at level 8 — the same question as mongodb-odm (vault `open-items`) will come up.
 
 ## 6. Shapes
+
+**Decided 2026-11-05, amended 2026-11-15 (roadmap D29): a shape gets syntax only with a name.**
+`array{id: int, name?: string}` is Phaenon syntax in the right-hand side of a `type` declaration
+and nowhere else. Everywhere else a shape is docblock vocabulary, as the decision of 2026-11-05
+(§6.7) had it for every shape. Designed, not built: on 2026-11-15 `type Row = array{…};` is still
+`P1000`.
+
+**A shape is a static type, erased at compile time.** It compiles to `array` in the signature and
+to the shape in the docblock PHPStan reads, and to nothing that runs: no check, no descriptor, no
+class. A value is a `Row` because the code that built it says so, as a value is a tuple (§2.4).
+
+### 6.1 Spelling
+
+```php
+namespace App\Orders;
+
+type Row = array{id: int, name?: string};
+type Order = array{id: int, lines: list<array{sku: string, qty: int}>};
+type Page<T> = array{items: list<T>, total: int, next?: string};
+
+final class Orders
+{
+    find(int $id): ?Order { … }
+
+    page(int $offset): Page<Row> { … }
+}
+```
+
+- **Where.** A shape literal stands in the right-hand side of a `type` declaration
+  (`generics.md` §2.1): as the whole type, or anywhere inside it, in a type argument, a union, a
+  nullable type, a tuple, a closure type or another shape. Between `type Name =` and its `;` a
+  brace after `array` can only be a shape.
+- **Nowhere else.** In a parameter, return, property or constant type, in a type argument written
+  outside a `type` declaration, and in the bound or the default of a type parameter, `array{` is
+  a syntax error whose message says what to do: "a shape is written in a `type` declaration:
+  name it". In a return type before a body the brace opens the body, as in PHP, and the parser
+  meets the first entry as a statement. No Phaenon body begins as a shape's entry does (`id:` is
+  a label, which Phaenon does not have: `P1001`), so the same message is given there.
+- **Keys** are the ones the docblock grammar reads (`shapeKey` in the compiler's
+  `internal/docblock`):
+  - a name, PHP's reserved words included (`class`, `default`, `list`), as after `->`;
+  - a quoted string, single or double and without interpolation, for a key that is not a name:
+    `'$set'`, `'a-b'`. A docblock also reads `a-b` unquoted, as PHPStan does; the lexer has no
+    such token, so the syntax quotes it;
+  - an integer, `0` or `-1`. A quoted key that is a decimal integer is that integer's key, as in
+    §2.
+- **`?` after the key** marks the entry optional: the key may be absent. `name?: string` and
+  `name: ?string` differ as in PHPStan, an absent key against a present `null`.
+- **Every entry has a key**, and a key is written once. A positional shape is a tuple, `(A, B)`
+  (§2.4), inside an alias as anywhere.
+- **`...` as the last entry** leaves the shape unsealed: `array{id: int, ...}` admits keys it
+  does not name. The lattice and the docblock parser already have it (`types.Shape.Unsealed`,
+  set from `parseShape`, printed back by the lattice's printer): reading a key a sealed shape
+  does not name is `P2313`, on an unsealed one it is `mixed`. PHPStan's typed form,
+  `...<K, V>`, is not read by the docblock parser today (`P4001`, and the tag is dropped), so it
+  is not syntax either (`checker.md` §10).
+- **A trailing comma** is allowed, and a shape may span lines, an entry per line. `array{}` is
+  the empty array.
+- **Only `array{…}`.** `list{…}`, `non-empty-array{…}` and `object{…}` stay docblock vocabulary:
+  the first is what a tuple spells, the second a refinement the checker infers (§2), the third
+  documents a `stdClass`, which is rare.
+
+The type is the lattice's shape, the one a docblock shape and an array literal already are
+(§2.1, `checker.md` §3.1), with the rules a docblock shape has today (`checker.md` §9). It is
+structural: an alias names a type and makes no new one, so `Row` and a docblock's
+`array{id: int, name?: string}` are one type, and two aliases with the same right-hand side are
+interchangeable.
+
+### 6.2 Why with a name, and only with one
+
+- **An inline shape cannot be read by the tools that read tokens.** The one ambiguous position is
+  the one that matters most, a return type before a body: `): array {` is where PHP's own grammar
+  has a block, and `id:` at its start is a label. Verified on the compiler of 2026-11-15:
+  `find(int $id): array{id: int} {` parses as a body. An inline form would need a trial parse,
+  reading to the matching brace to see whether a body follows. The compiler's parser could make
+  one. The editors' token-level readers cannot: the PhpStorm plugin's lexer erases Phaenon's
+  types before PhpStorm's parser sees them, and the VS Code grammar is TextMate rules. After
+  `type Name =` there is no block to mistake the brace for, and both readers already take a
+  `type` declaration whole, up to its `;`.
+- **The reasoning of 2026-11-05 survives**, which is why this amends that decision and does not
+  reverse it. A structure that deserves a type of its own is a class; a shape documents an ad-hoc
+  array, and PHP's ease there, a shape as a comment and not a declaration, is kept for every
+  array nobody names. A shape that gets syntax is one somebody found worth a name.
+- **A name reads better than a repeated literal.** `find(int $id): Order` against the whole
+  shape spelled out in every signature that passes one; and the alias is the one place to
+  change. TypeScript's `type` and PHPStan's own `@phpstan-type` exist for this.
+- **The cost of 2026-11-05 shrinks to the alias.** "The largest grammar addition for the fewest
+  sites" was about a shape in every type position. Here the grammar grows in one production, the
+  right-hand side of `type`, and the keys are the docblock parser's.
+- **Still true:** a shape cannot be checked at runtime without runtime type descriptors, and
+  Phaenon has none (roadmap D24, D26). The name changes nothing there.
+
+### 6.3 An alias is its namespace's
+
+A named shape that a public method returns is useless unless the caller's file can name it. Until
+now a `type` alias was seen only in the file that declared it: verified on the compiler of
+2026-11-15, another file of the same namespace gets `P2001 unknown class App\Pair`. So an alias
+now belongs to its namespace, as a class does: any file of the project finds it by its qualified
+name, and a file of another namespace imports it with `use`.
+
+```php
+namespace App\Http;
+
+use App\Orders\Order;
+
+final class OrderController
+{
+    show(int $id): Order { … }
+}
+```
+
+`generics.md` §11.6 holds the rules: how an alias is found, a name declared twice, what a file of
+aliases compiles to, and what crosses a package's boundary.
+
+### 6.4 Compilation
+
+What an alias does today (`generics.md` §11, "Type aliases"), unchanged: the `type` declaration
+leaves no trace in the output, the signature gets the erased type, and the docblock the alias
+expanded, with no `@phpstan-type`.
+
+```php
+// Orders.phn
+find(int $id): Row => $this->rows[$id];
+
+// .src/Orders/Orders.php
+/**
+ * @return array{id: int, name?: string}
+ */
+public function find(int $id): array
+{
+    return $this->rows[$id];
+}
+```
+
+- A class a shape names is written by its fully-qualified name in every docblock, whatever the
+  using file imports. The emitter does this for an expanded alias already.
+- The output repeats the shape at every use. One place to change is the source's gain; the
+  compiled PHP is what a PHPStan project writes when it has no `@phpstan-type`.
+- Nothing is checked at run time, and `phn` adds no test of its own (roadmap D26). A value that
+  comes from outside the checked code, a decoded payload or a row from a driver, is a `Row` once
+  a test the programmer writes, a `@var` or a guard function with `@phpstan-assert` says so
+  (§2), as for any array type.
+
+### 6.5 Docblock shapes stay
+
+`@param array{name: string, age?: int} $row` stays the way to write a shape nobody named, read in
+`.phn` as in `.php`: PHP code read from `vendor/`, and the one-off array that a name would only
+add ceremony to.
+
+- `@phpstan-type` and `@phpstan-import-type` stay read, class-scoped as PHPStan has them. In a
+  `.phn` the `type` declaration is the spelling; the tags are what PHP code has.
+- **A docblock may name an alias** (2026-11-15). An inline shape that holds a named one, as in
+  `@return array{total: int, lines: list<Line>}`, resolves `Line` as a signature does, and the
+  emitter expands it for PHPStan with the rest of the vocabulary (§4). Today such a name is read
+  as a class and reaches the output unexpanded.
+- Inside a class, its own `@phpstan-type` wins over an alias of the namespace with the same
+  name: the order in which the compiler resolves a name today, a type parameter, then the
+  class's docblock aliases, then the rest.
+
+### 6.6 Migration
+
+`phn migrate` lifts the aliases PHP code already has:
+
+- **`@phpstan-type Row array{…}`** (`@psalm-type` and the `=` form too) becomes
+  `type Row = array{…};` before the class that carried the tag, under the usual rule
+  (`generics.md` §11.1): the type has a Phaenon spelling, its members translated as in any lift
+  (`class-string<T>` → `class<T>`, `array<string, V>` → `map<string, V>`). An alias that is not a
+  shape (`@phpstan-type Json array<string, mixed>`) lifts the same way.
+- **`@phpstan-import-type Row from Orders`** goes: when `Orders` is in another namespace it
+  becomes `use Other\Namespace\Row;`, with `as Alias` kept, and in the same namespace nothing is
+  needed. It is lifted only when the alias it imports was.
+- **A name that is taken stays a tag.** PHPStan's aliases are scoped to a class, so two classes
+  of one namespace may each declare a `Row`. At the namespace's level the two collide
+  (`generics.md` §11.6), and so does an alias that bears the name of a class of its namespace.
+  Such an alias is not lifted, and neither is one whose right-hand side names an alias that
+  stayed: the tags stay, read as today, with a note naming the other declaration. Which of the
+  two is renamed is a decision for a person.
+- **An inline shape stays a docblock.** The tool cannot invent a name, and `@param array{…} $row`
+  remains valid.
+
+What this leaves, counted in the trees on 2026-11-15: core and mongodb-odm hold nine shapes under
+a `@phpstan-type` name (five and four), and tq-cli's four docblock aliases name
+`array<string, mixed>`. Against the 180 docblock shapes of §6.7, nearly all stay docblocks until
+somebody names them by hand.
+
+### 6.7 The decision of 2026-11-05
+
+*Amended 2026-11-15 by §6.1–§6.6: "no native syntax" now holds for a shape without a name. The
+text as decided, where "named shapes" meant shapes with named keys:*
 
 **Decided 2026-11-05: shapes stay docblock vocabulary, with no native syntax.** A shape documents
 the keys of an ad-hoc array: the configuration tree a bundle receives, a decoded payload, a data
@@ -318,6 +517,12 @@ So `@param array{name: string, age?: int} $row` stays the way to write one, read
 - **Still true from the M4 draft:** native syntax would be the largest grammar addition for the
   fewest sites, and a shape cannot be checked at runtime without runtime type descriptors.
 
+### 6.8 Open
+
+`checker.md` §10 for the shape itself (the typed rest of an unsealed shape, keys a sealed shape
+does not name); `generics.md` §9, questions 9 to 11, for the alias (aliases of sources
+outside the program, whether a type remembers its alias, `@phpstan-type` in the output).
+
 ## 7. Decisions (reviewed 2026-10-30)
 
 | Question | Decision | Why |
@@ -334,9 +539,15 @@ So `@param array{name: string, age?: int} $row` stays the way to write one, read
 | Editor support | the PhpStorm plugin must complete and resolve the methods on `list`, `map`, `string` and `bytes` receivers in the same milestone | a method syntax nobody's editor knows is not shipped |
 | `array<V>` (2026-11-05) | the native spelling of "an array of `V`, list or keyed", the type `map<int\|string, V>` | `map` reads as a dictionary; PHPStan's own one-argument form keeps the docblock the same text (§2) |
 | A bare `array` (2026-11-05) | names no element type: an override inherits its parent's, anywhere else in `.phn` it is `P2516`. Supersedes "deliberate and fine" | the output failed PHPStan max on sources `phn check` passed (§2) |
-| Shapes (2026-11-05) | docblock vocabulary, no native syntax | a fixed-key structure that deserves a type is a class; a shape documents an ad-hoc array (§6) |
-| Phaenon types in `.phn` docblocks (2026-11-05) | translated for PHPStan by the emitter; the docblock parser reads tuples | the docblock is where shapes live (§4) |
+| Shapes (2026-11-05) | *(Amended 2026-11-15 by "Named shapes" below: a shape with a name has syntax; for every other shape this row stands.)* docblock vocabulary, no native syntax | a fixed-key structure that deserves a type is a class; a shape documents an ad-hoc array (§6) |
+| Phaenon types in `.phn` docblocks (2026-11-05) | translated for PHPStan by the emitter; the docblock parser reads tuples. *2026-11-15: the name of a `type` alias too, expanded (§6.5)* | the docblock is where shapes live (§4) |
 | Tuples at runtime (2026-11-09) | a type only, with no runtime test; the tuple test of `is` (`generics.md` §11.4) went with the operator (roadmap D26) | the shape of a value at runtime is the programmer's code, as in PHP; a tuple's members are fixed by the type, which is what the checker needs |
+| Named shapes (2026-11-15, roadmap D29; amends "Shapes") | `array{id: int, name?: string}` is syntax in the right-hand side of a `type` declaration, as the whole type or nested in it, and nowhere else; in any other type position it is a syntax error whose message says to name it (§6.1) | an inline shape is ambiguous where it matters most, a return type before a body (`): array {` is PHP's block), and the editors' token-level readers cannot make a trial parse, while after `type Name =` a brace can only be a shape; the reasoning of 2026-11-05 survives, since a shape that gets syntax is one that got a name; a name reads better than a repeated literal and is one place to change (§6.2) |
+| A shape's entries (2026-11-15) | keys as the docblock grammar reads them: a name, a quoted string, an integer; `?` for an optional key; every entry keyed, a key written once; `...` last for an unsealed shape; only `array{…}`, no `list{…}` or `object{…}` (§6.1) | one grammar for the docblock and the syntax, so `phn migrate` moves a shape without rewriting it; the lattice and the docblock parser already have the unsealed flag, and not PHPStan's typed rest; a positional shape is a tuple (§2.4) |
+| Shapes at runtime (2026-11-15) | a static type, erased at compile time: `array` in the signature, the alias expanded in the docblock, no `@phpstan-type`, no check of any kind (§6.4) | what an alias does today (`generics.md` §11); Phaenon adds no runtime behaviour (roadmap D24, D26), and a shape cannot be tested without runtime type descriptors |
+| An alias is its namespace's (2026-11-15) | a `type` alias is found from any file of the project by its qualified name and imported with `use`; the rules are `generics.md` §11.6 (§6.3) | a named shape a public method returns is useless unless the caller's file can name it; until now an alias was seen only in its own file |
+| Docblock shapes (2026-11-15) | stay, in `.phn` as in `.php`, and may name an alias, which the emitter expands (§6.5) | PHP interop, and the one-off array a name would only add ceremony to |
+| `phn migrate` and shapes (2026-11-15) | lifts `@phpstan-type` and `@psalm-type` into `type` declarations and `@phpstan-import-type` into `use`; a name another class of the namespace declares, or a class bears, stays a tag with a note; an inline shape stays a docblock (§6.6) | the tool cannot invent a name, nor choose which of two declarations is renamed. Of the 180 docblock shapes the dogfood holds, nine have a name today: nearly all stay docblocks until named by hand |
 
 ## 8. Checker and emitter work (once reviewed)
 
@@ -361,3 +572,5 @@ So `@param array{name: string, age?: int} $row` stays the way to write one, read
   value now (`types.IsTuple`), and a shorter one only for entries a docblock marks optional.
   Python's tuples, the ones most people know by that name, are exact; a tuple of unknown length
   is a `list<T>`. The checker is stricter than PHPStan here, which §9 of `checker.md` allows.
+- 2026-11-15: named shapes and namespace-level aliases designed (§6, `generics.md` §11.6,
+  roadmap D29), not built. The roadmap's *Named shapes* entry lists the work.
