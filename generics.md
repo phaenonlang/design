@@ -190,6 +190,23 @@ Local, bidirectional, no global Hindley–Milner:
 Closure arguments are checked *after* the other arguments are unified (TS's "deferred" closures),
 so `$users->map(fn($u) => $u->name)` knows `$u: User` without annotation.
 
+*2026-11-15 (`checker.md` §9, "A shape is held as PHPStan holds it"):* a shape parameter is
+unified as PHPStan's `ConstantArrayType::inferTemplateTypes()` unifies it, so that
+`first<T>(Page<T> $page): ?T` with a `Page<Row>` gives `T = Row`:
+- against a shape, entry by entry by key, a tuple by position, an array literal's inferred shape
+  included. The keys the argument has beyond the parameter's are passed over. An entry a sealed
+  argument lacks binds nothing, so an absent optional entry leaves its parameter to the others;
+  an unsealed argument may hold it with any value, and binds `mixed`;
+- against a general array, the entries' types, as one union, from the array's value type,
+  whatever its keys: `array<int, string>` makes the `T` of `array{value?: T}` a `string`. An
+  unsealed parameter's values take in its rest, `mixed`, and bind nothing, as in PHPStan, which
+  reports the parameter unresolved;
+- a union of arguments binds from each member.
+
+Where the entries' union has members without a type parameter, PHPStan leaves out of `T` what
+they already cover (`T|int` against `int|string` gives `T = string`); the checker binds the whole
+union, a wider `T`, which makes the check of the result stricter.
+
 ### 3.5 Runtime type tests: `is` and `as`
 
 PHP's `instanceof` only works on class types. Phaenon keeps `instanceof` unchanged and adds two
