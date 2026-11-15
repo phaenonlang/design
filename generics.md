@@ -847,8 +847,9 @@ alias. A named shape that a public method returns is useless unless the caller's
 it, and until now an alias was seen only in the file that declared it: on the compiler of
 2026-11-15 another file of the same namespace gets `P2001 unknown class App\Pair`
 (`internal/program`: a file's `Scope` holds its aliases, and `FileAlias` looks nowhere else).
-Built in the compiler on 2026-11-15. Where this table and the text above differ, this table
-wins; where §11.7, which holds what building it settled, differs from this table, §11.7 wins.
+Built in the compiler on 2026-11-15, and in both editors the same day (`tooling.md` §6.2,
+§6.6). Where this table and the text above differ, this table wins; where §11.7, which holds
+what building it settled, differs from this table, §11.7 wins.
 
 | Topic | Decision | Why |
 |---|---|---|
