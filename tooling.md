@@ -1971,12 +1971,13 @@ nothing does not break it.
   as possible under `nothrow` as under `throws A`.
 
 `nothrow` beside `throws` is a syntax error, and beside a `@throws` tag other than `@throws void`
-it is `P2320`, an error of the checker's. An override that declares nothing inherits it like any
-declaration, and nothing holds an override that declares its own clause to it: `nothrow` adds no
-rule to the table below. The body of an override that inherits `@throws void` or `nothrow` is
-held to it as to a declaration of its own, `P2405` at each explicit throw point, as PHPStan 2.3.3
-reports `throws.void`; the message names the method the declaration comes from (`functions.md`
-§4.5).
+it is `P2320`, an error of the checker's, as are a `throws` clause and another `@throws` tag
+beside `@throws void` (`functions.md` §4.5). An override that declares nothing inherits it like
+any declaration, and nothing holds an override that declares its own clause to it: `nothrow`
+adds no rule to the table below. The body of an override that inherits `@throws void` or
+`nothrow` is held to it as to a declaration of its own, `P2405` at each explicit throw point, as
+PHPStan 2.3.3 reports `throws.void`; the message names the method the declaration comes from
+(`functions.md` §4.5).
 
 **Deliberately not done:**
 
