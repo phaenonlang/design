@@ -63,6 +63,15 @@ collections and runs like PHP.
 | `array{a: int, b?: string}` (shape) | native syntax **in the right-hand side of a `type` declaration and nowhere else** (2026-11-15, §6; not native syntax at all from M4 until then); read from docblocks in `.php` and `.phn` alike, as today. A static type, erased at compile time | `array` | the shape |
 | `iterable<K, V>` | `map<K, V>\|Traversable<K, V>` (M3) | `iterable` | `iterable<K, V>` |
 
+*2026-11-15 (roadmap D30):* `list` and `map` are written in lower case. `List<int>` in a type
+position is still a list, PHP reserving the word for its own `list()`, and is `P1006`, which `phn
+fmt` rewrites. `map` is a name PHP leaves free, so `Map<string, int>` is a class name like any
+other: the class, interface, enum or alias of that name, or, where none resolves, `P2001` saying
+that Phaenon's type is written `map`. A lower-case `map` is Phaenon's type even in a file that
+imports a class `Map`, which that file names `Map`. In a `.phn` docblock (§4) the translation
+for PHPStan reads `map<…>` and `non-empty-map<…>` in lower case only; `List<int>` there is
+PHPStan's own word, which PHPStan reads in any case.
+
 Decisions proposed with the table:
 
 - **`map`'s key bound is `int|string`**, implicit: `map<K, V>` without a bound on `K` in a

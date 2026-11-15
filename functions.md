@@ -282,7 +282,8 @@ abstract handle(Command $c): Result throws Refusal;
   (each member exists and is a `Throwable`). It is **not** Java's checked exceptions: a caller
   is not required to catch or redeclare. The throw analysis on the open list (vault
   `open-items`) will read the clause when it comes.
-- `throws` is a **contextual keyword**, a keyword only in that position.
+- `throws` is a **contextual keyword**, a keyword only in that position. *Since 2026-11-15 (F15,
+  roadmap D30) it is written in lower case: `THROWS` there is still the clause, and `P1006`.*
 - Named functions and methods only for now; a closure keeps a docblock.
 
 ### 4.2 Compilation
@@ -322,8 +323,10 @@ abstract supports(Command $c): bool nothrow;
   list when there is none, before the body, the arrow or the `;`. It is the clause spelling of
   PHPStan's `@throws void`, which §8 recorded as having none.
 - It is a **contextual keyword**, a keyword in that position only, recognised by the parser as
-  `throws` is (§8), in any letter case as well: `NoThrow` is the clause too. A function, a
-  constant or a class named `nothrow` keeps compiling.
+  `throws` is (§8). A function, a constant or a class named `nothrow` keeps compiling.
+  *Amended 2026-11-15 (F15, roadmap D30): the word is written in lower case. Until then it was
+  read in any letter case, `NoThrow` as the clause too; it still is, and is `P1006`, which `phn
+  fmt` rewrites.*
 - **`nothrow` and `throws` together are a syntax error.** One says that nothing escapes, the
   other names what does.
 - Named functions and methods only, as `throws`; a closure keeps a docblock.
@@ -550,6 +553,11 @@ canonical style of §5.
 the plugin erases the word where it erases a `throws` clause, and the VS Code grammar reads it
 where it reads `throws`, under the same scope name (`tooling.md` §6.6).
 
+*2026-11-15 (F15, roadmap D30):* both words are written in lower case. The VS Code grammar reads
+them in lower case only, which is now the language's rule. The plugin erases them in any case,
+as the compiler reads them, and stays so: what it hands PhpStorm's parser is what the compiler
+parses, and the finding, `P1006` with its quick-fix, comes from `phn lsp`.
+
 ## 7. Decisions
 
 | # | Decision | Why |
@@ -567,13 +575,14 @@ where it reads `throws`, under the same scope name (`tooling.md` §6.6).
 | F11 | **Methods without a keyword** (2026-11-09, roadmap D27): a declaration at class-member level is a method, `[modifiers] [&]name[<T>](…)` and its body; no visibility is `public`, written out by the emitter as PER requires; PHP's `function` stays valid on a method and is required for a name that is a modifier, `var`, `const`, `Closure`, `function` or `fn`; every other named declaration is a function and keeps `function`, one inside a method's body included | §1.1, §1.2, §1.4 |
 | F12 | **`fun` leaves the language** (2026-11-09, roadmap D27): an identifier again; a leftover `fun` declaration is `P1001`, which `phn fmt` rewrites | §1.1, §1.5 |
 | F13 | `phn migrate` lifts `function` off methods and drops a sole `public`, `--keep-public` keeps it; functions and the names of F11 keep `function` | §1.3 |
-| F14 | **`nothrow`** (2026-11-15): a named function or method may declare `nothrow` where a `throws` clause goes, `find(int $id): ?User nothrow { … }`. It is the clause spelling of PHPStan's `@throws void` and means what that tag means to the throw analysis: held to the explicit throw points (`P2405`), not broken by a call to a function that declares nothing, and no throw point for its callers, which makes a dead catch findable (`P2403`); not a guarantee about `TypeError` or any other implicit error, as a `throws A` clause is none. A contextual keyword in that position only; with `throws` a syntax error, and `P2320` beside a `@throws` tag other than `@throws void`, as a `throws` clause or another `@throws` tag beside `@throws void` is; compiled to `@throws void`; lifted from the tag by `phn migrate`; laid out as `throws`. It adds no override rule of its own. A word and not `throws void`, which reads as a contradiction; D26 holds, since it is the spelling of a declaration | §4.5 |
+| F14 | **`nothrow`** (2026-11-15): a named function or method may declare `nothrow` where a `throws` clause goes, `find(int $id): ?User nothrow { … }`. It is the clause spelling of PHPStan's `@throws void` and means what that tag means to the throw analysis: held to the explicit throw points (`P2405`), not broken by a call to a function that declares nothing, and no throw point for its callers, which makes a dead catch findable (`P2403`); not a guarantee about `TypeError` or any other implicit error, as a `throws A` clause is none. A contextual keyword in that position only *(written in lower case since F15)*; with `throws` a syntax error, and `P2320` beside a `@throws` tag other than `@throws void`, as a `throws` clause or another `@throws` tag beside `@throws void` is; compiled to `@throws void`; lifted from the tag by `phn migrate`; laid out as `throws`. It adds no override rule of its own. A word and not `throws void`, which reads as a contradiction; D26 holds, since it is the spelling of a declaration | §4.5 |
+| F15 | **`throws` and `nothrow` are written in lower case** (2026-11-15, roadmap D30, which holds for every word Phaenon adds). Where the parser takes the clause, the word in another letter case is still the clause, and an error, `P1006`, at the word, with the lower-case spelling in its message; `phn fmt` writes it in lower case. Where it is a name (a class `Throws` as a return type, a method, function or constant `nothrow`), it stays one, by the position rule of §8, which does not change. A docblock's `@throws VOID` is a tag, read as the checker reads it (§4.5) | D30: one spelling, which the editors and every example already write. Until 2026-11-15 `NoThrow` compiled as the clause while the VS Code grammar coloured it as a name |
 
 ## 8. Decisions made while building D18
 
 | Topic | Decision | Why |
 |---|---|---|
-| Where `throws` is recognised (2026-11-02) | By the parser, after the parameter list or the return type of a named function or method; the lexer leaves it a `T_STRING` | PHP's grammar admits only `{` or `;` there, so the position is free. A lexer rule ("`throws` before a name") cannot tell the clause from the names PHP code gives things: `class throws extends …`, `throws instanceof X`, `foreach (throws as …)`, a trait method `throws as protected` |
+| Where `throws` is recognised (2026-11-02) | By the parser, after the parameter list or the return type of a named function or method; the lexer leaves it a `T_STRING`. *Since 2026-11-15 (F15) it is written in lower case; the position decides as before, and another case there is `P1006`* | PHP's grammar admits only `{` or `;` there, so the position is free. A lexer rule ("`throws` before a name") cannot tell the clause from the names PHP code gives things: `class throws extends …`, `throws instanceof X`, `foreach (throws as …)`, a trait method `throws as protected` |
 | What an expression body is in the tree (2026-11-02) | The declaration keeps the arrow, and its body holds the statement the arrow stands for: a `return`, or an expression statement when the written return type is `void` or `never` | "Typed exactly as a `return` would be" then holds by construction: every pass that reads a body reads a block of one statement, and only the printer and the emitter look at the arrow. `void` and `never` are keywords, so the written type decides |
 | Codes (2026-11-02) | `P1004` (syntax family, error) for an expression body the design refuses: on a constructor or a destructor, or one that yields. An arrow on an abstract or interface method is a body and keeps the codes any body gets there, `P2504` / `P2514`. `P2319` for a `throws` member that is not a `Throwable` (an unbounded type parameter included), beside `P2317` / `P2318` for `throw` and `catch`; an unknown class is `P2001` | One mistake, one diagnostic: what the grammar admits and the design forbids is the syntax family's (`P1003` is the same shape); a non-`Throwable` is the mistake the `throw` and `catch` codes already name, in a third position. A constructor's arrow is checked as a statement, so no `P1101` for a returned value follows it |
 | `throws` and the target (2026-11-02) | A class newer than the target is not reported in a `throws` clause | The clause compiles to a docblock and fails nothing on the older PHP, as `catch (X)` does (php-versions.md §9) |
