@@ -688,6 +688,7 @@ The first layer is native, with no options:
 | type parameters | `class Box<T of Item>`, `first<T>(list<T> $xs): ?T` |
 | type arguments | `list<User>`, `map<string, list<int>>`: no space inside `<>`, one after a comma |
 | tuple and closure types | `(int, string)`, `Closure(int, string...): bool` |
+| a shape in a `type` declaration (D29, 2026-11-15; not built) | `type Row = array{id: int, name?: string};`: nothing inside the braces, a space after a colon and a comma, `?` against its key; a shape over several lines keeps its line breaks |
 | expression body | `name(): string => $this->name;`, a continuation one level in |
 | `throws` | `find(Id $id): User throws NotFound\|Conflict {` |
 
@@ -860,6 +861,14 @@ the dogfood trees holds one.
 | Formatting | §5's first layer |
 | Build on save | see below |
 
+*2026-11-15 (roadmap D29, `generics.md` §11.6; not built):* a `type` alias is a name of its
+namespace, so the server treats it as it treats a class. Go to definition leads from an alias's
+name to its `type` declaration in whatever file holds it, completion offers aliases in type
+positions with their `use`, and an alias's import counts as used. Hover prints the type an alias
+stands for, since an alias expands when it is resolved (`generics.md` §9, question 10). An alias
+is one more declaration another file's output depends on, which the build on save already
+allows for.
+
 **What the checker needs for this.** It grows two queries: the type at an offset, answered by
 re-checking the enclosing function with a probe, and the symbol at an offset. Checking one file
 must also become separable from checking the project; it nearly is already, since files are checked
@@ -887,6 +896,14 @@ and code actions beyond a diagnostic's own fix.
   same thing, both show for now; the plugin's highlight filter learns the pairs from the dogfood
   trees.
 - **Build on save is on by default**, with a status-bar item for the last build.
+- **Aliases are the plugin's to resolve** (2026-11-15, roadmap D29; not built). The lexer already
+  erases a `type` declaration whole, up to its `;`, so a shape inside one costs it the scan of a
+  braced list. A shape anywhere else would have cost a trial parse the lexer cannot make
+  (`collections.md` §6.2). The name is the work: an alias's name in a type position is a class
+  PhpStorm does not know, in the declaring file too, which mattered little while aliases were
+  rare. So the plugin indexes `type` declarations by qualified name, resolves a name in a type
+  position to one, gives a declaration typed with it the type the alias stands for, and keeps
+  PhpStorm's "undefined class" and "unused import" off such names.
 - **Distribution.** A custom plugin repository (an `updatePlugins.xml` URL in PhpStorm's settings),
   so updates arrive without installing zips by hand; the JetBrains Marketplace next, now that the
   repositories are public (T15).
@@ -1047,6 +1064,11 @@ rules are gone, as `concurrently` and `spawn` went on 2026-11-08.*
 These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
 reads as a type in a parameter list, a property and a class header alike. Where PHP has the
 construct, the rules use its scope names, so themes colour Phaenon as they colour PHP.
+
+*2026-11-15 (roadmap D29; not built):* the rule for a `type` declaration, which runs from `type
+Name` to its `;`, reads a shape inside it: the braces, the keys, `?` and `...`. No other rule
+changes, since a shape is written nowhere else: a rule for one in a return type could not tell
+its brace from a body's (`collections.md` §6.2).
 
 Found while running the grammar over the dogfood trees: PHP's property rule cannot read `?map<…>`, so
 its ternary rule took the `?` and waited for a `:` that never came, swallowing the rest of the class.

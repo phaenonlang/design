@@ -671,7 +671,22 @@ turned it into a test.
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
   M4 decides whether shapes survive as a language feature. *Decided 2026-11-05 (collections.md
-  §6): they stay docblock vocabulary, with no native syntax.*
+  §6): they stay docblock vocabulary, with no native syntax. Amended 2026-11-15 (roadmap D29): a
+  shape with a name is syntax, in the right-hand side of a `type` declaration. The lattice has
+  moved on from the M2 sentence above: an unsealed shape keeps its flag (`types.Shape.Unsealed`),
+  so a key it does not name reads as `mixed` where a sealed shape gives `P2313`.*
+- **The typed rest of an unsealed shape** (2026-11-15). PHPStan writes `array{id: int,
+  ...<string, int>}` for further keys of a known type. The docblock parser reads the bare `...`
+  only: the typed form is `P4001`, and its tag is dropped. Named shapes take the grammar the
+  docblock has (`collections.md` §6.1), so neither spelling has it. Reading it means a key and a
+  value type on the lattice's shape, in the docblock and in the syntax alike.
+- **Keys a sealed shape does not name** (2026-11-15). A literal with a key more than the shape
+  names is accepted where the shape is expected (§9), while reading that key from the shape is
+  `P2313`. A shape somebody named is a contract in a way an ad-hoc docblock is not, and
+  TypeScript refuses the excess key of a literal for that reason. Whether a `type` declaration's
+  shape should refuse it too, stricter than PHPStan as the parity rule allows, is open; it would
+  give the syntax and the docblock different rules for one type, which §6.1 of `collections.md`
+  avoids.
 - **Constant evaluation**: `const A = B::C + 1` — the checker evaluates literal arithmetic over
   int/float/string/bool/null and arrays; anything else types as the declared type. Enough for
   enum backing values and most constant tables.
