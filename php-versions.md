@@ -163,6 +163,16 @@ arguments (`pipe_optimization_009`).
 so that the closure rejects what the partial application would reject; a by-reference parameter
 keeps its `&`.
 
+*One kind of parameter loses its null (2026-11-16).* Where the null of a built-in's `?T $p = null`
+stands for the argument left out and PHP throws a TypeError when it is passed, `implode()` and
+`join()`'s `$array` and `strtr()`'s `$to` (`checker.md` §9), `T` is the type without null:
+`$xs |> (fn(array $array) => implode($sep, $array))`. The closure always passes the argument, so
+the stub's `?array` there was a type PHPStan refuses on the output. A null is a TypeError under
+both targets, the closure's own on 8.5 and the built-in's on 8.6; the message differs, and on 8.5
+it is thrown before the call's other arguments are evaluated. Every other nullable parameter
+keeps its null (`fn(?int $length) => mb_substr(…)`): dropping it where the callee accepts null
+would make the 8.5 output throw where the 8.6 output returns a value.
+
 **A pipe folds** when PHP evaluates it as the call it makes: `A` goes by value, and the callee and
 the arguments written before the placeholder compute the same before `A` as after it. An argument
 does when it is a literal, a constant, a variable `A` does not write, a closure that captures none

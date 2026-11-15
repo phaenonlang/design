@@ -136,8 +136,16 @@ The checker follows PHPStan, whose rules match what the runtime does:
 | `$xs[] = $v` | stays `non-empty-list<T\|V>` | `non-empty-map<int\|K, V\|V'>` (PHP appends with the next int key) |
 | `$xs[$i] = $v`, `$i: int` | becomes `non-empty-map<int, T\|V>` — a gap may have appeared | stays a map |
 | `$xs[$k] = $v`, `$k: string` | becomes `non-empty-map<int\|string, …>` | stays a map, `K\|string` |
-| `unset($xs[$i])` | becomes `map<int, T>` | stays a map |
+| `unset($xs[$i])` | becomes `map<int<0, max>, T>`, no longer known to be non-empty | stays a map, no longer known to be non-empty |
 | `array_values($xs)`, `array_map`, `array_filter(list)` | `list<T>` · `list<U>` · `map<int, T>` (keys survive `array_filter`) | per the overlay |
+
+*`unset()` of an offset (2026-11-16, `checker.md` §9).* The row above was the rule and not what
+the compiler did until then: a list stayed a list after the unset. A shape loses the entry a
+constant key names, and a constant key no member of a sealed shape has is `P2313`, as reading it
+is. An offset of an array inside another, `unset($a[$i][$k])`, retypes each array above it, up
+to the variable or the property; removing an element of an array a property holds is a write of
+the property, checked as an assignment is (`P2201` for a `list<T>` property, `P2206` for a
+readonly one outside its constructor).
 
 A list that lost its shape is still a PHP array, so nothing breaks at runtime; the type just
 tells the truth. `\Phaenon\Seq::values($xs)` (or `array_values`) is how a list is reasserted.
@@ -374,7 +382,7 @@ final class Orders
 - **`...` as the last entry** leaves the shape unsealed: `array{id: int, ...}` admits keys it
   does not name. The lattice and the docblock parser already have it (`types.Shape.Unsealed`,
   set from `parseShape`, printed back by the lattice's printer): reading a key a sealed shape
-  does not name is `P2313`, on an unsealed one it is `mixed`. Since it may hold any key it does
+  does not name is `P2313`, on an unsealed one it is `mixed`, and `P2321` where no test stands guard (2026-11-16). Since it may hold any key it does
   not name, with any value, it is no shape that gives such a key a type (`checker.md` §3.3).
   PHPStan's typed form, `...<K, V>`, is not read by the docblock parser today (`P4001`, and the
   tag is dropped), so it is not syntax either (`checker.md` §10).
@@ -542,17 +550,21 @@ suite that holds what a shape accepts to PHPStan (`shapes-held.phn`, the docbloc
 `shapes.phn`'s cases), and the inference of a type argument through a shape (`generics.md`
 §3.4). What is left:
 
-- **A shape is still checked more leniently than PHPStan checks it**, in three places, each a
-  parity gap of the kind `checker.md` §9 forbids, none of them new with the syntax:
-  - a key is still read from a shape after `unset` removed it;
-  - reading a key an unsealed shape does not name gives `mixed` without a word, where PHPStan
-    reports an offset that might not exist;
-  - destructuring an optional key (`['name' => $n] = $row`) is accepted as if the key were
-    there.
-- **What a test proves of an offset stays with the offset** (`checker.md` §10). After
-  `isset($a['id']) && is_int($a['id'])`, PHPStan passes an `array<string, mixed>` for
+- **A shape was still checked more leniently than PHPStan checks it**, in three places, each a
+  parity gap of the kind `checker.md` §9 forbids, none of them new with the syntax. *Closed
+  2026-11-16* (`checker.md` §9, *`unset()` of an offset* and *An offset a shape might lack*):
+  - a key was still read from a shape after `unset` removed it: the shape loses the entry, and
+    the read is `P2313`;
+  - reading a key an unsealed shape does not name gave `mixed` without a word, where PHPStan
+    reports an offset that might not exist: `P2321`, and so is an optional entry read without
+    a test;
+  - destructuring an optional key (`['name' => $n] = $row`) was accepted as if the key were
+    there: `P2321` at the pattern.
+- **What a test proves of an offset stays with the offset, for a general array** (`checker.md`
+  §10). After `isset($a['id']) && is_int($a['id'])`, PHPStan passes an `array<string, mixed>` for
   `array{id: int}`, and the checker, which narrows `$a['id']` and not `$a`, reports it: stricter
-  than PHPStan, as the parity rule allows, and found nowhere in the dogfood trees.
+  than PHPStan, as the parity rule allows, and found nowhere in the dogfood trees. *For a shape
+  the test narrows the array's type since 2026-11-16* (`checker.md` §9).
 
 ### 6.9 What building it settled (2026-11-15)
 

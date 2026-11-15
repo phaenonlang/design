@@ -57,7 +57,7 @@ PHP.*
 | Untyped code paths | every declaration has a type; `mixed` must be written, never inferred silently; `declare(strict_types=1)` is implied and emitted | the checker is the product |
 | `global`, `goto`, `extract`, `compact`, `$$var`, `${expr}` string interpolation, `eval` | nothing | dynamic scope defeats a type checker; all are already deprecated in spirit or in fact |
 | Alternative syntax (`if: … endif;`) | braces | one syntax |
-| `var`, `(integer)`/`(boolean)`/`(double)` casts, `list()` | `public`, canonical casts, `[…]` destructuring | already deprecated or redundant |
+| `var`, the long casts (`(integer)`, `(boolean)`, `(double)`, `(real)`, `(binary)`) and `(unset)`, `list()` | `public`, canonical casts (`null` or `unset()` for `(unset)`), `[…]` destructuring | already deprecated or redundant |
 
 Nothing is removed from the *runtime* — these are things the Phaenon parser refuses; the
 emitted PHP never contains them.
