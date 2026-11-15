@@ -830,6 +830,62 @@ turned it into a test.
   declared. PHPStan's other refusals by call form (a separator that is no string before an
   array, a string alone) are not modelled yet. The lowering that showed the gap is in
   `php-versions.md` §5.3.
+- **`unset()` of an offset types the array as PHPStan does** (2026-11-16; `P2103`, `P2201`,
+  `P2206`, `P2313`). `collections.md` §2.2 has a list become a map at `unset($xs[$i])`; the
+  compiler left it a list, so the list went on to a `list<T>` parameter where PHPStan reports
+  `argument.type`. The statement had reused the narrowing of a failed `array_key_exists()`,
+  which also made `never` of a shape whose required key was unset, and after that anything was
+  accepted. The array now takes PHPStan 2.3's type: a list is an `array<int<0, max>, T>`; no
+  array is known to be non-empty afterwards; a shape loses the entry a constant key names, or
+  has optional every entry a key that is not constant may name, and is no list afterwards. An
+  offset inside another array writes each array above it. Where the root is a property the
+  unset is an assignment to it and checked as one; a property holding an `ArrayAccess` object
+  is not written. One place is stricter than PHPStan, as the parity rule allows: where an
+  array's values are shapes, PHPStan writes back only the entries the shape still has and so
+  keeps the entry removed (`unset($rows[$k]['name'])`), and the checker gives the rows the
+  shape without it.
+- **An offset a shape might lack is `P2321`** (2026-11-16; PHPStan's `offsetAccess.notFound`,
+  "might not exist"). Reading an optional entry, a key an unsealed shape does not name, a
+  destructuring of either and a by-reference argument that reads the offset all checked clean.
+  `P2321` stands beside `P2313` as `P2009` "might not be defined" stands beside `P2008`: `P2313`
+  is the offset no value of the type has, `P2321` one that some value may lack. It is reported
+  where PHPStan reports: a constant key, every value of the type a shape, and one of them with
+  the key optional, unsealed without it, or without it beside others that have it (that last
+  case was `P2313` on the shape that lacks it). It is not reported where a general array is
+  among the types, for an offset another variable names, inside `isset()` and `empty()`, on a
+  write, or for a reference that creates the key. The read is typed as the entry, so the
+  missing guard is the one finding.
+  - *A test narrows the array, not a path.* A test of a constant offset, `isset()`,
+    `!empty()`, `?? throw`, `!== null` or a type test, gives the array holding it the entry as
+    present, its value narrowed, and so each array above it up to the variable or property,
+    as PHPStan's `HasOffsetValueType` does. Until then a test narrowed the path `$r['name']`
+    alone, and the first write to another key, an increment or a copy forgot it: a false
+    `P2202` on `main`, and a false `P2321` had the new code been built on it. This is the
+    reading §10 set aside on 2026-11-15, taken up for shapes only, where the narrowed type is a
+    shape and needs no typed rest; `unset()` takes the key out again, under any spelling. What
+    §10 held against it stands: a write through a reference to the array is not seen, as it
+    was not seen by the narrowing of paths either.
+  - *An offset is keyed by the key PHP stores.* `$a['1']`, `$a[1]` and `$a[0x1]` are one key,
+    and so are `$a['name']` and `$a[self::NAME]`; a constant read through `static::` is one
+    only in a final class.
+  - *Other tests PHPStan understands narrow as well*, each found as a false finding on guarded
+    code: a remembered test (`$has = array_key_exists('k', $a)`, `$n = $a['k'] ?? null` where
+    `$n` is then not null), `match` and `switch` over a test or over `count()`, `count()`
+    covering every entry of a positional shape, a non-empty shape whose one entry is optional,
+    what a closure captures and what `array_filter()`'s callback proved.
+  - *A by-reference argument* reads the offset as PHPStan has it. A parameter of user code
+    reads it where its declared PHP type takes no null, which is what PHP creates the missing
+    key as: `int`, `array`, and not `mixed`, `?array` or no type. One of PHP's own reads it
+    where PHPStan's function map has it read and written (`sort()`, `reset()`) or not by
+    reference at all (`array_multisort()`); every other creates the key (`preg_match()`'s
+    `$matches`, `parse_str()`'s `$result`). The table is derived from the function map.
+  - *Where PHPStan reports and the checker is still silent*, as before the change: an array
+    built in a loop, a ternary or a spread, which PHPStan types as one shape with an optional
+    key and the checker as a general array or a union; a key typed as a union of literals,
+    `true` or `1.0`; a reference alias or `extract()` that removes the key.
+
+  `offset-might-not-exist.phn` and `unset-offsets.phn` hold each case to PHPStan line by line.
+  The six dogfood trees give the same findings before and after both.
 
 ## 10. Open questions
 
@@ -839,7 +895,8 @@ turned it into a test.
   §6): they stay docblock vocabulary, with no native syntax. Amended 2026-11-15 (roadmap D29): a
   shape with a name is syntax, in the right-hand side of a `type` declaration. The lattice has
   moved on from the M2 sentence above: an unsealed shape keeps its flag (`types.Shape.Unsealed`),
-  so a key it does not name reads as `mixed` where a sealed shape gives `P2313`.*
+  so a key it does not name reads as `mixed` where a sealed shape gives `P2313`. Since 2026-11-16
+  that read is `P2321` unless a test stands guard (§9).*
 - **The typed rest of an unsealed shape** (2026-11-15). PHPStan writes `array{id: int,
   ...<string, int>}` for further keys of a known type. The docblock parser reads the bare `...`
   only: the typed form is `P4001`, and its tag is dropped. Named shapes take the grammar the
@@ -858,7 +915,10 @@ turned it into a test.
   one, was set aside: it gained nothing on the dogfood, and it accepted what PHPStan reports
   after a write through a reference to the array (`$alias = &$a; $alias['id'] = 'x';`), a write
   the checker's narrowing of offsets does not see either. Doing it needs the typed rest above,
-  for the keys the test did not prove, and that narrowing made sound first.
+  for the keys the test did not prove, and that narrowing made sound first. *For a shape this
+  is done since 2026-11-16 (§9, An offset a shape might lack): there the narrowed type is the
+  shape with the entry present, which needs no typed rest. The general array is as described
+  here, and the write through a reference is still unseen in both.*
 - **Keys a sealed shape does not name** (2026-11-15). A literal with a key more than the shape
   names is accepted where the shape is expected (§9), while reading that key from the shape is
   `P2313`. A shape somebody named is a contract in a way an ad-hoc docblock is not, and
