@@ -335,7 +335,7 @@ Positions are 1-based line and column (bytes; the LSP layer converts to UTF-16 l
 
 Per `language-overview.md` §3, in Phaenon mode the checker rejects: `global`, `goto`/labels,
 `eval`, `extract`/`compact`, `$$var`, `${expr}` in strings, alternative control syntax, `var`,
-`(integer)`/`(boolean)`/`(double)`/`(real)` casts, `list()`, `include`/`require` *inside functions*
+`(integer)`/`(boolean)`/`(double)`/`(real)`/`(binary)` casts and `(unset)`, `list()`, `include`/`require` *inside functions*
 (top-level `require` of a bootstrap file stays), `<?php`/`?>`/inline HTML (the parser already
 refuses these). Each P1 carries a fix-it. The **parser** keeps accepting them so the php-src
 conformance corpus still parses; the checker is where "Phaenon mode" bites.
@@ -804,6 +804,32 @@ turned it into a test.
   same compiled output, before and after. `shapes-held.phn` holds every case to PHPStan in the
   docblock spelling, `shapes.phn` the same cases in the syntax of a named shape, wrong programs
   among them, which the emitter's goldens, being correct programs, could not.
+- **The long casts are refused where they stand** (2026-11-16; `P1001`). §7 removes them, but
+  the lexer reads `(integer)` as the token of `(int)`, and the cast's typing returned for that
+  token before the report behind it ran: all five compiled as written, and `(real)` reached an
+  output PHP 8.5 refuses to parse. The report now sits in the file-level pass of the withdrawn
+  spellings, since a cast in an array key is typed on another path and one in dead code on
+  none. It is made once per cast, in any letter case and with the blanks PHP's scanner admits,
+  and names the cast normalised. `(unset)` is refused with them: PHP 8.0 removed it, and the
+  message says what to write, `null` for its value or `unset()` as a statement. `phn fmt` and
+  `phn migrate` write the canonical cast for a long one; `(unset)` has no certain rewrite and
+  stays as written.
+- **A null for a built-in's omitted argument is refused** (2026-11-16; `P2103`, PHPStan's
+  `argument.type`). php-src's stubs declare `implode(string|array $separator, ?array $array =
+  null)` and `strtr(string $string, string|array $from, ?string $to = null)`: the null stands
+  for the argument left out, the one-argument `implode()` and the two-argument `strtr()`.
+  Reading the stub as written accepted `implode(',', $nullable)`, which PHP throws a TypeError
+  for and PHPStan reports, its function map giving each call form a signature of its own. An
+  argument given for such a parameter is now held to the type without null. The parameters
+  are a table in the checker, found by running PHPStan 2.3 on a nullable argument for every
+  function and method its map gives several signatures and the stubs a `?T $x = null`:
+  `implode()` and `join()`'s `$array`, `strtr()`'s `$to`, `phpversion()`'s `$extension`,
+  `strtok()`'s `$token`, `stream_context_set_option()`'s `$option_name`, `PDO::query()`'s
+  `$fetchMode`, `XSLTProcessor::setParameter()`'s `$value` and `ReflectionMethod`'s `$method`.
+  It holds for the stubs' symbols only: a function of the same name in user code is read as
+  declared. PHPStan's other refusals by call form (a separator that is no string before an
+  array, a string alone) are not modelled yet. The lowering that showed the gap is in
+  `php-versions.md` §5.3.
 
 ## 10. Open questions
 
