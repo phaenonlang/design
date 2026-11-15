@@ -493,7 +493,7 @@ names, and PHPStan's docblock vocabulary, are not in it.
 | `class` | a type position: `class<T>`, a bare `class` (`generics.md` §11.2) | `class<T>` | `class<T>`, and `P1006` | none: PHP reserves `class` |
 | `list` | a type position: `list<T>` (`collections.md` §2) | `list<T>` | `list<T>`, and `P1006` | none: PHP reserves `list` |
 | `(bytes)` | a cast (`strings.md` §2) | the cast, `(BYTES) - 1` included | the cast, and `P1006` | none: in Phaenon's syntax a parenthesised constant `bytes` was never read as one |
-| `map`, `bytes` | a type position (`collections.md` §2, `strings.md` §2) | Phaenon's type, even where a class `Map` or `Bytes` is imported or declared, which could not be named in a type position | a class name: the class, interface, enum or alias that resolves; where none does, `P2001` with the lower-case spelling, read as Phaenon's type | a class `Map`, `Bytes`, `MAP` |
+| `map`, `bytes` | a type position (`collections.md` §2, `strings.md` §2) | Phaenon's type, even where a class `Map` or `Bytes` is imported or declared, which could not be named in a type position, and even over a class's own `@phpstan-type Bytes` | a class name: the class, interface, enum or alias that resolves; where none does, `P2001` with the lower-case spelling, read as Phaenon's type | a class `Map`, `Bytes`, `MAP` |
 | `map`, `non-empty-map`, `bytes`, `class` in a `.phn` docblock | the types of its tags, translated for PHPStan (`collections.md` §4) | translated in any case | translated in lower case only; another case is the class PHPStan reads | as in a type position |
 
 Unchanged:
@@ -523,6 +523,26 @@ Each step is its own PR:
    compiler.
 4. VS Code: none. The grammar reads Phaenon's words in lower case only, which is now the rule.
 5. Dogfood: nothing to respell.
+
+*Settled while building step 2 (2026-11-15, phaenon #38):*
+- **The type names report `P2001`, not `P1006`.** In another case `Map` is a class name, and what
+  is wrong where none resolves is that no class of that name exists: the author may have meant a
+  class and left out its import, and the message says both. `P1006` is the finding of a word the
+  parser took as Phaenon's. The bare `Closure` is the precedent, `P2001` with the fix in its
+  message.
+- **A docblock gets no hint.** An unresolved `@param Bytes $b` in a `.phn` is the class PHPStan
+  reads there; the checker reports it where it disagrees with the native type (`P4002`), and
+  PHPStan reports the class on the output.
+- **`phn migrate` reads a docblock's `Map<…>` and `Class<T>` as classes**, as PHPStan does and as
+  a `.phn` now does: the lift's check finds that they erase to no `array` and no `string`, and
+  they stay in the docblock with a note, where the lift wrote them onto the signature before. The
+  opt-in list-types and map-types codemods no longer take a written `Map<K, V>` for an array.
+- **A word is compared with its own spelling**, not with its lower case: the parser matches the
+  clause words under Unicode's case folding, and `throwſ`, with a long s, is the clause and
+  `P1006` too.
+- **A lower-case `map` counts as a use of an import named `Map`**, as `map()` does: the rule that
+  finds unused imports (`P2013`) errs on the side of a use, so `use Acme\Map;` beside only
+  `map<…>` draws no finding.
 
 *Open:* whether the PhpStorm plugin should mark a word written in another case itself, where no
 language server runs (the plugin's LSP part is optional); and its reading of `map`, `bytes`,
