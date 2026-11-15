@@ -968,7 +968,7 @@ The first layer is native, with no options:
 | a shape in a `type` declaration (D29, 2026-11-15; not built) | `type Row = array{id: int, name?: string};`: nothing inside the braces, a space after a colon and a comma, `?` against its key; a shape over several lines keeps its line breaks |
 | expression body | `name(): string => $this->name;`, a continuation one level in |
 | `throws` | `find(Id $id): User throws NotFound\|Conflict {` |
-| `nothrow` (2026-11-15, `functions.md` F14; not built) | `find(Id $id): ?User nothrow {`: as `throws`, one space before the word, on the signature's line |
+| `nothrow` (2026-11-15, `functions.md` F14) | `find(Id $id): ?User nothrow {`: as `throws`, one space before the word, on the signature's line |
 
 *The rows of `is` and `as` went with roadmap D26 (2026-11-09), those of `concurrently` and `spawn`
 with D25 (2026-11-08).*
@@ -1902,7 +1902,7 @@ parity test allow-lists each today:
 |---|---|---|---|
 | `P2403` | warning | A catch that no throw point of its `try` block reaches: "X is never thrown in the try block". The code already reports a catch an earlier one makes dead | `catch.neverThrown` |
 | `P2404` | warning | A member of a `throws` clause (or `@throws` tag) that the body never throws | `throws.unusedType` |
-| `P2405` | error | `@throws void` on a body that throws; `nothrow`, its clause spelling, likewise (2026-11-15, `functions.md` §4.5) | `throws.void` |
+| `P2405` | error | `@throws void` on a body that throws; `nothrow`, its clause spelling, likewise, and an override that declares nothing and inherits either (2026-11-15, `functions.md` §4.5) | `throws.void` |
 
 The first two are warnings: dead code and a declaration wider than its body hide nothing. The
 third is an error, because a declaration that something cannot throw is false.
@@ -1961,7 +1961,7 @@ implicit one, every member stays.
 **`@throws void`.** It is held to the explicit throw points: a call to a function that declares
 nothing does not break it.
 
-**`nothrow`** (2026-11-15, `functions.md` §4.5 and F14; not built). The clause spelling of
+**`nothrow`** (2026-11-15, `functions.md` §4.5 and F14). The clause spelling of
 `@throws void`, with the same meaning and no more:
 - it is held to the explicit throw points, `P2405` at each, whose message names the clause;
 - a call to a function that declares nothing does not break it;
@@ -1970,11 +1970,13 @@ nothing does not break it.
 - it promises nothing about implicit throw points: a `TypeError` out of an undeclared callee is
   as possible under `nothrow` as under `throws A`.
 
-`nothrow` beside `throws` is a syntax error, and beside a `@throws` tag that names a class it is
-an error of the checker's. An override that declares nothing inherits it like any declaration,
-and nothing holds an override that declares its own clause to it: `nothrow` adds no rule to the
-table below. *Found 2026-11-15:* the body of an override that inherits `@throws void` is not held
-to it today, where PHPStan 2.3.3 reports `throws.void`; `functions.md` §4.5 has the case.
+`nothrow` beside `throws` is a syntax error, and beside a `@throws` tag other than `@throws void`
+it is `P2320`, an error of the checker's. An override that declares nothing inherits it like any
+declaration, and nothing holds an override that declares its own clause to it: `nothrow` adds no
+rule to the table below. The body of an override that inherits `@throws void` or `nothrow` is
+held to it as to a declaration of its own, `P2405` at each explicit throw point, as PHPStan 2.3.3
+reports `throws.void`; the message names the method the declaration comes from (`functions.md`
+§4.5).
 
 **Deliberately not done:**
 

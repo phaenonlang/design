@@ -710,3 +710,14 @@ turned it into a test.
   be a rule of `nothrow`'s own, stricter than PHPStan as the parity rule allows, and for the
   docblock form it would hold PHP code to a contract PHPStan does not enforce. Open; the
   dogfood trees hold no `@throws void` to measure it on.
+- **Where an inherited throws declaration is looked for** (2026-11-15, `functions.md` §4.5). A
+  method that declares nothing takes the declaration of the method it overrides, and the checker
+  follows one chain to find it: the method the parent class has, then the one that method
+  overrides, and so on. PHPStan's docblock inheritance also reads the class's own interfaces when
+  the parent class's method has no tag. So `class Child extends Base implements Lookup`, where
+  only `Lookup::find()` declares `@throws void` and `Base::find()` declares nothing, holds the
+  body of `Child::find()` to nothing here, while PHPStan 2.3.3 reports `throws.void` in it; and a
+  call to it is an implicit throw point here, so a `catch` around it is not `P2403`, where
+  PHPStan reports `catch.neverThrown`. The checker is more lenient than PHPStan in that case,
+  which the parity rule forbids; reading every declaration an override inherits, in PHPStan's
+  order, closes it.
