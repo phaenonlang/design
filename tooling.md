@@ -965,7 +965,7 @@ The first layer is native, with no options:
 | type parameters | `class Box<T of Item>`, `first<T>(list<T> $xs): ?T` |
 | type arguments | `list<User>`, `map<string, list<int>>`: no space inside `<>`, one after a comma |
 | tuple and closure types | `(int, string)`, `Closure(int, string...): bool` |
-| a shape in a `type` declaration (D29, 2026-11-15; not built) | `type Row = array{id: int, name?: string};`: nothing inside the braces, a space after a colon and a comma, `?` against its key; a shape over several lines keeps its line breaks |
+| a shape in a `type` declaration (D29, 2026-11-15) | `type Row = array{id: int, name?: string};`: nothing inside the braces, a space after a colon and a comma, `?` against its key, the brace against a trailing comma; a shape over several lines keeps its line breaks |
 | expression body | `name(): string => $this->name;`, a continuation one level in |
 | `throws` | `find(Id $id): User throws NotFound\|Conflict {` |
 | `nothrow` (2026-11-15, `functions.md` F14) | `find(Id $id): ?User nothrow {`: as `throws`, one space before the word |
@@ -1145,13 +1145,13 @@ the dogfood trees holds one.
 | Formatting | §5's first layer |
 | Build on save | see below |
 
-*2026-11-15 (roadmap D29, `generics.md` §11.6; not built):* a `type` alias is a name of its
+*2026-11-15 (roadmap D29, `generics.md` §11.6 and §11.7):* a `type` alias is a name of its
 namespace, so the server treats it as it treats a class. Go to definition leads from an alias's
-name to its `type` declaration in whatever file holds it, completion offers aliases in type
-positions with their `use`, and an alias's import counts as used. Hover prints the type an alias
-stands for, since an alias expands when it is resolved (`generics.md` §9, question 10). An alias
-is one more declaration another file's output depends on, which the build on save already
-allows for.
+name, in a type position or in its `use`, to its `type` declaration in whatever file holds it,
+completion offers aliases among the classes with their `use`, and an alias's import counts as
+used. Hover prints the declaration with the type an alias stands for, since an alias expands
+when it is resolved (`generics.md` §9, question 10). An alias is one more declaration another
+file's output depends on, which the build on save already allows for.
 
 **What the checker needs for this.** It grows two queries: the type at an offset, answered by
 re-checking the enclosing function with a probe, and the symbol at an offset. Checking one file
