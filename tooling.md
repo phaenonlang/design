@@ -1180,14 +1180,29 @@ and code actions beyond a diagnostic's own fix.
   same thing, both show for now; the plugin's highlight filter learns the pairs from the dogfood
   trees.
 - **Build on save is on by default**, with a status-bar item for the last build.
-- **Aliases are the plugin's to resolve** (2026-11-15, roadmap D29; not built). The lexer already
-  erases a `type` declaration whole, up to its `;`, so a shape inside one costs it the scan of a
-  braced list. A shape anywhere else would have cost a trial parse the lexer cannot make
+- **Aliases are the plugin's to resolve** (2026-11-15, roadmap D29). The lexer erases a `type`
+  declaration whole, up to its `;`, with the docblock above it, so a shape inside one costs it the
+  scan of a braced list. A shape anywhere else would have cost a trial parse the lexer cannot make
   (`collections.md` §6.2). The name is the work: an alias's name in a type position is a class
   PhpStorm does not know, in the declaring file too, which mattered little while aliases were
-  rare. So the plugin indexes `type` declarations by qualified name, resolves a name in a type
-  position to one, gives a declaration typed with it the type the alias stands for, and keeps
-  PhpStorm's "undefined class" and "unused import" off such names.
+  rare. So the plugin indexes `type` declarations by qualified name; resolves a name in a type
+  position, a docblock or a `use` to one, in whatever file it is, for Go to Declaration; completes
+  an alias's name with its `use`; gives a declaration typed with an alias the type the alias
+  stands for; and keeps PhpStorm's "undefined class" and "unused import" off such names. Where
+  PHP looks for a class (`new Row`, `extends Row`) "undefined class" stays, as `P2001` does, and
+  an unused import of an alias is the compiler's `P2013`. An override with an alias on either
+  side is judged by what the alias erases to, as PHP judges the compiled signature. What PhpStorm
+  does with a class reference of its own is not done for an alias:
+  - Rename is refused, from the declaration and from every use: the plugin does not yet rename a
+    declaration, its imports and its signatures together;
+  - Find Usages, the structure view, Go to Class and quick documentation do not know aliases, and
+    the docblock above a `type` declaration, erased with it, is neither highlighted nor folded;
+  - the type is the plugin's, beside PhpStorm's own for the name, a class nobody declared, so a
+    member access on such a value is not reported as undefined. PhpStorm completes and checks the
+    keys behind a property or a call typed with an alias, and not behind a parameter, whose keys
+    the plugin types itself; a key is typed after a test only where the test excluded `null` or
+    `false`; and an alias is not expanded inside a docblock shape PhpStorm reads itself
+    (`@return array{first: Line}`).
 - **Distribution.** A custom plugin repository (an `updatePlugins.xml` URL in PhpStorm's settings),
   so updates arrive without installing zips by hand; the JetBrains Marketplace next, now that the
   repositories are public (T15).
@@ -1344,18 +1359,24 @@ Phaenon's syntax:
 *Since 2026-11-09 (roadmap D26, D27) the grammar reads a method without a keyword as a declaration
 with its type parameters, parameters, return type and `throws`; the `fun`, `is`, `as` and `as?`
 rules are gone, as `concurrently` and `spawn` went on 2026-11-08.*
-*2026-11-15 (`functions.md` F14; not built):* `nothrow` is read where `throws` is, in a function's
-or a method's head, under the scope name `throws` has; the PhpStorm plugin's lexer erases it
-where it erases a `throws` clause.
+*2026-11-15 (`functions.md` F14):* `nothrow` is read where `throws` is, in a function's or a
+method's head, under the scope name `throws` has, and in lower case only, as every word the
+grammar adds; the PhpStorm plugin's lexer erases it where it erases a `throws` clause, in any
+letter case, as the compiler reads it.
 
 These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
 reads as a type in a parameter list, a property and a class header alike. Where PHP has the
 construct, the rules use its scope names, so themes colour Phaenon as they colour PHP.
 
-*2026-11-15 (roadmap D29; not built):* the rule for a `type` declaration, which runs from `type
-Name` to its `;`, reads a shape inside it: the braces, the keys, `?` and `...`. No other rule
-changes, since a shape is written nowhere else: a rule for one in a return type could not tell
-its brace from a body's (`collections.md` §6.2).
+*2026-11-15 (roadmap D29):* a `type` declaration, which runs from `type Name` to its `;`, reads a
+shape anywhere inside it, in type arguments, tuples and closure types too: the braces, `?`, `...`
+and the keys, a name read as a property, a quoted or an integer key as the string or the number
+it is. No rule reads a shape outside a `type` declaration, since a shape is written nowhere else:
+a rule for one in a return type could not tell its brace from a body's (`collections.md` §6.2),
+and `): array {` keeps its body. Two rules changed with it: a type's brackets end before a `;`,
+so a shape or a type left open while it is typed ends with its declaration, and `bytes` before a
+`:` is no type, so a named argument or a key of that name stays a name. An alias's name needs no
+rule: in a type and in a `use` it reads as a class name does.
 
 Found while running the grammar over the dogfood trees: PHP's property rule cannot read `?map<…>`, so
 its ternary rule took the `?` and waited for a `:` that never came, swallowing the rest of the class.

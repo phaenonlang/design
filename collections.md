@@ -7,8 +7,8 @@ migration and shapes (§2, §4–§6) stand; lists and maps are transformed with
 chained with pipes and partial application (`roadmap.md` D20, `php-versions.md` §5.4).
 **Amended 2026-11-05** (§7): `array<V>`, a bare `array`, shapes and the docblock vocabulary.
 **Amended 2026-11-15** (§6, §7; `roadmap.md` D29): a shape gets syntax with a name, in a `type`
-declaration, and an alias belongs to its namespace; built in the compiler the same day (§6.9),
-the editors to follow.
+declaration, and an alias belongs to its namespace; built in the compiler (§6.9) and in both
+editors (`tooling.md` §6.2, §6.6) the same day.
 Nothing is implemented yet beyond what M3 already has (the keywords `list` and `map` in type
 positions, their erasure to `array`, the lattice's array types).
 
@@ -691,5 +691,6 @@ The rules of the alias itself are `generics.md` §11.7.
   Python's tuples, the ones most people know by that name, are exact; a tuple of unknown length
   is a `list<T>`. The checker is stricter than PHPStan here, which §9 of `checker.md` allows.
 - 2026-11-15: named shapes and namespace-level aliases designed (§6, `generics.md` §11.6,
-  roadmap D29) and built in the compiler (§6.9, `generics.md` §11.7). The roadmap's *Named
-  shapes* entry lists what is left: the editors, the documentation, the dogfood trees.
+  roadmap D29) and built in the compiler (§6.9, `generics.md` §11.7), then in both editors
+  (`tooling.md` §6.2, §6.6). The roadmap's *Named shapes* entry lists what is left: the
+  documentation, the dogfood trees.
