@@ -50,6 +50,13 @@ reachable as methods (`$name->upper()`, `$path->startsWith('/')`); bytes get `\P
 | `bytes` | binary data of any length | `string` | `string` (PHPStan has no bytes; §5) |
 | `non-empty-string`, `numeric-string`, `class-string<T>`, `literal-string` | refinements the checker infers and reads from docblocks, as in M3; `class<T>` is the native spelling of `class-string<T>` | `string` | the refinement |
 
+*2026-11-15 (roadmap D30):* `bytes` and the cast `(bytes)` are written in lower case. `bytes` is a
+name PHP leaves free: `Bytes` in a type position is a class name like any other, the class of
+that name or, where none resolves, `P2001` saying that Phaenon's type is written `bytes`; in a
+`.phn` docblock it is the class PHPStan reads there, and only `bytes` is translated to `string`
+(§5). A cast in another case, `(BYTES) $raw`, is still the cast, and `P1006`, which `phn fmt`
+rewrites.
+
 - `string` and `bytes` are **distinct, unrelated types**: neither is a subtype of the other.
   Converting is explicit and free at runtime: `$text->bytes()` (`Str::bytes`, the identity)
   and `$data->text()` (`Bytes::text`, which **checks** UTF-8 validity and throws

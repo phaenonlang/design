@@ -982,7 +982,7 @@ with D25 (2026-11-08).*
 This layer changes whitespace only, plus the brace and `{}` forms, which are layout too. Turning a
 block into `=> expr` stays `phn migrate`'s job, because it changes the code. *Since 2026-11-09 it
 also rewrites the spellings D26 and D27 withdrew and lifts `function` off methods, the changes of
-code it makes (§5.6).*
+code it makes (§5.6), and since 2026-11-15 it writes Phaenon's words in lower case (§5.7).*
 
 PhpStorm's Reformat Code writes this same layer (the plugin's formatter), and the two share their
 golden files.
@@ -1024,8 +1024,8 @@ With these settlements:
     - `concurrently` and `spawn` until 2026-11-08.
 
     The tokens must come out as they went in (a `>>` counts as the `>` `>` it closes). *Since
-    2026-11-09 the rewrites of §5.6 are the layer's only changes of tokens; everything else in
-    it still keeps them.*
+    2026-11-09 the rewrites of §5.6 are the layer's only changes of tokens, joined on 2026-11-15
+    by the letter case of §5.7; everything else in it still keeps them.*
   - The rest of a `.phn` is the project's PHP style, which the second layer writes.
 - **What the first layer leaves to the second:**
   - the indentation of an expression body's continuation lines, which php-cs-fixer sees in the
@@ -1117,6 +1117,21 @@ the dogfood trees holds one.
 - **`phn fmt --check`** reports a withdrawn spelling as it reports a file out of the first
   layer's layout, and fails.
 
+### 5.7 Phaenon's words in lower case (2026-11-15)
+
+Roadmap D30. The first layer writes in lower case each word the checker reports as `P1006`:
+`throws` and `nothrow` after a signature, `type` before an alias, `of`, `in` and `out` in a type
+parameter list, `class` and `list` in a type position, and the cast `(bytes)`. The rewrite is
+certain wherever it is made, since the parser read the word there as Phaenon's, and a name of
+that spelling, which the parser reads as a name (a class `Throws` as a return type, a method
+`Type()`), is never touched. It needs no checked program, so `phn fmt --stdin` and the editors'
+formatting make it too; it runs with the rewrites of §5.6, before the tabs.
+
+`Map` and `Bytes` are never rewritten. In a type position each is a class name, which the check
+resolves or reports (`P2001`, whose message gives the lower-case spelling), and only the author
+knows whether a class was meant. `phn fmt --check` reports a word it would rewrite as it reports
+a file out of the layout, and fails.
+
 ## 6. Editors
 
 ### 6.1 `phn lsp`
@@ -1152,6 +1167,11 @@ completion offers aliases among the classes with their `use`, and an alias's imp
 used. Hover prints the declaration with the type an alias stands for, since an alias expands
 when it is resolved (`generics.md` §9, question 10). An alias is one more declaration another
 file's output depends on, which the build on save already allows for.
+
+*2026-11-15 (roadmap D30):* `P1006`, a word of Phaenon's written in another letter case than
+lower case, has a quick-fix that writes it in lower case, as `phn fmt` does (§5.7). The type
+names `Map` and `Bytes`, `P2001` where no class of that name resolves, get none: the author may
+have meant a class.
 
 **What the checker needs for this.** It grows two queries: the type at an offset, answered by
 re-checking the enclosing function with a probe, and the symbol at an offset. Checking one file
@@ -1203,6 +1223,14 @@ and code actions beyond a diagnostic's own fix.
     the plugin types itself; a key is typed after a test only where the test excluded `null` or
     `false`; and an alias is not expanded inside a docblock shape PhpStorm reads itself
     (`@return array{first: Line}`).
+- **Phaenon's words in another letter case** (2026-11-15, roadmap D30). The plugin's lexer
+  erases `throws`, `nothrow` and the other words in any case, as the compiler reads them, and
+  keeps doing so: what it hands PhpStorm's parser is what the compiler parses, and the one finding,
+  `P1006` with its quick-fix, comes from `phn lsp`. Two points stay open (§13, question 14):
+  whether the plugin should mark such a word itself where no language server runs, its LSP part
+  being optional; and its reading of the names inside an erased construct, which takes `map`,
+  `bytes`, `list` and `class` for Phaenon's words in any case, so that `Map<string, int>` naming a
+  project's class is no class to PhpStorm there, where the compiler resolves it.
 - **Distribution.** A custom plugin repository (an `updatePlugins.xml` URL in PhpStorm's settings),
   so updates arrive without installing zips by hand; the JetBrains Marketplace next, now that the
   repositories are public (T15).
@@ -1363,6 +1391,10 @@ rules are gone, as `concurrently` and `spawn` went on 2026-11-08.*
 method's head, under the scope name `throws` has, and in lower case only, as every word the
 grammar adds; the PhpStorm plugin's lexer erases it where it erases a `throws` clause, in any
 letter case, as the compiler reads it.
+*2026-11-15 (roadmap D30):* the rules read Phaenon's words in lower case only, as they have since
+this slice, and the language has the same rule now: a word written in another case is coloured as
+PHP's rules colour a name, and the compiler reports it (`P1006`). Only PHP's own words are
+matched in any case, as PHP's grammar matches them.
 
 These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
 reads as a type in a parameter list, a property and a class header alike. Where PHP has the
@@ -2280,6 +2312,14 @@ Asked by D28 (2026-11-10), about a library that commits its outputs (§3.7):
     *Answered by T19 (2026-11-13): yes for a key the compiler does not know, in an installed
     package's file only, and for nothing else in it; the removal of an earlier build's leftovers
     stays with the whole file understood.*
+
+Asked by D30 (2026-11-15), about the PhpStorm plugin (§6.2):
+
+14. **A Phaenon word in another letter case, where no language server runs.** The plugin's lexer
+    reads the words in any case, as the compiler does, and the finding is the compiler's, through
+    `phn lsp`, which the plugin starts on the editions that have the LSP API. Should the plugin
+    mark such a word itself where no server runs, and should its reading of the names inside an
+    erased construct take `Map` and `Bytes` for class names, as the compiler now does?
 
 ## 14. Decisions
 

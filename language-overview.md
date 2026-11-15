@@ -41,6 +41,10 @@ PHP.*
   writes. A type test is PHP's own (`is_string($x)`, `$x instanceof Foo`), and a PHP developer
   reading a `.phn` knows what every line does. (From 2026-11-08 until then `is` and `as`
   compiled to those tests, D23.)
+- **Phaenon's words are lower case** (roadmap D30, 2026-11-15). Each word Phaenon adds to PHP has
+  one spelling: `throws`, `nothrow`, `type`, `of`, `in`, `out`, `class<T>`, `list`, `map`,
+  `bytes`, `(bytes)`. PHP's own words keep PHP's case-insensitivity, and `Map` or `Bytes` is a
+  class name like any other.
 
 ## 3. Removed from PHP
 

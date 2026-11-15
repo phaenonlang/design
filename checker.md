@@ -240,6 +240,11 @@ type names (`int`, `string`, … `mixed`, `never`, `iterable`, `self`, `static`,
 `false`, `true`) never resolve to classes. Case-insensitive for classes, functions and keywords;
 case-sensitive for constants, properties and variables.
 
+*2026-11-15 (roadmap D30):* the keywords meant here are PHP's. Phaenon's own words are written
+in lower case: in a type position `map` and `bytes` are Phaenon's types, and `Map` or `Bytes` a
+class name resolved as any other; a word that only Phaenon has in its place (`throws`, `type`,
+`of`, `class<T>`, …) is read in any case there, and in another than lower case it is `P1006`.
+
 ### 4.4 Hierarchy
 
 Built lazily per class, with cycle detection (P2 "circular inheritance"): the method table is the
