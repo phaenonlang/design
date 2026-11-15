@@ -805,6 +805,7 @@ The first layer is native, with no options:
 | a shape in a `type` declaration (D29, 2026-11-15; not built) | `type Row = array{id: int, name?: string};`: nothing inside the braces, a space after a colon and a comma, `?` against its key; a shape over several lines keeps its line breaks |
 | expression body | `name(): string => $this->name;`, a continuation one level in |
 | `throws` | `find(Id $id): User throws NotFound\|Conflict {` |
+| `nothrow` (2026-11-15, `functions.md` F14; not built) | `find(Id $id): ?User nothrow {`: as `throws`, one space before the word, on the signature's line |
 
 *The rows of `is` and `as` went with roadmap D26 (2026-11-09), those of `concurrently` and `spawn`
 with D25 (2026-11-08).*
@@ -1174,6 +1175,9 @@ Phaenon's syntax:
 *Since 2026-11-09 (roadmap D26, D27) the grammar reads a method without a keyword as a declaration
 with its type parameters, parameters, return type and `throws`; the `fun`, `is`, `as` and `as?`
 rules are gone, as `concurrently` and `spawn` went on 2026-11-08.*
+*2026-11-15 (`functions.md` F14; not built):* `nothrow` is read where `throws` is, in a function's
+or a method's head, under the scope name `throws` has; the PhpStorm plugin's lexer erases it
+where it erases a `throws` clause.
 
 These rules are **injections**: an injection applies inside every rule, PHP's included, so `list<T>`
 reads as a type in a parameter list, a property and a class header alike. Where PHP has the
@@ -1735,7 +1739,7 @@ parity test allow-lists each today:
 |---|---|---|---|
 | `P2403` | warning | A catch that no throw point of its `try` block reaches: "X is never thrown in the try block". The code already reports a catch an earlier one makes dead | `catch.neverThrown` |
 | `P2404` | warning | A member of a `throws` clause (or `@throws` tag) that the body never throws | `throws.unusedType` |
-| `P2405` | error | `@throws void` on a body that throws | `throws.void` |
+| `P2405` | error | `@throws void` on a body that throws; `nothrow`, its clause spelling, likewise (2026-11-15, `functions.md` §4.5) | `throws.void` |
 
 The first two are warnings: dead code and a declaration wider than its body hide nothing. The
 third is an error, because a declaration that something cannot throw is false.
@@ -1746,11 +1750,11 @@ hold the checker to "never more lenient". Each place that may throw is a throw p
 - **`throw $e`** is explicit, with `$e`'s type.
 - **A call** has the exceptions its callee declares. This covers a function, a method, a static
   call, `new`, a pipe stage and `__invoke`. The declaration is:
-  - the `throws` clause;
+  - the `throws` clause, or `nothrow` (2026-11-15);
   - else the `@throws` tags;
   - else, for a method, the overridden method's declaration (docblock inheritance, as PHPStan does).
 
-  `@throws void` declares nothing thrown. A callee that declares nothing makes the call implicit,
+  `@throws void` declares nothing thrown, and so does `nothrow`. A callee that declares nothing makes the call implicit,
   with two exceptions, which PHPStan counts as not throwing:
   - a call to a native function without arguments that has no required parameter (`time()`);
   - inside `throw`, the call or `new` that makes the thrown object (`throw new NotFound($id)`,
@@ -1794,12 +1798,27 @@ implicit one, every member stays.
 **`@throws void`.** It is held to the explicit throw points: a call to a function that declares
 nothing does not break it.
 
+**`nothrow`** (2026-11-15, `functions.md` §4.5 and F14; not built). The clause spelling of
+`@throws void`, with the same meaning and no more:
+- it is held to the explicit throw points, `P2405` at each, whose message names the clause;
+- a call to a function that declares nothing does not break it;
+- a call to a `nothrow` function or method is no throw point, as a call to one tagged
+  `@throws void` is none, which is what leaves a catch dead (`P2403`);
+- it promises nothing about implicit throw points: a `TypeError` out of an undeclared callee is
+  as possible under `nothrow` as under `throws A`.
+
+`nothrow` beside `throws` is a syntax error, and beside a `@throws` tag that names a class it is
+an error of the checker's. An override that declares nothing inherits it like any declaration,
+and nothing holds an override that declares its own clause to it: `nothrow` adds no rule to the
+table below. *Found 2026-11-15:* the body of an override that inherits `@throws void` is not held
+to it today, where PHPStan 2.3.3 reports `throws.void`; `functions.md` §4.5 has the case.
+
 **Deliberately not done:**
 
 | What | Why |
 |---|---|
 | Checked exceptions: a caller held to catch or declare (`missingType.checkedException`) | D18: `throws` is documentation, not Java's checked exceptions (`functions.md` §4.1); PHPStan has it off by default |
-| Covariance of an override's `throws` (`throws.notCovariant`) | Off by default in PHPStan; it would hold PHP code to a contract it never stated |
+| Covariance of an override's `throws` (`throws.notCovariant`) | Off by default in PHPStan; it would hold PHP code to a contract it never stated. *2026-11-15:* `nothrow` adds no rule here; whether an override of a `nothrow` method may declare `throws` is open (`checker.md` §10) |
 | PHPStan's knowledge of native functions: phpstorm-stubs' `@throws`, and 20 throw-type extensions (`json_decode` with `JSON_THROW_ON_ERROR`, the `DateTime` and `Reflection*` constructors, `intdiv`, …) | Phaenon's php-src stubs have no `@throws`, so those calls are implicit: more lenient, never stricter. The overlay takes PHPStan's own stub facts where they matter, starting with `Throwable`'s getters, which throw nothing |
 | A statement's own `/** @throws X */`, property hooks' `@throws` | PHPStan reads both; both are rare, and leaving them implicit is lenient |
 | Inferring a body's exceptions for its callers | PHPStan does not either. The declaration is the contract, so a change to a body does not change its callers' findings |

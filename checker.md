@@ -701,3 +701,12 @@ turned it into a test.
   `list<mixed>`, as in PHPStan 2.1 (`generics.md` §11.4), so its result is stated with a `@var` or
   a guard function's `@phpstan-assert`. If PHPStan learns to narrow through `array_all()`, the
   checker follows.
+- **An override under `nothrow`** (2026-11-15, `functions.md` §4.5). Nothing holds an override
+  that writes its own `throws` clause to the method it overrides (`tooling.md` §9.1: covariance
+  is deliberately not checked, as in PHPStan's defaults). Under a method that declares `nothrow`
+  this leaves a hole a reader will not expect: a `catch` around a call through the parent's type
+  is reported dead (`P2403`) while a subclass declares and throws the exception. Should an
+  override of a `nothrow` method be refused a `throws` clause, and a body that throws? It would
+  be a rule of `nothrow`'s own, stricter than PHPStan as the parity rule allows, and for the
+  docblock form it would hold PHP code to a contract PHPStan does not enforce. Open; the
+  dogfood trees hold no `@throws void` to measure it on.
