@@ -763,14 +763,34 @@ turned it into a test.
 - **Where an inherited throws declaration is looked for** (2026-11-15, `functions.md` §4.5). A
   method that declares nothing takes the declaration of the method it overrides, and the checker
   follows one chain to find it: the method the parent class has, then the one that method
-  overrides, and so on. PHPStan's docblock inheritance also reads the class's own interfaces when
-  the parent class's method has no tag. So `class Child extends Base implements Lookup`, where
-  only `Lookup::find()` declares `@throws void` and `Base::find()` declares nothing, holds the
-  body of `Child::find()` to nothing here, while PHPStan 2.3.3 reports `throws.void` in it; and a
-  call to it is an implicit throw point here, so a `catch` around it is not `P2403`, where
-  PHPStan reports `catch.neverThrown`. The checker is more lenient than PHPStan in that case,
-  which the parity rule forbids; reading every declaration an override inherits, in PHPStan's
-  order, closes it.
+  overrides, and so on. PHPStan's docblock inheritance reads more than that chain, and in each
+  shape below the body of a method that declares nothing is held to nothing here, while PHPStan
+  2.3.4 reports `throws.void` in it. The checker is more lenient than PHPStan in each, which the
+  parity rule forbids:
+  - *An interface beside a parent.* PHPStan also reads the class's own interfaces when the
+    parent class's method has no tag. So `class Child extends Base implements Lookup`, where
+    only `Lookup::find()` declares `@throws void` and `Base::find()` declares nothing, holds the
+    body of `Child::find()` to nothing; and a call to it is an implicit throw point here, so a
+    `catch` around it is not `P2403`, where PHPStan reports `catch.neverThrown`.
+  - *A constructor.* A constructor that declares nothing, under a concrete parent's constructor
+    that says `nothrow`, is not on the chain: PHP compares no constructor with a concrete
+    parent's, and the chain steps only where PHP does. PHPStan's inheritance takes the parent
+    constructor's tags all the same.
+  - *A trait's method.* A trait's body is checked once, in the trait, where no class stands over
+    it, while PHPStan analyses it in the context of each class that uses the trait. A trait's
+    method that implements an interface method saying `nothrow` is therefore held to nothing,
+    though a call to it through the class reads the interface's `nothrow`, so a `catch` around
+    the call is still `P2403`, as PHPStan finds it. Nor is a class's method held to an abstract
+    trait method that says `nothrow` and that the method implements.
+  - *Two interfaces.* A class that implements two interfaces declaring the method, `Plain`
+    without a tag and `Quiet` saying `nothrow`, takes the first written on the chain:
+    `implements Plain, Quiet` holds the body to nothing, `implements Quiet, Plain` holds it to
+    `nothrow`. The result depends on the order the interfaces are written in; PHPStan reports
+    `throws.void` in both.
+
+  Reading every declaration an override inherits, in PHPStan's order, constructors and the
+  methods a trait brings in included, closes them; for a trait's method, that means holding its
+  body in the context of each class that uses the trait, as PHPStan does.
 - **What the override check does not reach** (2026-11-15, §9). Each is more lenient than PHPStan
   or PHP, and each is left for a change of its own:
   - *Object shapes and intersections* are not decided by the test of two types being apart:
