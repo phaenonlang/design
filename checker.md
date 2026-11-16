@@ -863,8 +863,17 @@ turned it into a test.
     `P2202` on `main`, and a false `P2321` had the new code been built on it. This is the
     reading §10 set aside on 2026-11-15, taken up for shapes only, where the narrowed type is a
     shape and needs no typed rest; `unset()` takes the key out again, under any spelling. What
-    §10 held against it stands: a write through a reference to the array is not seen, as it
-    was not seen by the narrowing of paths either.
+    §10 held against it, a write through a reference to the array that the checker did not
+    see, is seen since 2026-11-17 (below).
+  - *A write through a reference to a variable writes both* (2026-11-17; `P2313`, `P2321`).
+    After `$alias = &$r`, an assignment to either variable, a write to an offset of it or an
+    `unset()` of one is applied to the other, through a chain of references as well, so that
+    `unset($alias['name'])` takes the key from `$r`. The reach is PHPStan's
+    (`IntertwinedVariableByReferenceWithExpr`): a reference to an offset (`$x = &$r['k']`) and
+    one a closure takes with `use (&$r)` are not followed, and a link made on one way into a
+    join only is gone after it. PHPStan keeps the link after `unset($a)` and after
+    `$a = &$c`, where PHP breaks it; the checker keeps it too, since following PHP there would
+    leave it more lenient than PHPStan on those lines.
   - *An offset is keyed by the key PHP stores.* `$a['1']`, `$a[1]` and `$a[0x1]` are one key,
     and so are `$a['name']` and `$a[self::NAME]`; a constant read through `static::` is one
     only in a final class.
@@ -882,7 +891,8 @@ turned it into a test.
   - *Where PHPStan reports and the checker is still silent*, as before the change: an array
     built in a loop, a ternary or a spread, which PHPStan types as one shape with an optional
     key and the checker as a general array or a union; a key typed as a union of literals,
-    `true` or `1.0`; a reference alias or `extract()` that removes the key.
+    `true` or `1.0`. (`extract()` is a removed construct, `P1001`, and a reference between two
+    variables is followed since 2026-11-17, above.)
 
   `offset-might-not-exist.phn` and `unset-offsets.phn` hold each case to PHPStan line by line.
   The six dogfood trees give the same findings before and after both.
@@ -918,7 +928,9 @@ turned it into a test.
   for the keys the test did not prove, and that narrowing made sound first. *For a shape this
   is done since 2026-11-16 (§9, An offset a shape might lack): there the narrowed type is the
   shape with the entry present, which needs no typed rest. The general array is as described
-  here, and the write through a reference is still unseen in both.*
+  here. The write through a reference between two variables is seen since 2026-11-17 (§9);
+  one through a reference to an offset, or through a closure's `use (&$a)`, is not, by PHPStan
+  either.*
 - **Keys a sealed shape does not name** (2026-11-15). A literal with a key more than the shape
   names is accepted where the shape is expected (§9), while reading that key from the shape is
   `P2313`. A shape somebody named is a contract in a way an ad-hoc docblock is not, and
