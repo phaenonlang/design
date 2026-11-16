@@ -216,9 +216,14 @@ A `Loader` maps a fully-qualified name to a parsed declaration:
 2. **Composer**: `vendor/composer/autoload_psr4.php`, `autoload_classmap.php`, `autoload_files.php`
    (function and constant files) and `autoload_namespaces.php` (PSR-0), evaluated by walking their
    AST (string literals, `$vendorDir . '/…'`, `$baseDir`). The project's own PSR-4 roots are
-   there too, which is how a `.php` file beside a `.phn` one is found. Looked-up files are parsed in
-   PHP mode; a file is parsed once however many classes it declares. Composer's maps are found by
-   walking up from the first checked path to the nearest `vendor/composer/`.
+   there too, which is how a `.php` file beside a `.phn` one is found. Looked-up `.php` files are
+   parsed in PHP mode, `.phn` sources in Phaenon mode; a file is parsed once however many classes
+   it declares. Composer's maps are found by walking up from the first checked path to the nearest
+   `vendor/composer/`. The entries of `autoload_files.php` are read before the checked set
+   (2026-11-17): one under an output directory of the project is read from its source, the `.phn`
+   or the copied `.php`, as a class's file is, and one the run checks itself is left to it, so
+   that a function a `"files"` entry loads from `.src/functions.php` is declared once and not
+   again from its own output (`P2511` until then, at every build after the first).
 3. **Stubs**: php-src `*.stub.php`, embedded. Quirks handled: `#if … #endif` lines lex as comments,
    so duplicate declarations appear — the first wins; `UNKNOWN` defaults mean "optional, no
    literal"; `@alias` copies the target's signature; `@tentative-return-type` and the other
@@ -287,7 +292,9 @@ read before assignment in a constructor; `static` property access through an ins
 `.` on arrays/objects without `__toString`, offset access on non-arrays, `foreach` over a
 non-iterable, `match` with no matching arm when the subject type is exhausted (error) or
 non-exhaustive on an enum (warning, as PHPStan), comparison `===` between types with no overlap
-(always false), `instanceof` always true/false, dead `?->` (left never null), `??` with a
+(always false), `instanceof` always true/false, dead `?->` (left never null, or a property fetch
+that `??`, `isset()` or `empty()` reads, which forgive the null themselves: `P2307` for both,
+PHPStan's `nullsafe.neverNull`), `??` with a
 left side that can't be null, `isset` on a never-null expression, casts that PHP rejects
 (`(int) object`), `clone` of a non-object, string offset on non-string, `yield` outside a
 generator-typed function, `$this` in a static context.
@@ -849,12 +856,17 @@ turned it into a test.
   destructuring of either and a by-reference argument that reads the offset all checked clean.
   `P2321` stands beside `P2313` as `P2009` "might not be defined" stands beside `P2008`: `P2313`
   is the offset no value of the type has, `P2321` one that some value may lack. It is reported
-  where PHPStan reports: a constant key, every value of the type a shape, and one of them with
-  the key optional, unsealed without it, or without it beside others that have it (that last
-  case was `P2313` on the shape that lacks it). It is not reported where a general array is
+  where PHPStan reports: a constant key, every array the type may be a shape, and one of them
+  with the key optional, unsealed without it, or without it beside others that have it (that
+  last case was `P2313` on the shape that lacks it). It is not reported where a general array is
   among the types, for an offset another variable names, inside `isset()` and `empty()`, on a
   write, or for a reference that creates the key. The read is typed as the entry, so the
-  missing guard is the one finding.
+  missing guard is the one finding. *Since 2026-11-17:* a type parameter bounded by a shape is
+  read as its bound, and a write into such a variable makes it the written shape, no longer
+  the parameter; an `ArrayAccess` beside the shapes is read by the key its `offsetSet()` takes
+  (it may hold any such key, so the shapes decide, and a key it does not take it has not),
+  while any other object beside them is `P2302` alone; a reference to an offset,
+  `$x = &$r['tags'][0]`, writes that offset only, and the arrays it is in are read.
   - *A test narrows the array, not a path.* A test of a constant offset, `isset()`,
     `!empty()`, `?? throw`, `!== null` or a type test, gives the array holding it the entry as
     present, its value narrowed, and so each array above it up to the variable or property,
