@@ -920,15 +920,19 @@ turned it into a test.
     and `array_merge()` collapse an argument that is a union of shapes into one, its keys
     optional where a shape lacks them. PHP numbers integer keys anew: a spread without a
     string key is a list, its last entries optional, and `array_merge()` is a list where
-    every argument has integer keys alone. An append after optional integer keys may land at
-    each number they leave open (`list{0: 1, 1?: 2}` and 3 is `list{0: 1, 1: 2|3, 2?: 3}`). A
+    every argument has integer keys alone. `+` and `array_replace()` keep the keys, and are
+    a list where every operand is one (a shape whose keys number its entries from 0 is, with
+    at most its last entry optional): the longer list's numbers follow the shorter's. An
+    append after optional integer keys may land at each number they leave open
+    (`list{0: 1, 1?: 2}` and 3 is `list{0: 1, 1: 2|3, 2?: 3}`). A
     write under a key of several literals outside a loop adds each as an optional key of
     every shape. A join keeps the union, which `P2321` reads as PHPStan reads the shape it
     merges them into.
 
     Joins double the shapes of an array. Below 4096 entries in all, sixteen times PHPStan's
-    `ARRAY_COUNT_LIMIT`, they stay as they are. Past it, a write first merges two shapes one
-    key tells apart into one where the key is optional, which loses nothing and is what
+    `ARRAY_COUNT_LIMIT`, they stay as they are. Past it, a write, an `unset()` of an offset
+    and an array `+` first merge two shapes one key tells apart into one where the key is
+    optional, which loses nothing and is what
     PHPStan's joins do as they go: ten independent `if ($c) { $o['k'] = …; }` are one shape
     with ten optional keys. Past it still, as after ten if/else that each write one of two
     keys, these steps follow in turn: shapes with the same keys and the same tags merge; each
@@ -937,7 +941,10 @@ turned it into a test.
     (`kind: 'a'`), and shapes of different tags stay apart until the last two steps. Those
     two lose what values of different keys said together; PHPStan has a general array there
     already, from 256 entries, and reads its offsets as benevolent unions, which the checker
-    has not.
+    has not. `+` pairs each shape of one operand with each of the other, so it bounds the
+    pairs as well: where they would pass the limit, each operand's shapes one key tells
+    apart merge first, and then each operand collapses into one shape, after which a tag no
+    longer tells an operand's shapes apart in the result (PHPStan loses it there too).
   - *A by-reference argument* reads the offset as PHPStan has it. A parameter of user code
     reads it where its declared PHP type takes no null, which is what PHP creates the missing
     key as: `int`, `array`, and not `mixed`, `?array` or no type. One of PHP's own reads it
