@@ -362,6 +362,11 @@ conformance corpus still parses; the checker is where "Phaenon mode" bites.
    run `phpstan analyse --level max --error-format json`, and assert that PHPStan's (line) set
    is covered by ours. Not the other way round: the checker may be stricter. Where PHPStan finds
    something we do not, the test fails and the case is either fixed or allowlisted with a reason.
+   Since roadmap D33 the other direction is held too: a line the checker flags and PHPStan does
+   not is a language rule (its code says so) or an extra check, which the corpus marks on its
+   line (`// want P2301 extra`). A line of neither kind fails the run, and so does a marked
+   one that PHPStan reports as well. The corpus is checked a second time with extra checks
+   off, where the marked findings must be gone and every other one must stay.
 6. **Dogfood**: `phn check` on `tequila/reflection` (`.phn`) and `tequila/object-mapper`
    (migrated on a branch) must report nothing; then a set of planted bugs must be caught.
 
@@ -962,7 +967,42 @@ turned it into a test.
   `offset-might-not-exist.phn` and `unset-offsets.phn` hold each case to PHPStan line by line.
   The six dogfood trees give the same findings before and after both.
 
+- **Extra checks are a kind of finding, with a switch** (2026-11-17, roadmap D33). The checker
+  reports three kinds of finding: language rules, parity findings and extra checks. The first
+  two are always reported. An extra check is a finding on code PHPStan accepts at level max
+  with `treatPhpDocTypesAsCertain: false`, on by default, off with `"extra-checks": false` in
+  `phaenon.json` or `--no-extra-checks` on `phn check`, `phn build` and `phn watch`.
+
+  - *What may be one.* A finding that is true and that PHPStan leaves out by choice or by
+    imprecision: the code can fail when it runs, or a declared type promises less than the
+    code relies on. The places this section already calls stricter than PHPStan are the first
+    members: a static method held to the docblock rule of overrides, a list shape that takes
+    no general array, the rows of `unset($rows[$k]['name'])`, the array an `is_int($a['id'])`
+    did not narrow. A finding that claims something false is a defect and is fixed, not
+    classified.
+  - *How a finding gets its kind.* By its code where the whole code is a language rule (the
+    `P1xxx` codes, the text and bytes rules, `throws`, the missing declared types), and at the
+    place it is reported otherwise: the same code, `P2301` or `P2103`, is a parity finding in
+    one place and an extra check in another. `--format=json` carries the kind, and the
+    language server passes it on.
+  - *What off promises.* That the findings marked extra are silent, and nothing about the
+    rest: the allow-list of PHPStan rules the checker lacks stays as it is, and a finding
+    PHPStan gains or loses in a later version moves between the kinds when the parity run
+    says so.
+  - *Releases.* A new extra check is a feature and comes in a minor release; closing a gap
+    against PHPStan stays a fix (roadmap D31).
+  - *An installed package* is checked with its own project file's setting; its findings are
+    warnings either way.
+
 ## 10. Open questions
+
+- **Which findings are extra checks** (roadmap D33). The inventory is what the parity run
+  prints today as the lines the checker flags and PHPStan does not; each is to be marked,
+  fixed as a false finding, or shown to be a language rule. Known members that cannot be told
+  from parity findings yet: an operator on a key read from an array whose key type was not
+  written (`$key + 1` under `foreach ($arr as $key => $v)` with `array<mixed>`), which
+  PHPStan passes as a benevolent union and the lattice reads as a plain `int|string`. Until
+  the lattice carries that, the finding is reported in both modes.
 
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
