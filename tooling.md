@@ -1587,8 +1587,9 @@ built where they are used.
   BuildKit's Composer cache mount between builds only where the Dockerfile has one; the
   template's has none, so each image build downloads it once at the dump (about 9 MB from
   the GitHub release). The binary lands under `vendor/phaenon/phn/bin/` as `phn-linux-<arch>`,
-  which follows from `require` (§3.1), and the vendor stage keeps it: the stage is also the `<service>-src` image in
-  which a composition build runs Composer, and the plugin compiles again at that dump. **The
+  which follows from `require` (§3.1), and the vendor stage keeps it: the stage is also the
+  `<service>-src` image in which a composition build runs Composer, and the plugin compiles
+  again at that dump. **The
   runtime images drop it** (since 2026-11-07): nothing in a running pod calls the compiler, the
   line maps are read by `phaenon/runtime`, plain PHP, so an intermediate stage removes the file
   (the directory `vendor/phaenon/phn/bin` since 0.8.0, where the file carries its platform's name)
