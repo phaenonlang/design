@@ -122,13 +122,81 @@ constant expressions (attribute arguments, parameter defaults, constants), besid
 A partial application is a `Closure(…): R`:
 - **Parameters:** the parameters its placeholders stand for, in PHP's order (positional
   placeholders first, then named ones in the order written, then what `...` leaves), with their
-  declared types.
+  declared types, the callee's type parameters replaced by the types chosen for them (below).
 - **Optionality:** a parameter is required when a `?` stands for it, and inherits its
   optionality when `...` stands for it.
-- **Return:** the called function's return type, with the type parameters the bound arguments
-  determine substituted. A type parameter that only a placeholder determines widens to its bound.
-  Phaenon closure types are not generic, so `array_map(?, $xs)` is
-  `Closure(Closure(T): mixed): list<mixed>` with `T` fixed by `$xs`.
+- **Return:** the called function's return type, with the same types.
+- **Type parameters** (2026-11-18; until then the bound arguments alone decided, as written,
+  so that `pick(?, 0)` with `pick<T>(T $a, T $b): T` was a `Closure(0 $a): 0`). Phaenon closure
+  types are not generic, so each type parameter of the callee is chosen when the closure is
+  created, from two sides that are joined:
+  - *The bound arguments*, as in a call. Where the closure's callers still give values of the
+    type parameter (a placeholder's parameter is a `T`, or holds one anywhere but among the
+    parameters of a callable), a literal written in a bound argument is read as its type:
+    `pick(?, 0)` is a `Closure(int $a): int`. A literal is a number (signed or not), a string,
+    `true` or `false`, an enum case written in place (read as the enum), the empty array `[]`
+    (read as `array<mixed>`, any array), a constant, and an array literal whose keys and
+    values are all literals (its entries read the same way). A constant is what it stands
+    for, found as any constant name is (the namespace's, by its full name, imported with
+    `use const`, or PHP's own by the global fallback): its declared type where it has one,
+    else the literal its declaration writes, and its own type where the declaration writes
+    none (`const SUM = 1 + 2` is `3`, as `1 + 2` is); one of PHP's own is a literal. `null` is
+    a type of its own and stays `null`. Everything else keeps the type it has: a variable
+    declared `'asc'|'desc'`, an `int<1, 12>`, a shape, the result of a call or of an operator.
+    A parameter left to its default binds as a bound argument does; one a placeholder stands
+    for, `?` or `...`, is the callers' to give and binds nothing, so `optZero(?, ?)` and
+    `optZero(?, ...)` with `optZero<T>(T $a, T $b = 0)` are closures of `mixed`, and
+    `optZero(?)` is a `Closure(int $a): int`.
+  - *The expected type*, where the application stands in a place that expects a callable type:
+    an argument of a call (a generic one too, whichever argument says what the closure
+    receives), a `return` against a declared type, an assignment to a typed property, a typed
+    constant, a parameter's default, an entry of a list, a shape or a tuple of such a type.
+    What that type gives each placeholder is taken as it is and joins what the bound
+    arguments said: `array_map(pick(?, 0), $names)` with a `list<string>` makes `T`
+    `int|string`, and `array_map(pick(?, 0), ['a', 'b'])` makes it `int|'a'|'b'`.
+
+  A literal is read as its type, and the join is made, unless that is what breaks the
+  program. The conditions are asked in this order, each over whole sets of type parameters,
+  so that the order of the arguments says nothing:
+  1. Each type parameter by itself keeps its literal as written where its type would leave
+     the bound (`T of 'asc'|'desc'`), where a bound argument the callee took would no longer
+     be taken or one bound by reference would be retyped (a `Box<T>` or a `Closure(T)` beside
+     the literal holds `T` as it is), and where the callers give nothing of it:
+     `first(['ada', 'bob'], ?)` returns one of the names, and the callback
+     `array_map(?, ['a', 'b'])` takes is given `'a'|'b'`. A bound argument that is refused as
+     written is no reason. A binding of `never` says nothing of what the callers give and is
+     dropped (`append([], ?)`).
+  2. The closures and partial applications among the bound arguments are typed, with the
+     type parameters as they are then: `fold(0, fn($v) => $v + 1, ?)` types `$v` an `int`.
+  3. What the place gives the placeholders joins, unless a bound argument, those of step 2
+     included, would no longer be taken: the closure then stays as the bound arguments made
+     it and is refused at the place (`put($box, ?)` with a `Box<'asc'|'desc'>` where a
+     `string` is to be given).
+  4. A literal is kept as written after all where the place refuses the closure with it
+     generalised and takes the closure with it as written: `takesDir(pick(?, 'asc'))` with a
+     `Closure('asc'|'desc'): 'asc'|'desc'` expected. Each generalised type parameter is asked
+     against the others as written. The place is also what the call the application is an
+     argument of is expected to return: `return array_map(pick(?, 'asc'), $dirs)` as a
+     `list<'asc'|'desc'>`, and the same written as a pipe,
+     `return $dirs |> array_map(pick(?, 'asc'), ?)`, whose last stage is given what is
+     expected of the pipe, as the call it becomes is. It looks one call up and no further.
+
+  Explicit type arguments win. A type parameter nothing determines is its bound (`mixed`
+  without one, with `P3010` where the result has it). Beyond step 4 the type the place says
+  the closure returns chooses nothing: the closure is checked against the expected type as
+  any value is. A join that leaves a bound (`T of Stringable` given a `string`) is `P3002`
+  at the application, never widened silently.
+
+  A first-class callable `f(...)` of a generic function keeps its type parameters open for
+  what receives it. A call it is passed to resolves them by its inference. A call of the
+  closure infers them from its arguments (`$h = pick(...); $h(1, 'a')` is `1|'a'`); given
+  another open closure it binds nothing, and the type parameter is its bound there, with
+  `P3010`. A place that expects a callable type that says what the closure receives chooses
+  them as a partial application's are, every parameter being a placeholder's, for the
+  expression and for a value from a variable alike: `takesTwo(pick(...))` with a
+  `Closure(string, float): mixed` expected makes `T` `float|string`, and what that leaves
+  undetermined is its bound. Explicit type arguments are applied. Whether a closure value
+  may be generic beyond this is open (issue #28).
 
 **In a pipe, a partial application is typed as the call it becomes.** `A |> f(B, ?, C)` is checked
 exactly as `f(B, A, C)`, so a generic `f` infers from `A` too, as the first-class callable
@@ -162,6 +230,24 @@ arguments (`pipe_optimization_009`).
 `$p` stands for the called function's parameter name (§3), and `T` for its declared type, written
 so that the closure rejects what the partial application would reject; a by-reference parameter
 keeps its `&`.
+
+*The type chosen is said in an inline `@var` (2026-11-18).* Where the type chosen for a
+parameter says more than PHP declares for it, a type PHP cannot write or the type chosen for a
+type parameter (`pick(?, 0)` declares `mixed` and takes an `int`), the closure is written as a
+block, `function (mixed $a) { /** @var int $a */ return pick($a, 0); }`. PHPStan reads a
+parameter's type nowhere else on a closure, and it types a closure from its own declaration
+when it infers a function's type parameters from it: without the `@var` it refuses a file whose
+source was accepted. The declared type stays what PHP checks, so the closure takes what the
+application takes on 8.6. A variadic parameter's `@var` is the array it is in the body,
+`array<int|string, T>`. An iterable type is written with its value type, `array<mixed>` for the
+array `[]` is read as: PHPStan reports the bare word. A type parameter of the function or class
+the closure is written in may be named. Two exceptions. No `@var` of an array type, a variadic
+parameter's included, is written in the callback of `array_map`, `array_filter`, `array_walk`,
+`array_find`, `array_find_key`, `array_any`, `array_all` and `preg_replace_callback`: PHPStan
+reads those callbacks' parameters from the other arguments itself (its five closure-type
+extensions, PHPStan 2.3) and refuses a `@var` of an array type that is not within what it read
+(`list<int>` beside the `array{1, 2}` of a literal argument). And none is ever written of
+`never`.
 
 *One kind of parameter loses its null (2026-11-16).* Where the null of a built-in's `?T $p = null`
 stands for the argument left out and PHP throws a TypeError when it is passed, `implode()` and
