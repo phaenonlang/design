@@ -342,9 +342,10 @@ Positions are 1-based line and column (bytes; the LSP layer converts to UTF-16 l
 
 Per `language-overview.md` §3, in Phaenon mode the checker rejects: `global`, `goto`/labels,
 `eval`, `extract`/`compact`, `$$var`, `${expr}` in strings, alternative control syntax, `var`,
-`(integer)`/`(boolean)`/`(double)`/`(real)`/`(binary)` casts and `(unset)`, `list()`, `include`/`require` *inside functions*
-(top-level `require` of a bootstrap file stays), `<?php`/`?>`/inline HTML (the parser already
-refuses these). Each P1 carries a fix-it. The **parser** keeps accepting them so the php-src
+`(integer)`/`(boolean)`/`(double)`/`(real)`/`(binary)` casts and `(unset)`, `list()`,
+`<?php`/`?>`/inline HTML (the parser already refuses these). Each P1 carries a fix-it.
+*`include`/`require` inside functions stood in this list until 2026-11-17 and was never refused;
+they stay (roadmap D32).* The **parser** keeps accepting them so the php-src
 conformance corpus still parses; the checker is where "Phaenon mode" bites.
 
 ## 8. Testing
@@ -988,6 +989,11 @@ turned it into a test.
   here. The write through a reference between two variables is seen since 2026-11-17 (§9);
   one through a reference to an offset, or through a closure's `use (&$a)`, is not, by PHPStan
   either.*
+- **What an included file does to the scope** (2026-11-17, roadmap D32). `include` and `require`
+  inside a function run the file in the function's scope: it reads and may write the local
+  variables. The checker types the function as if the statement touched none of them, so what
+  the file assigns or changes is not seen. A file that only returns a value, or declares
+  classes, is the common use and has no such effect.
 - **Keys a sealed shape does not name** (2026-11-15). A literal with a key more than the shape
   names is accepted where the shape is expected (§9), while reading that key from the shape is
   `P2313`. A shape somebody named is a contract in a way an ad-hoc docblock is not, and
