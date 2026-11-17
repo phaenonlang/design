@@ -994,6 +994,37 @@ turned it into a test.
   - *An installed package* is checked with its own project file's setting; its findings are
     warnings either way.
 
+- **A constant read through `static::` is its declared type** (2026-11-17). `static::X`,
+  `$this::X` and `$object::X` name the constant of the class the value has when the code runs,
+  which a subclass may override. Outside a final class (an enum is one) such a constant is its
+  declared type, the native one or its `@var`, and mixed without one, as PHPStan types it;
+  a final constant, an interface's included, `self::X` and `ClassName::X` are the value
+  written. Until then the value written in the class where the expression stood was read, so
+  `(static::FLAGS | 4) === 15` was "always false" in a class whose subclass made it true. A
+  private constant read through `static::` is mixed too: php gives a subclass's own value
+  there, or an error, and PHPStan reports the access itself
+  (`staticClassAccess.privateConstant`), a rule the checker does not have yet.
+- **A docblock's word for a type is a class name in a declaration** (2026-11-16 for
+  `integer`, `double` and `boolean`; 2026-11-17 for `scalar`, `numeric`, `number`, `noreturn`
+  and `resource`). Where a type reaches PHP as written (a parameter, a return, a property, a
+  constant), PHP reads these words as the names of classes, and every value fails the type.
+  There the word is the class or the type alias of that name that an import or the namespace
+  gives, in any letter case, and `P2001` where none does, with PHP's spelling of the type in
+  the message (`int|float|string|bool` for `scalar`, `never` for `noreturn`; PHP declares no
+  type for a resource). PHPStan reports the same as a class that does not exist. Where the
+  emitter writes the type into a docblock (a type argument, a closure's signature, a tuple,
+  an alias's right-hand side) the words are the types they mean, as PHPStan reads a docblock,
+  unless an alias or a class of the name is in scope, which wins there too (roadmap D29).
+- **A generic closure is refused until it is designed** (2026-11-17; `P1007`, design issue
+  #28). The parser reads `fn<T>(T $x): T => $x` and `function<T>(…)`, and `generics.md` gives
+  the closure's type parameters no meaning yet: the checker read the signature in the
+  enclosing scope, where `T` was a class of the namespace, and the body in the closure's own.
+  Such a closure is one finding at its type parameters, in every form the parser reads, and
+  nothing else follows from the parameters, in a type position or as a class's name
+  (`instanceof T`, `T::class`, `new T()`). `P1007` is a code for syntax whose meaning is not
+  designed yet; `P1001` stays the code of what was removed. A generic function or method, or
+  the closure with concrete types, says what such a closure could.
+
 ## 10. Open questions
 
 - **Which findings are extra checks** (roadmap D33). The inventory is what the parity run

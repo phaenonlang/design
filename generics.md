@@ -51,7 +51,7 @@ function first<T>(list<T> $items): ?T { ... }
 
 public function map<U>(Closure(T): U $fn): Collection<U> { ... }
 
-$id = fn<T>(T $x): T => $x;                              // generic closure (erased only)
+$id = fn<T>(T $x): T => $x;                              // generic closure: not available yet (P1007, issue #28)
 
 type UserMap = map<Uuid, User>;                          // type alias
 type Result<T, E of Throwable = RuntimeException> = Ok<T> | Err<E>;
