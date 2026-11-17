@@ -856,12 +856,13 @@ turned it into a test.
   destructuring of either and a by-reference argument that reads the offset all checked clean.
   `P2321` stands beside `P2313` as `P2009` "might not be defined" stands beside `P2008`: `P2313`
   is the offset no value of the type has, `P2321` one that some value may lack. It is reported
-  where PHPStan reports: a constant key, every array the type may be a shape, and one of them
-  with the key optional, unsealed without it, or without it beside others that have it (that
-  last case was `P2313` on the shape that lacks it). It is not reported where a general array is
-  among the types, for an offset another variable names, inside `isset()` and `empty()`, on a
-  write, or for a reference that creates the key. The read is typed as the entry, so the
-  missing guard is the one finding. *Since 2026-11-17:* a type parameter bounded by a shape is
+  where PHPStan reports: a constant key or a key of a few literals, every array the type may
+  be a shape, and one of them with the key optional, unsealed without it, or without it beside
+  others that have it (that last case was `P2313` on the shape that lacks it). It is not
+  reported where a general array is among the types, for an offset another variable names
+  unless its type is a union of literals, for a key taken from the array itself, inside
+  `isset()` and `empty()`, on a write, or for a reference that creates the key. The read is
+  typed as the entry, so the missing guard is the one finding. *Since 2026-11-17:* a type parameter bounded by a shape is
   read as its bound, and a write into such a variable makes it the written shape, no longer
   the parameter; an `ArrayAccess` beside the shapes is read by the key its `offsetSet()` takes
   (it may hold any such key, so the shapes decide, and a key it does not take it has not),
@@ -894,17 +895,61 @@ turned it into a test.
     `$n` is then not null), `match` and `switch` over a test or over `count()`, `count()`
     covering every entry of a positional shape, a non-empty shape whose one entry is optional,
     what a closure captures and what `array_filter()`'s callback proved.
+  - *A key of a few literals reads the entries it may name* (2026-11-17). `$r[$k]` with `$k`
+    typed `'a'|'c'` is `P2321` where one of the entries may be missing and `P2313` where none
+    exists, as for a single key; `true`, `false` and a float literal are the int PHP stores
+    them under. A key taken from the array itself is one it has, in the forms PHPStan follows:
+    `foreach (array_keys($r) as $k)` with the call written as the iterable,
+    `$k = array_key_first($r)` or `array_key_last($r)` (at once where the array cannot be empty,
+    else where `$k` is not null), `array_search()` where the result is not false,
+    `array_find_key()` where it is not null, `array_rand()` on an array that cannot be empty,
+    and `$r[array_key_first($r)]` on a variable that cannot be empty. A variable holding
+    `array_keys()` is not followed, nor an assignment a condition compares with null, as
+    PHPStan follows neither. `array_key_exists($k, $r)` with such a key says the array has
+    one of the keys, and `isset($r[$k])` narrows the offset as written as well as each
+    literal's.
+  - *A change takes out of a remembered test what it makes stale, and no more* (2026-11-17).
+    `$ok = isset($a['k']) && $x !== null;` followed by `sort($a)`, `$a['j'] = 5`,
+    `unset($a['j'])` or `unset($a)` dropped everything `$ok` implied, so `$x->m()` under
+    `if ($ok)` was a false `P2105`. The change removes the paths and variables it changes from
+    the test and keeps what the test says of the others; a join keeps what both sides still
+    say. This holds for every narrowing remembered through a variable, not only offsets.
+  - *An array a loop, a spread, `array_merge()` or a write under a key of a few literals builds
+    keeps its shapes* (2026-11-17). A loop keeps every key a shape of the array has. A spread
+    and `array_merge()` collapse an argument that is a union of shapes into one, its keys
+    optional where a shape lacks them. PHP numbers integer keys anew: a spread without a
+    string key is a list, its last entries optional, and `array_merge()` is a list where
+    every argument has integer keys alone. An append after optional integer keys may land at
+    each number they leave open (`list{0: 1, 1?: 2}` and 3 is `list{0: 1, 1: 2|3, 2?: 3}`). A
+    write under a key of several literals outside a loop adds each as an optional key of
+    every shape. A join keeps the union, which `P2321` reads as PHPStan reads the shape it
+    merges them into.
+
+    Joins double the shapes of an array. Below 4096 entries in all, sixteen times PHPStan's
+    `ARRAY_COUNT_LIMIT`, they stay as they are. Past it, a write first merges two shapes one
+    key tells apart into one where the key is optional, which loses nothing and is what
+    PHPStan's joins do as they go: ten independent `if ($c) { $o['k'] = …; }` are one shape
+    with ten optional keys. Past it still, as after ten if/else that each write one of two
+    keys, these steps follow in turn: shapes with the same keys and the same tags merge; each
+    tag's shapes collapse into one; all of them collapse into one; and only a shape past the
+    limit itself becomes a general array. A tag is a key every shape has as one constant
+    (`kind: 'a'`), and shapes of different tags stay apart until the last two steps. Those
+    two lose what values of different keys said together; PHPStan has a general array there
+    already, from 256 entries, and reads its offsets as benevolent unions, which the checker
+    has not.
   - *A by-reference argument* reads the offset as PHPStan has it. A parameter of user code
     reads it where its declared PHP type takes no null, which is what PHP creates the missing
     key as: `int`, `array`, and not `mixed`, `?array` or no type. One of PHP's own reads it
     where PHPStan's function map has it read and written (`sort()`, `reset()`) or not by
     reference at all (`array_multisort()`); every other creates the key (`preg_match()`'s
     `$matches`, `parse_str()`'s `$result`). The table is derived from the function map.
-  - *Where PHPStan reports and the checker is still silent*, as before the change: an array
-    built in a loop, a ternary or a spread, which PHPStan types as one shape with an optional
-    key and the checker as a general array or a union; a key typed as a union of literals,
-    `true` or `1.0`. (`extract()` is a removed construct, `P1001`, and a reference between two
-    variables is followed since 2026-11-17, above.)
+  - *Where PHPStan reports and the checker is still silent*: a `foreach` over a literal list
+    writing under its value as key, which PHPStan runs once for each entry; a key the lattice
+    holds as an integer range (`$c ? 1 : 2` is `int<1, 2>`); a key whose union holds a member
+    that is no literal (`'a'|'c'|int`); an enum's backing value as a key; a positional item
+    after the spread of a shape with optional integer entries (`[...$a, 9]`). (`extract()` is
+    a removed construct, `P1001`, and a reference between two variables is followed since
+    2026-11-17, above.)
 
   `offset-might-not-exist.phn` and `unset-offsets.phn` hold each case to PHPStan line by line.
   The six dogfood trees give the same findings before and after both.
