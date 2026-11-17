@@ -76,7 +76,9 @@ Decisions proposed with the table:
 
 - **`map`'s key bound is `int|string`**, implicit: `map<K, V>` without a bound on `K` in a
   generic declaration means `K of int|string`; `map<bool, V>` is a type error (`P2518`). PHP
-  would cast the key; Phaenon refuses the type. `array-key` stays docblock vocabulary and is
+  would cast the key; Phaenon refuses the type. The map is then read with the key PHP stores
+  (`0|1` for a bool, an int for a float, `''` for null, as PHPStan reads `array<bool, V>`), so
+  that `P2518` is its one finding (2026-11-17). `array-key` stays docblock vocabulary and is
   written `int|string` when a key type is meant generically (generics.md §11.2).
 - **A key whose type is known to be numeric is an int key** (2026-11-01, checker.md §9): PHP
   stores `'42'` as `42`, so a literal integer string, a `decimal-int-string` (what `(string)` of
