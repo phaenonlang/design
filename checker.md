@@ -45,7 +45,12 @@ stdlib/php-src/     copy of php-src *.stub.php (+ its LICENSE), embedded with go
 
 Pipeline for one `phn check`:
 
-1. **Discover** project files: the paths given (`.phn`, walked) — the *checked set*.
+1. **Discover** project files: the paths given (`.phn`, walked) — the *checked set*. Since
+   0.8.0 a plain `.php` file under a root is in it too, checked as PHP, for `phn check` and
+   `phn build` alike (one collector feeds both, `phn watch` and the language server). Left out:
+   the outputs, a `.php` that stands beside a `.phn` of the same name, and a file under an
+   `exclude`d path, which the build copies without reading. An installed package's plain `.php`
+   is read for what it declares and not reported on.
 2. **Declare**: parse every checked file; collect declarations into `program.Program`. Nothing
    else is parsed yet.
 3. **Resolve on demand**: a class, function or constant referenced from a checked file that is not
@@ -396,7 +401,21 @@ turned it into a test.
 - **One mistake, one diagnostic.** An expression already reported (undefined variable, unknown
   function) has the error type, which is accepted everywhere.
 - **`@phpstan-ignore` is honoured** (next line, or the same line when trailing), so a migrated
-  project keeps its existing suppressions; `@phaenon-ignore` is the native spelling.
+  project keeps its existing suppressions: it silences every finding of its line whatever
+  identifiers it names, and is never reported, since no table maps PHPStan's identifiers to
+  Phaenon's codes. `@phaenon-ignore` is the native spelling, and it **names the codes it
+  silences** (since 0.8.0): `@phaenon-ignore P2103, P2202 (reason)` silences those codes on
+  its line, or on the next when it stands alone, and no other; the codes run to the first
+  word that is none. `@phaenon-ignore-line` and `@phaenon-ignore-next-line` silence every
+  finding of the line. A native comment that silences nothing is the warning `P4015`, as
+  PHPStan reports its own (`ignore.unmatchedIdentifier`, `ignore.unmatchedLine`): once for
+  each named code that is not reported on the line, once for a whole-line form on a line
+  without findings, once for a comment that names no code. A comment is held only to the
+  codes the run reports: `phn build`, which reports no deprecations, does not judge a comment
+  for one, nor the whole-line forms; `phn check` judges every comment of a checked file.
+  Nothing silences `P4015` itself, or a stale suppression could hide behind another. A tag
+  counts where it starts the comment's text or follows a space or the comment's marks. Until
+  0.8.0 either spelling silenced its whole line and nothing reported a stale one.
 - **The overlay patches, it does not redeclare.** An overlay class merges into the stub or
   vendor class of the same name: its docblocks and the methods it lists win, the rest stays.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
