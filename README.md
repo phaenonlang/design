@@ -6,7 +6,7 @@ building it. The compiler, `phn`, is
 [phaenonlang/phaenon](https://github.com/phaenonlang/phaenon); the playground and the downloads
 are on [phaenon.dev](https://phaenon.dev).
 
-Pre-alpha. Markdown only: there is nothing to build or test here.
+Alpha (roadmap D31). Markdown only: there is nothing to build or test here.
 
 ## How to read it
 
