@@ -137,8 +137,11 @@ the VS Code extension as a `.vsix`.
   hold the plugin alone too, so a release also publishes the whole tree as `phn-X.Y.Z-src.tar.gz`;
   `go install …@vX.Y.Z` is unaffected (Go ignores `export-ignore` in module zips).
 - **It provides `vendor/bin/phn`.** This is a small PHP launcher that runs the binary and passes
-  through the arguments, the standard streams and the exit status. If the binary is missing on first
-  use (after an install with `--no-plugins`), the launcher fetches it the way the plugin would.
+  through the arguments, the standard streams and the exit status. It runs the binary of the
+  platform it runs on; if that one is missing (after an install with `--no-plugins`, or in a
+  `vendor/` installed on another platform), the launcher fetches it the way the plugin would. Where
+  the binary's directory can be neither created nor written, as in a runtime image that leaves the
+  compiler out, it says so and exits with 127.
 - **It requires `phaenon/runtime` at the same minor version** (§3.4). *Not since T16 (2026-11-08):
   the plugin requires no package and suggests `phaenon/debug`.*
 - **It goes in `require`, not `require-dev`.** The production build (`composer install --no-dev`)
@@ -157,7 +160,10 @@ the VS Code extension as a `.vsix`.
   - It downloads the asset for the running platform through Composer's own HTTP client, which
     honours its `auth.json`, proxies and TLS settings.
   - It keeps the asset in Composer's cache directory and verifies it before every use.
-  - It installs it into `vendor/phaenon/phn/bin/`.
+  - It installs it into `vendor/phaenon/phn/bin/` under the asset's own name (`phn-linux-arm64`),
+    so that the binaries of the platforms that share one `vendor/`, a macOS host and a Linux
+    container, stand side by side (since 0.8.0; one file `phn` before, which the platform that
+    installed last owned).
   - A checksum mismatch fails the install.
 - **Builds are reproducible**: `-trimpath`, the Go toolchain pinned in `go.mod`, no VCS stamping, and
   the version set by the linker. So the checksums can be known before the tag:
@@ -209,7 +215,11 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
 - **The plugin builds when Composer writes the autoloader.**
   1. It subscribes to `pre-autoload-dump`.
   2. It builds every installed package that has a `phaenon.json`, then the root project if it has
-     one.
+     one. Without dev mode (`install --no-dev`, and a `dump-autoload` that keeps that mode) the
+     root project's development roots are left out, with a line that names them
+     (`phn build --no-dev`): a root is one when `composer.json` maps its output directory under
+     `autoload-dev` and not under `autoload`. Tests name PHPUnit, which such an install leaves
+     out, and would fail the build.
   3. Composer then writes the autoloader over outputs that exist, `--classmap-authoritative`
      included.
 
@@ -1576,11 +1586,13 @@ built where they are used.
 - **The base images need no change.** The binary arrives with `composer install`. It stays in
   BuildKit's Composer cache mount between builds only where the Dockerfile has one; the
   template's has none, so each image build downloads it once at the dump (about 9 MB from
-  the GitHub release). The binary lands under `vendor/phaenon/phn/bin/`, which follows from
-  `require` (§3.1), and the vendor stage keeps it: the stage is also the `<service>-src` image in
-  which a composition build runs Composer, and the plugin compiles again at that dump. **The
+  the GitHub release). The binary lands under `vendor/phaenon/phn/bin/` as `phn-linux-<arch>`,
+  which follows from `require` (§3.1), and the vendor stage keeps it: the stage is also the
+  `<service>-src` image in which a composition build runs Composer, and the plugin compiles
+  again at that dump. **The
   runtime images drop it** (since 2026-11-07): nothing in a running pod calls the compiler, the
   line maps are read by `phaenon/runtime`, plain PHP, so an intermediate stage removes the file
+  (the directory `vendor/phaenon/phn/bin` since 0.8.0, where the file carries its platform's name)
   and the api and worker stages copy that tree, several MB fewer per pull and one executable fewer
   for a scanner to ask about. A stage of its own, because a file deleted after a `COPY` stays in
   the copied layer.
