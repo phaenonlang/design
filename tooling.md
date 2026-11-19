@@ -2145,7 +2145,7 @@ the same. A project that wants the stricter check names, in `phaenon.json`, the 
 mark reflected properties:
 
 ```json
-{"roots": {"src": ".src"}, "unused": {"reflectedAttributes": ["Doctrine\\ORM\\Mapping\\MappingAttribute"]}}
+{"roots": {"src": ".src"}, "unused": {"reflected-attributes": ["Doctrine\\ORM\\Mapping\\MappingAttribute"]}}
 ```
 
 - **Matching.** An attribute exempts a property when its class is a listed class, or extends or
@@ -2178,7 +2178,9 @@ results:
     paths the tree's PHPStan analyses.
   - With the exemption, `phn check`'s output is byte for byte what it was before.
   - Core's check still takes about a second, using 3% more memory.
-- `unused.reflectedAttributes` narrows the exemption as described above. The goldens cover the
+- `unused.reflected-attributes` narrows the exemption as described above (written
+  `reflectedAttributes` until 0.8.0; that spelling is read, with the warning `P4016`, until the
+  first beta: roadmap D34). The goldens cover the
   missing key (`unused-attributes.phn`), the empty list (`unused-attributes-strict.phn`) and a
   list that names an interface (`unused-attributes-listed.phn`). No dogfood tree sets it.
 
