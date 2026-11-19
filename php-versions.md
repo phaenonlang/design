@@ -103,6 +103,22 @@ The deprecations, each a checker diagnostic in the deprecation group:
 Library deprecations (`is_double()`, `spl_object_hash()`, the CSV methods of `SplFileObject`, …)
 come from the stubs' `#[\Deprecated]`.
 
+What the floor itself deprecates in code is reported too (since 0.8.0), since compiled code runs
+on PHP 8.5 at least: the backtick operator, a `case` or `default` ended by `;`, and `null` as an
+array offset (read, written, in `isset`, `empty`, `??`, as a literal's key or a destructuring
+key; not in `unset()`, not on an `ArrayAccess` object, not on a string). Each is `P1101`, a
+warning.
+
+The step of a string is not in the group. `++` or `--` of an operand that is, or may be, a
+string that is no number is an error, `P2301`, at the step, whatever the deprecation switch
+says: php deprecates it (`--` and the step of a string that is not alphanumeric since 8.3,
+the alphanumeric `++` since 8.5), and PHPStan reports it as an error. The message names the
+release where the operand's literals tell it, and `str_increment()` or `str_decrement()` where
+that function takes the value. The operand keeps its type, so nothing follows from the one
+mistake. A numeric string steps as the number it is (`'5'` to 6, a `numeric-string` to
+`int|float`); what follows from that type is stricter than PHPStan, which passes a stepped
+numeric string wherever any of int, float and string is taken.
+
 ## 5. Partial function application
 
 ### 5.1 Syntax

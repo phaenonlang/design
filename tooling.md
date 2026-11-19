@@ -1194,7 +1194,7 @@ writes the outputs after each save, as `phn build` would:
   other files' declarations — a parent's signature for the override-erasure rule, a called
   function's parameters for a partial application lowered for 8.5 — so building one file alone
   would be wrong.
-- **Files with errors are withheld** (D10).
+- **Files with errors are withheld** (D10); a plain `.php` whose copy is withheld counts among them.
 
 So a PHPUnit run from the IDE, or a FrankenPHP worker in dev, sees the source that was just saved.
 
