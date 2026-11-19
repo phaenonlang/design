@@ -340,8 +340,9 @@ src/ObjectMapper.php:41:24: error P2104: argument 1 of Tequila\Reflection\Reflec
 
 Positions are 1-based line and column (bytes; the LSP layer converts to UTF-16 later). `phn check
 --json` emits one object per diagnostic (`file`, `line`, `col`, `endLine`, `endCol`, `severity`,
-`code`, `message`, `fix` when present). Messages name types in PHPStan vocabulary and members as
-`Class::member()`; they never mention internal node names.
+`code`, `message`, and last `kind`, why the finding is reported: `"language"`, `"parity"` or
+`"extra"`, §9). Messages name types in PHPStan vocabulary and members as `Class::member()`; they
+never mention internal node names.
 
 ## 7. Removed constructs (P1)
 
@@ -357,21 +358,41 @@ conformance corpus still parses; the checker is where "Phaenon mode" bites.
 
 1. **Golden corpus** `internal/checker/testdata/*.phn` — one file per feature; expected
    diagnostics as trailing comments on the offending line: `// want P2104` (optionally with a
-   message substring). A test runs every file and demands an exact match of (line, code) sets.
+   message substring). A test runs every file and demands an exact match of the (line, code,
+   kind) sets, the kind being whether the finding is an extra check, which its line marks after
+   the code (`// want P2301 extra`, `// want P2103 extra "substring"`). It runs each file a
+   second time with extra checks off, where the marked findings must be gone and every other
+   one must stay, word for word and in its place.
    Vendor fixtures live under `testdata/vendor/` with a hand-written `autoload_psr4.php`.
 2. **Type printing / subtyping tables** in `internal/types` — unit tests over pairs.
 3. **Docblock grammar** — a corpus of PHPStan type strings → canonical printing, plus error cases.
 4. **Stub loading** — every embedded stub parses; a few hundred well-known signatures are asserted
    (`strlen`, `array_map`, `ReflectionClass::newInstance`).
-5. **PHPStan parity** (opt-in, `PHAENON_PHPSTAN=/path/to/phpstan`): for each golden file, write it as `.php`,
-   run `phpstan analyse --level max --error-format json`, and assert that PHPStan's (line) set
-   is covered by ours. Not the other way round: the checker may be stricter. Where PHPStan finds
-   something we do not, the test fails and the case is either fixed or allowlisted with a reason.
-   Since roadmap D33 the other direction is held too: a line the checker flags and PHPStan does
-   not is a language rule (its code says so) or an extra check, which the corpus marks on its
-   line (`// want P2301 extra`). A line of neither kind fails the run, and so does a marked
-   one that PHPStan reports as well. The corpus is checked a second time with extra checks
-   off, where the marked findings must be gone and every other one must stay.
+5. **PHPStan parity** (opt-in, `PHAENON_PHPSTAN=/path/to/phpstan`): for each golden file,
+   compile it, run `phpstan analyse --level max --error-format json` on the output, its lines
+   read through the line map, and assert that PHPStan's (line) set is covered by ours. *Until
+   2026-11-19 a file of plain PHP was written as `.php` and read as it stood; a parity finding
+   is one the output draws (roadmap D33), and the output is not the source read as PHP where the
+   emitter rewrites plain PHP, as it does an overriding method's native types (generics.md
+   §4.3).* Not the other way round: the checker may be stricter. Where PHPStan finds something
+   we do not, the test fails and the case is either fixed or allowlisted with a reason. Since
+   roadmap D33 the other direction is held too: a finding the corpus expects on a line PHPStan
+   does not flag is a language rule (its code says so), or an extra check, which the corpus
+   marks on its line (`// want P2301 extra`), or one of the findings the run's own table names,
+   by file, code and line, with the reason it stands unmarked: an extra check by what it says,
+   which the place that reports it cannot prove to be one (§9, §10), what PHP itself refuses,
+   something of the source that the emitter rewrites, an artifact of PHPStan's line or version,
+   a false finding waiting for its fix. Any other fails the run, and so do an entry of the table
+   whose line has no such finding, and a line whose findings are all marked extra that PHPStan
+   reports as well. Where PHPStan reports such a line only under an identifier the allow-list
+   has, the line is named in a table of its own with that identifier, and one that is not named
+   fails the run. That PHP refuses a line is not taken on the entry's word: the run loads the
+   compiled file under php, again without each declaration php stopped at, and php has to refuse
+   that file for that line, or throw there when code the table names is run. A line PHPStan
+   reports only under an identifier the allow-list names for the file, or for that line of it,
+   is PHPStan's in this direction. The files with syntax only Phaenon has, which the run
+   otherwise leaves to the emitter's goldens, are compiled and held to the last rule where they
+   carry marks. The second check of the corpus, with extra checks off, is item 1's.
 6. **Dogfood**: `phn check` on `tequila/reflection` (`.phn`) and `tequila/object-mapper`
    (migrated on a branch) must report nothing; then a set of planted bugs must be caught.
 
@@ -413,6 +434,9 @@ turned it into a test.
   without findings, once for a comment that names no code. A comment is held only to the
   codes the run reports: `phn build`, which reports no deprecations, does not judge a comment
   for one, nor the whole-line forms; `phn check` judges every comment of a checked file.
+  The extra checks a run leaves out are the exception: they are found in both modes and left
+  out when the check ends, so a comment is held to them with the switch off too (below,
+  *What off promises*).
   Nothing silences `P4015` itself, or a stale suppression could hide behind another. A tag
   counts where it starts the comment's text or follows a space or the comment's marks. Until
   0.8.0 either spelling silenced its whole line and nothing reported a stale one.
@@ -988,26 +1012,189 @@ turned it into a test.
 
 - **Extra checks are a kind of finding, with a switch** (2026-11-17, roadmap D33). The checker
   reports three kinds of finding: language rules, parity findings and extra checks. The first
-  two are always reported. An extra check is a finding on code PHPStan accepts at level max
-  with `treatPhpDocTypesAsCertain: false`, on by default, off with `"extra-checks": false` in
-  `phaenon.json` or `--no-extra-checks` on `phn check`, `phn build` and `phn watch`.
+  two are always reported. A parity finding is one the compiled output draws without Phaenon:
+  PHP refuses the code, or PHPStan reports it. An extra check is a finding PHPStan does not
+  make at level max with `treatPhpDocTypesAsCertain: false`, on by default, off with
+  `"extra-checks": false` in `phaenon.json` or `--no-extra-checks` on `phn check`,
+  `phn build` and `phn watch`.
 
   - *What may be one.* A finding that is true and that PHPStan leaves out by choice or by
-    imprecision: the code can fail when it runs, or a declared type promises less than the
-    code relies on. The places this section already calls stricter than PHPStan are the first
-    members: a static method held to the docblock rule of overrides, a list shape that takes
-    no general array, the rows of `unset($rows[$k]['name'])`, the array an `is_int($a['id'])`
-    did not narrow. A finding that claims something false is a defect and is fixed, not
-    classified.
-  - *How a finding gets its kind.* By its code where the whole code is a language rule (the
-    `P1xxx` codes, the text and bytes rules, `throws`, the missing declared types), and at the
-    place it is reported otherwise: the same code, `P2301` or `P2103`, is a parity finding in
-    one place and an extra check in another. `--format=json` carries the kind, and the
-    language server passes it on.
+    imprecision: the code can fail when it runs, or a declared type promises less than the code
+    relies on. It is a finding PHPStan does not make of that code, which is not the same as a
+    line PHPStan is silent on: a rule of PHPStan's that the checker deliberately lacks (the
+    allow-list of §8) may speak on the line of an extra check about something else, as
+    `return.unusedType` does on a static method whose documented return type the extra check is
+    about. The parity run names each such line with the identifier. The members, each tagged
+    where it is reported, with the rule PHPStan judges the place by:
+    - `**` on a string, which throws for a string that is no number; PHPStan reports the other
+      arithmetic operators on `string`, and this one (`binaryOp.invalid`) only on a string it
+      knows the value of, an array, a class or a `mixed`. The string is an untouched parameter
+      typed by PHP alone (below), a `string` with or without int, float and null beside it,
+      and the other operand is a number written out, an untouched parameter declared an int
+      or a float, or another such string: PHPStan reports the expression once for both
+      operands;
+    - a static method held to the docblock rule of overrides, where the native types the
+      source writes fit as PHP compares them: `false` and `true` apart from `bool`, a parameter
+      nullable by its default of `null`, a missing return type fitting no declared one.
+      PHPStan's `method.childParameterType` and `method.childReturnType` are not applied to the
+      documented types of static methods at level max;
+    - a list shape that takes no general array, and a tuple that takes no longer one, where a
+      value is held to a declared type and PHPStan judges the place by the acceptance of the
+      value's type: an argument (`argument.type`), a return (`return.type`), a yield
+      (`generator.keyType`, `generator.valueType`), an assignment to a property
+      (`assign.propertyType`), the default of a property (`property.defaultValue`) and of a
+      parameter (`parameter.defaultValue`), a constant (`classConstant.value`), and the body of
+      an arrow function, which PHPStan holds to the function's own return type or, without
+      one, to the place the closure is given. The value is an untouched parameter or a
+      literal, and the two rules are told by comparing a second time as PHPStan compares
+      array shapes. The assignment of an offset is no such place: PHPStan has a rule of its
+      own there (`offsetAssign.valueType`), which refuses the general array that an argument
+      takes for the same list shape, and the finding stays a parity finding;
+    - a power or a sum of integers given directly as an argument, or returned, where the
+      value the checker computes does not fit the declared type and PHPStan's wider type does
+      (a float where an int is declared): PHPStan types a power of two ints as a benevolent
+      union of int and float and a sum as an int, and computes the value only where both
+      operands are known values. One operand is an untouched parameter typed by PHP alone, of
+      which PHPStan knows no value, and the other an int written out or an untouched
+      parameter. An inline `@var` over a returned expression gives the type itself, and the
+      expression under it tags nothing.
+
+    Of the other places this section calls stricter than PHPStan, the rows of
+    `unset($rows[$k]['name'])` are an extra check by what they say that cannot be marked yet
+    (§10), and the array an `is_int($a['id'])` did not narrow is none: that call cannot fail,
+    so the finding is a false one. A finding that claims something false is a defect and is
+    fixed, not classified. An extra check ends nothing that could find a parity finding: a
+    static method that draws one against its parent class is still compared with its
+    interfaces, and native types that are apart there are reported beside it.
+  - *What proves one* (2026-11-19). An extra check is a claim that PHPStan makes no such
+    finding of the code and php runs it, and the place that reports it has to prove the claim.
+    Where the checker cannot, the finding is a parity finding and stays with the switch off: a
+    doubt costs a line in the parity run's table (§8), never a finding the switch hides. Two
+    things are no proof. The checker's type of a value, because PHPStan knows more wherever
+    the lattice has let go: it folds a call on constants (`strtolower('ABC')` is `'abc'`,
+    `count([1, 2, 3])` is 3), reads a constant's value (`PHP_EOL`, `__FUNCTION__`), and keeps
+    forty literals apart where the lattice has an `int` or a `string`. **A range never counts
+    by its type**: the lattice writes a union of consecutive values as a range, and PHPStan
+    computes with each of a hundred and thirty of them. And what the checker has followed of
+    a variable through its function. A mark carried from the function's entry and dropped at
+    a write, a narrowing, a condition, a call was built first, and each review found one more
+    way by which PHPStan learns of a value that the flow did not model (an assertion tag an
+    interface declares for the method called, a condition kept with another variable, an
+    assignment under an inline `@var`, a variable written through `$$name`), while comparing
+    the marks at a loop's head made nested loops with `continue` exponential. A list of
+    positions in which the function may read the parameter, however often, was built second,
+    and failed on what such a list cannot see: PHPStan remembers what it was told of an
+    *expression* as it does of a variable, so that after `assert(is_float($i ** -1))`, or
+    `$ok = is_float($i ** -1); if ($ok)`, a second `$i ** -1` is a float to it and no
+    benevolent union. Every one of these needs a second place where the variable, or an
+    expression that holds it, is seen. The proof is therefore **the only occurrence**, by the
+    syntax of the function alone, computed once and conservative by construction:
+    - a declaration compared with a declaration, where no value is involved: the static
+      method's rule;
+    - a literal, which both read alike;
+    - an **untouched parameter**: the read the finding is about is its only occurrence in the
+      body of its function. Three things hold then. *The type comes from this one
+      declaration*: a method that any class, interface or trait of its hierarchy also declares
+      is left out, a constructor included, and so is a trait's own method, because PHPStan
+      inherits a docblock by more routes than the checker follows (a trait's abstract method,
+      an interface where the body comes from a trait, a parent's constructor) and the rule
+      does not chase them; a closure's or an arrow function's parameter, which PHPStan types
+      from where the closure is passed; a promoted, a variadic and a by-reference parameter;
+      one the docblock names more than once (`@param` beside `@phpstan-param`). *The text of
+      the body holds `$name` once*, and that occurrence is a read in one of the places below:
+      a docblock above a statement, a comment, a closure's `use` and a nested parameter of
+      the name are occurrences too. *The body has nothing that writes a variable without
+      naming it*: `$$name`, `extract()`, `compact()`, `get_defined_vars()`, `parse_str()`,
+      `eval`, `include` and `require`, `goto`. Where the claim is that PHPStan knows no value,
+      the parameter is also **typed by PHP alone**: its docblock does not so much as name it,
+      since a native type names no set of values and a docblock may list them. A default
+      changes nothing: PHPStan does not take it for the value. A finding over two variables
+      (`$i ** $j`, `$s ** $t`) needs each to be untouched, so `$s ** $s` is none.
+
+    *Where the one occurrence may stand.* The list is default-deny: a place is on it because
+    PHPStan was given the function with the finding there and was silent on the line.
+    - An operand of an arithmetic operator (`+ - * / % **`, unary `+` and `-`) or of `.`, and
+      a part of an interpolated string, wherever the result stands that is no condition: an
+      argument (of a callee with an assertion tag too), the right-hand side of an assignment,
+      the value of a compound assignment, an element of an array literal.
+    - What a `return`, an `echo` or a `print` gives, and the body of an arrow function, the
+      variable alone or as an element of an array literal there; what a `yield` gives, the
+      variable alone.
+    - The whole right-hand side of a plain assignment to a property, instance or static.
+    - An argument of a call, the variable alone, **outside every loop**. PHPStan judges an
+      argument before it applies the callee's assertion tags and before the type a parameter
+      taken by reference leaves in the variable, so the one occurrence is judged by its
+      declared type. In a loop PHPStan's second pass sees what the parameter by reference
+      left, and reports the argument; the checker cannot know from the call that there is
+      such a parameter.
+    - Around any of these: a statement under a condition that does not hold the variable, a
+      loop, a `try` with its `catch` and `finally`, a branch of a ternary, an arm of a
+      `match`, a generator.
+
+    Off the list: a target of any assignment, `++`, a reference, `unset`, `global`, `static`,
+    a `foreach`, a `catch`; the variable in an array literal that is an argument; any place in
+    a condition or in what narrows (`if`, `while`, `for`, `switch`, the subject and the
+    conditions of a `match`, the condition of `?:`, `??`, `&&`, `||`, a comparison,
+    `instanceof`, `isset`, `empty`, `assert`); the right-hand side of an assignment to a
+    variable; an offset or a member of it, a cast, a bitwise operator; a closure. Some of
+    these were run and PHPStan was silent (a cast, a condition); they stay off, since no
+    finding the checker makes needs them.
+
+    The rule costs every function that names the parameter twice: `echo $s ** 2; echo $s **
+    3;` are two parity findings, which the parity run's table names. A wider rule would have
+    to keep apart, by syntax, every two occurrences that stand in structurally equal
+    expressions or one inside the other, and to show by runs that PHPStan remembers nothing
+    else; it is not built.
+
+    The places that may report an extra check are listed in the compiler, each with the proof
+    it rests on and the PHPStan rule above, and a test fails for a place that is not listed.
+    A place PHPStan judges by a rule of its own is no place for an extra check until that
+    rule has been run with the values in question.
+  - *An override whose native types are apart* (2026-11-19) is a parity finding, static or
+    not, and no extra check. PHP would refuse the types as written. Compiled, they are
+    rewritten until they fit where one type can (generics.md §4.3: `(): iterable` over
+    `(): array` to `array`, `array $x` under `iterable $x` to `iterable`, under a parameter
+    without a type to `mixed`), so the output has no such signature for php or PHPStan to
+    refuse; where no rewriting helps (a missing return type, `bool` for `false`), both refuse
+    it still. What PHPStan reports of a rewritten one is the body the new signature refuses,
+    on the line of its `return`, or nothing where the body happens to fit both. The checker
+    holds the body to the types the source writes, so the finding is all that stands before a
+    compiled method whose signature its body breaks, and nothing at the report proves that
+    the body fits. It is a finding about the source: reported in both modes, and named by its
+    line in the parity run's table where PHPStan passes the output. `#[\Override]` on a
+    constant or an enum case that no parent declares is the same kind of finding: compiled for
+    8.5, which knows the attribute on methods and properties only, the emitter leaves it out
+    there and php loads the file; compiled for 8.6 it is PHP's compile error.
+  - *How a finding gets its kind.* By its code where the whole code is a language rule: the
+    `P1xxx`, `P3xxx` and `P4xxx` codes, and of the `P2xxx` an unused import (PHPStan sees the
+    import and has no rule for it, and nothing can fail: a warning of Phaenon's own), a type
+    alias that mentions itself, the codes of `throws` and `nothrow`, the missing declared
+    types, a map key that is no int or string, bytes used as text. A table beside the codes
+    lists them, and a test holds it complete. At the place it is reported otherwise, through
+    one entry point for a parity finding and another for an extra check: the same code, `P2301`
+    or `P2103`, is a parity finding in one place and an extra check in another. A finding only
+    Phaenon's source can draw under such a code, as bytes given for text under `P2103`, is a
+    parity finding by kind, which changes nothing about when it is reported. `--format=json`
+    carries the kind as its last member, `"kind"`, a JSON string: `"language"`, `"parity"` or
+    `"extra"`. The language server gives each diagnostic the same word as `data.kind`. The
+    text, GitHub and Checkstyle formats do not carry it.
   - *What off promises.* That the findings marked extra are silent, and nothing about the
     rest: the allow-list of PHPStan rules the checker lacks stays as it is, and a finding
     PHPStan gains or loses in a later version moves between the kinds when the parity run
-    says so.
+    says so. Silent is whole: no line, no count, no part in the exit status, and a file whose
+    only findings they were is built. The extra checks are found in both modes and left out
+    when the check ends, not where they are found, so that a check with the switch off is the
+    check with it on, less its extra checks. An ignore comment is therefore held to them in
+    both modes: a `@phaenon-ignore` that silences an extra check has something to silence, and
+    is no unused comment (`P4015`) while they are off; one that names a code nothing draws on
+    its line is `P4015` either way. This is where the extra checks differ from the
+    deprecations a run leaves out: those the run does not look for, and holds no comment to
+    them.
+  - *Who reads the switch.* `--no-extra-checks` is taken by `phn check`, `phn build` and
+    `phn watch`, and wins over the file for the run. `phn lsp`, `phn fix` and `phn fmt` go by
+    the project file; they and the commands that report no findings refuse the flag, as
+    `phn build --vendor` does. `phn migrate` checks with the defaults, and the playground,
+    which has no project file, has the extra checks on.
   - *Releases.* A new extra check is a feature and comes in a minor release; closing a gap
     against PHPStan stays a fix (roadmap D31).
   - *An installed package* is checked with its own project file's setting; its findings are
@@ -1046,13 +1233,41 @@ turned it into a test.
 
 ## 10. Open questions
 
-- **Which findings are extra checks** (roadmap D33). The inventory is what the parity run
-  prints today as the lines the checker flags and PHPStan does not; each is to be marked,
-  fixed as a false finding, or shown to be a language rule. Known members that cannot be told
-  from parity findings yet: an operator on a key read from an array whose key type was not
-  written (`$key + 1` under `foreach ($arr as $key => $v)` with `array<mixed>`), which
-  PHPStan passes as a benevolent union and the lattice reads as a plain `int|string`. Until
-  the lattice carries that, the finding is reported in both modes.
+- **Which findings are extra checks** (roadmap D33). The inventory was what the parity run
+  found as the lines the checker flags and PHPStan does not; each is now a language rule by
+  its code, marked as an extra check, or named in the run's table with its reason (§8). What
+  stays open are the true findings above PHPStan that cannot be marked where they are
+  reported, because nothing there proves that PHPStan has nothing to say (§9, *What proves
+  one*): the difference lies in a type inferred statements earlier, and the finding is drawn
+  by the ordinary check of an argument, a return or a receiver, which cannot see where the
+  type came from; or the value is one of which PHPStan may know more than the checker. They
+  are reported in both modes. The families known:
+  - an operator on a key read from an array whose key type was not written (`$key + 1` under
+    `foreach ($arr as $key => $v)` with `array<mixed>`), which PHPStan passes as a benevolent
+    union and the lattice reads as a plain `int|string`;
+  - a function map's benevolent union kept in a variable, where PHPStan keeps it benevolent;
+  - a string cast of a key that is an int key all the same, which PHPStan reads as a string
+    key;
+  - arithmetic, `**` on a string and the two rules of array shapes on a value that is no
+    untouched parameter and no literal (§9, *What proves one*): a local, a range the docblock
+    declares, a parameter its function names more than once, a closure's parameter, a method's
+    parameter where another declaration of its hierarchy exists. PHPStan passes most of them,
+    and the checker cannot tell which: the lattice writes a union of consecutive values as a
+    range and widens a long one to int, and PHPStan computes with both;
+  - a longer tuple assigned to an offset, which PHPStan's own rule for that place passes
+    while it refuses the general array;
+  - the step of a string that PHPStan has as a benevolent union: a key of
+    `array<array-key, V>`, and a numeric string once it is stepped;
+  - a narrowing PHPStan makes by a function's short name, where a namespace has a function of
+    its own under it;
+  - what a static call forgets of `$this`;
+  - the rows after `unset($rows[$k]['name'])`;
+  - a Traversable class read as the iterable its `@implements` says, where PHPStan reads its
+    `getIterator()`.
+
+  To tell them, a type would have to carry where it came from. The run's table names those
+  the corpus has, beside what the emitter rewrites of the source (§9) and the false findings
+  that wait for their fix.
 
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
@@ -1074,7 +1289,9 @@ turned it into a test.
 - **What a test proves of an offset** (2026-11-15). After `isset($a['id'])` and
   `is_int($a['id'])`, PHPStan's type of `$a` is `array<string, mixed>&hasOffsetValue('id',
   int)`, which passes for `array{id: int}`. The checker narrows the offset (`$a['id']` is an
-  `int`) and not the array, so the call is reported: stricter than PHPStan, which §9 allows.
+  `int`) and not the array, so the call is reported: stricter than PHPStan, which §9 allowed
+  when this was written. By roadmap D33 it is no extra check: the call cannot fail, so the
+  finding is a false one, reported in both modes until it is fixed.
   None of the dogfood trees holds such a call. A reading built on 2026-11-15, which wrote what the
   environment knew of the offsets into the array's type where the array is held to a declared
   one, was set aside: it gained nothing on the dogfood, and it accepted what PHPStan reports
