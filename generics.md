@@ -167,7 +167,16 @@ followed by `(`**. Otherwise it backtracks and parses a comparison. Consequences
 
 - `T of X` — X may be any Phaenon type (class, interface, union, `object`, scalar).
   Unbounded means `T of mixed`.
-- Members accessible on a `T`-typed value are those of the bound.
+- Members accessible on a `T`-typed value are those of the bound, its offsets included. A write
+  into a value of `T of array<string, int>`, `T of list<int>` or `T of Row` is a write into the
+  bound, and what the variable holds afterwards is the array written, no longer `T`: the caller's
+  `T` may be narrower than the bound (`array{a: 5}`). Held to `T` then (returned, yielded, given
+  as an argument, assigned to a property) it is a finding that names the write and, for a
+  return, the bound to declare instead. This holds for every write, `unset()` and a `foreach` by
+  reference included, and is stricter than PHPStan 2.3, which keeps `T` after a general array is
+  written under a key in one straight line. A write a member of the bound refuses (the `int` of
+  `T of int|array<string, int>`) is that finding alone and leaves the value `T`. A
+  `T of ArrayAccess<K, V>` is an object: `offsetSet()` takes the value, and it stays `T`.
 - Bounds may reference other parameters (`K of array-key, V of Entity<K>`), but not cyclically.
 
 ### 3.3 Variance
