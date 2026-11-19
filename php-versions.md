@@ -175,7 +175,9 @@ A partial application is a `Closure(…): R`:
   program. The conditions are asked in this order, each over whole sets of type parameters,
   so that the order of the arguments says nothing:
   1. Each type parameter by itself keeps its literal as written where its type would leave
-     the bound (`T of 'asc'|'desc'`), where a bound argument the callee took would no longer
+     the bound (a PHP function's `@template T of 'asc'|'desc'`: Phaenon's own syntax writes
+     no literal type in a bound, and refuses one with `P1000`), where a bound argument the
+     callee took would no longer
      be taken or one bound by reference would be retyped (a `Box<T>` or a `Closure(T)` beside
      the literal holds `T` as it is), and where the callers give nothing of it:
      `first(['ada', 'bob'], ?)` returns one of the names, and the callback
