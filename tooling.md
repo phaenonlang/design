@@ -263,6 +263,16 @@ when first run; `phaenon/phn` fetches at install time and pins what it fetches. 
   one), and a root its dist archive leaves out (`tests/`) is skipped.
 - **The root project's build can be turned off** with `extra.phaenon.build: false`, for a project
   whose own workflow builds it (Q4).
+- **`PHN_BUILD=0` builds nothing, for one run** (since 0.8.0). The binary and the autoload maps
+  are installed and neither the packages nor the project are built, so that CI can run
+  `vendor/bin/phn check --format=github` on a tree whose build would fail, before a
+  `composer dump-autoload` builds it. A project build that fails ends by saying that
+  `vendor/bin/phn` is installed, that `vendor/bin/phn check` shows the findings, and that
+  `PHN_BUILD=0` installs without building; the hint is left out where phn could not start.
+- **A project file that names no roots is not built** (since 0.8.0). `phn migrate --php` writes
+  a `phaenon.json` that states the target alone (`php-versions.md` §9), and the project's build
+  has nothing to build from it: the plugin says so in one line and still builds the installed
+  packages. Before, every `composer dump-autoload` failed there.
 - **An installed package's committed roots are not built** (D28, 2026-11-10). The roots its
   `phaenon.json` lists under `committed` are left as installed, with no stamp; §3.7 says what that
   means for each rule above. The root project is built as before, whatever it commits. *One thing

@@ -145,7 +145,14 @@ fails when a copy differs.
   `in file.php on line 42` / `file.php on line 42`, PHPStan's `--error-format=raw`. `--root
   /app=.` maps a production path prefix to the local checkout. `vendor/bin/phpunit | phn trace`
   and pasting a production trace both work. Since M6 it reads CI's formats too: GitHub workflow
-  commands, and Checkstyle, JUnit, Clover and Cobertura reports (`tooling.md` §7.1).
+  commands, and Checkstyle, JUnit, Clover and Cobertura reports (`tooling.md` §7.1). The pipe
+  form always exits with 0, so a failing suite passes a CI step unless the shell sets
+  `pipefail`; `phn trace -- vendor/bin/phpunit` (since 0.8.0) runs the command itself, rewrites
+  its standard output and its standard error line by line, each to phn's stream of the same
+  name, and exits with the command's status as a shell gives it. The two streams come through
+  two pipes, so the order between them is not kept exactly. An interrupt, a quit or a hangup
+  reaches the command from the terminal's process group and is not passed on a second time; a
+  termination sent to phn alone is passed on after a second.
 - **The PHPStan parity test** and **the conformance execution suite** translate the lines they
   observe through the map instead of requiring identical lines, which makes the conformance
   corpus a large test of the map itself.
