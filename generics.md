@@ -189,6 +189,11 @@ Local, bidirectional, no global Hindley–Milner:
 2. **From the expected type** (contextual typing, like TS) — `/** @var Collection<User> */`-free:
    `$c: Collection<User> = Collection::empty();` infers `T = User` from the declared variable type,
    return type, or parameter type at the use site.
+   A partial application and a first-class callable are the exception: what is expected of
+   them is a closure type, which says what their open parameters will receive and joins what
+   the bound arguments determine. The callee's return type is not unified with it; the closure
+   is checked against it once the type parameters are chosen, and only a literal written in a
+   bound argument yields to it (`php-versions.md` §5.2).
 3. **From the bound / default** when nothing else constrains T.
 4. Otherwise: for erased T, infer `mixed` with warning `P3010: type argument not inferable`
    (built 2026-11-07, §11);
