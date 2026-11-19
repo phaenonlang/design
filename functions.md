@@ -156,9 +156,11 @@ rewrites.
 ### 2.1 What PHP allows
 
 PHP 8.5 ("closures in constant expressions") admits closures in attribute arguments, constant
-initializers, property and parameter defaults, enum case values and `static` variable
-initializers — but only `static function` closures and first-class callables. Verified on
-PHP 8.5.3:
+initializers, property and parameter defaults and enum case values — but only `static function`
+closures and first-class callables. A `static` variable's initializer is no constant expression:
+since PHP 8.3 it is evaluated when the declaration is first reached, in the function's scope, so
+any closure stands there, an arrow function capturing what it reads and a closure with `use` and
+`$this`; Phaenon checks and compiles it as written. Verified on PHP 8.5.3:
 
 ```php
 #[Map(static function (int $x): int { return $x * 2; })]   // works
@@ -193,7 +195,7 @@ final class Config
 - The closure may not use `$this` or a `use (…)` clause: PHP rejects both in a constant
   expression (a closure there is static and captures nothing). The checker reports `P2531`
   (closure in a constant expression captures its scope) where PHP would fail at compile time;
-  a variable the closure does not declare is already `P2101` undefined, since the enclosing
+  a variable the closure does not declare is already `P2008` undefined, since the enclosing
   scope has none.
 - Line preservation: `fn` becomes `static function` and `=>` becomes `{ return` on their own
   lines; `; }` is appended after the body's last token.
