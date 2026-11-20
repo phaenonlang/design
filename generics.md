@@ -169,6 +169,19 @@ followed by `(`**. Otherwise it backtracks and parses a comparison. Consequences
   Unbounded means `T of mixed`.
 - Members accessible on a `T`-typed value are those of the bound.
 - Bounds may reference other parameters (`K of array-key, V of Entity<K>`), but not cyclically.
+- *2026-11-20:* A test narrows a value of `T` in its bound, and the value stays a `T`. What a
+  test takes away leaves the parameter with a narrower bound: `T of list<int>` after
+  `!is_int($a)` under `T of list<int>|int`, `T of Row` after `$a !== null` under `T of ?Row`. A
+  type the value is found to be narrows a bound of several types the same way (`T of int`
+  after `is_int($a)`), and makes a meet of a bound of one type: `T&Row` after
+  `$a instanceof Row` under `T of object`, `T&int` under a `T` without a bound. Either is a `T`
+  where one is expected (returned, given as an argument, in `list<T>`), and has the members
+  and offsets of what it is known to be. In an invariant position, `Box<T>`, the parameter
+  with a narrower bound is the parameter and the meet is not, as PHPStan has it. A few tests
+  leave a type without the parameter, where PHPStan loses it: an array bound found identical
+  to a constant array, `is_array()` on a `T of iterable<V>`, identity with `true` under a
+  bound of several types. `checker.md` §9, "A narrowed type parameter is the parameter still",
+  has the table, the reasons and what is left open.
 
 ### 3.3 Variance
 
