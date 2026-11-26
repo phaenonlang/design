@@ -1424,6 +1424,19 @@ turned it into a test.
     `@param-out` in the overlay (§10). Moving an array's pointer, `array_walk()` with a
     callback that takes the value by value and `array_multisort()` write nothing held to the
     tag.
+  - *Inherited* (2026-11-26). A by-reference parameter whose own docblock has no `@param-out`
+    takes the tag of the method it overrides, as PHPStan merges one docblock into another:
+    from one declaration, the one PHPStan takes the docblock from (the first that has a
+    docblock, its own or an inherited one, of the method in the parent's table, then of the
+    class's immediate interfaces, then an abstract trait method), so that a parent whose
+    docblock lacks the tag passes on none though an interface beside it has one; tag by tag,
+    a docblock of the override's own keeping the tag of a parameter it does not document with
+    `@param-out`; by position, a renamed parameter taking the tag and the subject of a
+    conditional type renamed with it (a constructor's by name); the parent's type parameters
+    mapped through `@extends` and `@implements`. The override's body is held to the inherited
+    tag, the finding naming the declaration whose docblock has it, and a call through the
+    override reads the tag's type. How `@param` is inherited does not change. A trait's body
+    is held to the trait's own tags alone (§10).
   The corpus file is `param-out-body.phn`, each form held to PHPStan in both directions; the
   parity run names the lines where PHPStan reports the value passed in for a statement every
   way out of which writes the parameter. None of the dogfood trees documents `@param-out`.
@@ -1471,14 +1484,20 @@ turned it into a test.
   that wait for their fix.
 
 - **`@param-out`** (2026-11-26). The body is held to the tag (§9). The checker is still more
-  lenient than PHPStan in three places. A function of PHP's own that writes its by-reference
+  lenient than PHPStan in these places. A function of PHP's own that writes its by-reference
   argument and has no `@param-out` in the overlay hands the parameter over unchecked, where
   PHPStan types what it writes: `parse_str()`, `similar_text()`, `shuffle()`,
   `array_splice()`, `array_walk()` with a callback that takes the value by reference,
   `stream_socket_client()`, `flock()` and the `openssl_*` functions; the way out is an overlay
-  tag for each, from the types PHPStan's function map gives them. An override does not
-  inherit its parent's tag. And a by-reference parameter without a tag is not held to its
-  declared type (`parameterByRef.type`).
+  tag for each, from the types PHPStan's function map gives them. A trait's body is not held
+  to a tag that a class using the trait inherits (§9, *Inherited*): PHPStan checks the body
+  in the context of each such class and reports a write that breaks that class's tag, while
+  the checker checks a trait's body once, as the trait, where `$this`, `static` and the
+  users' properties are the trait's, and held to a user's tag that one reading reported code
+  PHPStan passes (`$out = clone $this` under a user's `@param-out Copyable`). A tag that
+  names a template of the parent's method reads `mixed` at a call through the override,
+  where PHPStan reads the argument's type. And a by-reference parameter without a tag is not
+  held to its declared type (`parameterByRef.type`).
 
 - **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
   checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
