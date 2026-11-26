@@ -276,7 +276,7 @@ files behave identically (680 tests that observe line numbers are not run — se
   emitter's lowering, `phaenon/concurrent` and the amp and Revolt declarations go; the design
   stays as the specification for PHP core's scheduler, when it has one.
 
-### PHP 8.6 — the first release milestone (started 2026-11-02)
+### PHP 8.6 — the first release milestone — ✅ done 2026-11-20
 - Design: `php-versions.md`: the target (D17), lowering or refusing what is newer than it, partial
   function application typed and lowered, pipe diagnostics, readonly defaults, `#[\Override]` on
   constants, the 8.6 deprecations, a library that knows each symbol's version, and `is` kept a
@@ -288,9 +288,12 @@ files behave identically (680 tests that observe line numbers are not run — se
   application in the checker and the emitter; the plugin.
 - Target: before PHP 8.6's release (2026-11-19). The Tequila trees stay on target 8.5 and
   exercise the lowering; tq-cli also builds with `"php": "8.6"` and its suite runs on PHP 8.6.
-- Closes on PHP 8.6.0's release day, once the plugin handles the 8.6 syntax:
-  - `stdlib/constants.php` regenerated from the released build;
-  - the conformance suites run once more against it.
+- Closed on 2026-11-20, the day after PHP 8.6.0's release (2026-11-19), with the plugin handling
+  the 8.6 syntax since its 0.6.1:
+  - `stdlib/constants.php` regenerated from a build of the release tarball;
+  - the conformance suites run once more against it, over the release's own `.phpt` files: the
+    lexer, parser and printer at 100% as under 8.6.0-dev, the execution suites, the emitter's
+    8.6 goldens and the PHPStan parity run passing.
 
 ### M6 — Tooling and distribution — ✅ done 2026-11-07
 - Before the first slice: D20, the method syntax removed and `phn migrate` writing pipes.
