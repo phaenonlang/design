@@ -1384,6 +1384,40 @@ turned it into a test.
     one finding added on a line PHPStan passes came from a reader the prototype had not
     adapted, a method looked up on each class of a bound that is an intersection. The six
     Tequila trees report what they did.
+- **A division and a power are typed as PHPStan types them** (2026-11-26). A division or a
+  power with a float operand is a float, as PHP computes it: `$f / 2` and `(float) $a / $b`
+  were `int|float`, refused wherever an int is not coerced to a float. Of two plain ints,
+  `$a / $b` and `$a ** $b` are PHPStan's *benevolent* `int|float`, which the lattice now marks
+  and messages write `(int|float)`. Until then `$a ** $b` was an `int`, which no float the
+  power may be was held against, and `$a / $b` an ordinary `int|float`, refused where an int
+  is declared though PHPStan passes it.
+  - *Accepted where one of its members is*: as an argument, a return, a property, and among
+    the values of an array or a shape, each such union decided where the comparison reaches
+    it. Not inside a class's type argument, which PHPStan holds as a template. *Held as an
+    ordinary union where a type is held*, as a `@param-out` is.
+  - *Where the mark goes* is PHPStan's. It stays through `+`, `-`, `*`, `**`, unary minus
+    and the steps, beside a literal, a range or another such union; a division of it by a
+    plain int, or of a plain int by it, is ordinary (`$total / $users / $days`). Where two
+    ways meet and one holds an ordinary `int|float`, the union is ordinary. It stays through
+    a template, a callback's return and a read through a reference, and a type parameter
+    bounded by `int` or `float` is inferred as the member its bound takes.
+  - *Written to a property PHP declares `int` or `float`*, the value is remembered as that
+    member, as PHPStan remembers it. So that this draws no "always false", a type test of a
+    property or an offset the function itself wrote or narrowed reports nothing until a call
+    may have changed it, which is PHPStan's rule for any expression whose type its scope
+    holds (`ImpossibleCheckTypeHelper::isSpecified`), and not about arithmetic alone.
+  - *`abs()`, `pow()` and `array_sum()`* follow: the absolute value of the argument's type;
+    a power as `**`; the sum of the values of an array written out, with `0` for one that may
+    be empty.
+  - *Where the checker differs.* It computes with no range, so a plain int divided by a
+    literal or a range is an ordinary union here and benevolent in PHPStan (stricter). The
+    other way it is more lenient, and known: where both operands are plain ints to the
+    checker and ranges to PHPStan, as the results of `time()` and `mb_strlen()` are, the
+    division is benevolent here and ordinary there; the way out is the ranges in the overlay.
+    A power with an exponent certainly below zero, and an int to a float exponent, stay the
+    float PHP computes. And an object passed to a function keeps what the flow knew of its
+    properties, where PHPStan forgets it, so a type test after such a call is not reported
+    (§10).
 - **A function's body is held to its `@param-out` types** (2026-11-26; `P2213`). A by-reference
   parameter documented `@param-out T` is held to `T` inside its own function or method, as
   PHPStan holds it (`paramOut.type`); until then the checker read the tag at a call alone, as
@@ -1414,6 +1448,14 @@ turned it into a test.
   way out of which writes the parameter. None of the dogfood trees documents `@param-out`.
 
 ## 10. Open questions
+
+- **An object passed to a call keeps what was known of its properties** (2026-11-26).
+  After `$o->s = 'x'; mutate($o);` the checker still has `$o->s` as `'x'`, and
+  `$o->s === 'y'` is `P2305`, "always false", though `mutate()` may have written it; PHPStan
+  forgets the properties of an argument, as it forgets `$this`'s after a method call, which
+  the checker does too. A false finding in ordinary code, and since a type test of a written
+  property reports nothing (§9, "A division and a power …"), also a leniency: `is_string($o->s)`
+  after such a call is reported by PHPStan and not here.
 
 - **Which findings are extra checks** (roadmap D33). The inventory was what the parity run
   found as the lines the checker flags and PHPStan does not; each is now a language rule by
