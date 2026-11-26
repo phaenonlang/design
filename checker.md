@@ -1364,6 +1364,34 @@ turned it into a test.
     one finding added on a line PHPStan passes came from a reader the prototype had not
     adapted, a method looked up on each class of a bound that is an intersection. The six
     Tequila trees report what they did.
+- **A function's body is held to its `@param-out` types** (2026-11-26; `P2213`). A by-reference
+  parameter documented `@param-out T` is held to `T` inside its own function or method, as
+  PHPStan holds it (`paramOut.type`); until then the checker read the tag at a call alone, as
+  the type the argument holds afterwards.
+  - *Every write must leave a `T`*, and is reported where it is made: an assignment, compound
+    or by reference, a write to an offset and an `unset()` of one, a destructuring, a
+    `foreach`, a step, and an argument passed by reference to a callee that writes it. A sort
+    of PHP's own that keeps the keys writes the array back as PHPStan types it, a list
+    becoming an array of `int<0, max>` keys. A write into a value of a type parameter bounded
+    by an array leaves the array written (`generics.md` §3.2), so an append to a `T of
+    list<int>` documented `@param-out T` is reported: the tag to write is the bound.
+  - *Where the body ends*, a parameter that may still hold the value it was passed must hold a
+    `T`. The places are PHPStan's: the last statement, or, when that is an `if`, the last
+    statement of each branch, and the `if` itself when it has no `else`. A statement after
+    which the body cannot go on, a `switch`, a `try` or a loop whose every way returns, is
+    held at the returns inside it, and what a `finally` block writes counts at each of them.
+    A parameter written on every way to the end is not checked there again: one mistake, one
+    finding.
+  - *Not held*, because PHPStan does not hold them: a `return` before the last statement
+    anywhere else, and the bodies of closures and arrow functions.
+  - *Handed over unchecked*: a parameter a reference is taken to, or that is `static` or
+    `global`, and one passed to a function of PHP's own that writes it and has no
+    `@param-out` in the overlay (§10). Moving an array's pointer, `array_walk()` with a
+    callback that takes the value by value and `array_multisort()` write nothing held to the
+    tag.
+  The corpus file is `param-out-body.phn`, each form held to PHPStan in both directions; the
+  parity run names the lines where PHPStan reports the value passed in for a statement every
+  way out of which writes the parameter. None of the dogfood trees documents `@param-out`.
 
 ## 10. Open questions
 
@@ -1407,12 +1435,15 @@ turned it into a test.
   the corpus has, beside what the emitter rewrites of the source (§9) and the false findings
   that wait for their fix.
 
-- **`@param-out`** (2026-11-20). The checker reads the tag at a call, as the type the argument
-  holds afterwards, and holds the function's body to nothing: a `T of list<int>` given by
-  reference, appended to and documented `@param-out T` passes, where PHPStan reports what the
-  parameter holds at the exit (`paramOut.type`). Until the body is held to the tag at each exit
-  the checker is more lenient than PHPStan there; none of the dogfood trees documents
-  `@param-out`.
+- **`@param-out`** (2026-11-26). The body is held to the tag (§9). The checker is still more
+  lenient than PHPStan in three places. A function of PHP's own that writes its by-reference
+  argument and has no `@param-out` in the overlay hands the parameter over unchecked, where
+  PHPStan types what it writes: `parse_str()`, `similar_text()`, `shuffle()`,
+  `array_splice()`, `array_walk()` with a callback that takes the value by reference,
+  `stream_socket_client()`, `flock()` and the `openssl_*` functions; the way out is an overlay
+  tag for each, from the types PHPStan's function map gives them. An override does not
+  inherit its parent's tag. And a by-reference parameter without a tag is not held to its
+  declared type (`parameterByRef.type`).
 
 - **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
   checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
