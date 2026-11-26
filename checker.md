@@ -437,9 +437,14 @@ turned it into a test.
   The extra checks a run leaves out are the exception: they are found in both modes and left
   out when the check ends, so a comment is held to them with the switch off too (below,
   *What off promises*).
-  Nothing silences `P4015` itself, or a stale suppression could hide behind another. A tag
-  counts where it starts the comment's text or follows a space or the comment's marks. Until
-  0.8.0 either spelling silenced its whole line and nothing reported a stale one.
+  Nothing silences `P4015` itself, or a stale suppression could hide behind another. Nor does
+  any comment silence Phaenon's syntax, `P1000` to `P1007` (since 0.8.0): a comment accepts a
+  finding about what code does, and does not make other text Phaenon. Silenced, such a finding
+  let the build fail on the file all the same with a less clear message, or write the text as
+  it stood, `(integer)` or a construct the target cannot run. A native comment that names one
+  of these codes is `P4015`; PHP's deprecations (`P1101`) stay silenceable, since the code
+  runs. A tag counts where it starts the comment's text or follows a space or the comment's
+  marks. Until 0.8.0 either spelling silenced its whole line and nothing reported a stale one.
 - **The overlay patches, it does not redeclare.** An overlay class merges into the stub or
   vendor class of the same name: its docblocks and the methods it lists win, the rest stays.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
