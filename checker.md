@@ -484,6 +484,16 @@ turned it into a test.
   that a docblock or Phaenon's syntax alone narrows, and a native type the erased
   declaration admits though its type argument does not (`get(): string` under `Box<int>`,
   whose compiled `get(): mixed` it fits).
+  **A finding about code that throws only when it runs stays a comment's to accept**
+  (2026-11-27): a constant that refers to itself (`P2016`), a named argument that overwrites
+  another (`P2010`), a by-reference argument that is no variable (`P2112`, `P2114`). PHP
+  compiles and loads such a file, and the compiled code does what the source says, so
+  neither reason above holds: the comment accepts what the code does, which is what a
+  comment is for. Nor is there a line to draw around them. Most findings about types say
+  that a line throws when it runs, a `TypeError` under `strict_types`, and marking some of
+  them would be a list kept by hand. A mark could not be held to php either: a refusal is
+  shown by compiling the file or loading it (`TestRefusedByPHP`), while these throw only
+  where the line is reached.
 - **The overlay patches, it does not redeclare.** An overlay class merges into the stub or
   vendor class of the same name: its docblocks and the methods it lists win, the rest stays.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
