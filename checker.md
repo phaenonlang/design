@@ -449,6 +449,26 @@ turned it into a test.
   of these codes is `P4015`; PHP's deprecations (`P1101`) stay silenceable, since the code
   runs. A tag counts where it starts the comment's text or follows a space or the comment's
   marks. Until 0.8.0 either spelling silenced its whole line and nothing reported a stale one.
+  **Nor does any comment silence a finding about code PHP refuses as compiled** (2026-11-26):
+  a compile error, or a fatal error when the file is loaded and its classes are declared or
+  linked. Silenced, a method narrower than the one it overrides (`P2502`) was written into a
+  class php refuses to link, and the compiled file did not run at all. The mark is made
+  finding by finding, and only where the checker knows for certain that PHP refuses the code:
+  a silenced finding about code php runs costs nothing, while a mark on one fails a build
+  that loads. So a finding is compared as the compiled file writes both sides, a type
+  parameter erased to its bound: `P2502` of a native signature is marked and that of a
+  docblock alone is not, `P2204` under a native `void` and not under `@return void`. A rule
+  PHP checks when it links a class is marked only for a class php links whenever it loads the
+  file: one declared at the top of its file with nothing but declarations before it, whose
+  parents, interfaces and traits are all known as the target's PHP declares them. A class
+  after another top-level statement, one declared under a condition, an anonymous class and
+  one with an ancestor the checker does not know are left to php, and their findings stay
+  silenceable. An erased type parameter used as a value (`P3003`) is silenced by no comment
+  either: `new T()`, `T::class` and `instanceof T` compile to PHP that never does what the
+  source says. A native comment that names the code of such a finding on its line is `P4015`
+  and says which of the two it is; `@phpstan-ignore` and the whole-line forms go on silencing
+  the line's other findings. Every mark of the checker corpus is held to php, which must
+  refuse the compiled code for the reason the code names (`TestRefusedByPHP`).
 - **The overlay patches, it does not redeclare.** An overlay class merges into the stub or
   vendor class of the same name: its docblocks and the methods it lists win, the rest stays.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
