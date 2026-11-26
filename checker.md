@@ -1259,9 +1259,10 @@ turned it into a test.
   (`instanceof T`, `T::class`, `new T()`). `P1007` is a code for syntax whose meaning is not
   designed yet; `P1001` stays the code of what was removed. A generic function or method, or
   the closure with concrete types, says what such a closure could.
-- **A narrowed type parameter is the parameter still** (2026-11-20; `generics.md` §3.2). A test
-  does not change a value, so a value of `T` that a test narrowed is a value of `T`. Before this
-  rule the checker made an intersection of it, `T&int`, `T&Row`, `T&null`, which was no `T`
+- **A narrowed type parameter is the parameter still** (2026-11-20; `generics.md` §3.2; not
+  built yet, §10). A test does not change a value, so a value of `T` that a test narrowed is a
+  value of `T`. Before this rule the checker made an intersection of it, `T&int`, `T&Row`,
+  `T&null`, which was no `T`
   where one was expected: a false `P2202` at a `return $a` and a false `P2103` at an argument
   after `is_int($a)`, `$a instanceof Row` or `$a === null`. It took nothing away from a
   parameter either: after `!is_int($a)` under `T of list<int>|int` the value was the whole `T`,
@@ -1465,15 +1466,18 @@ turned it into a test.
   inherit its parent's tag. And a by-reference parameter without a tag is not held to its
   declared type (`parameterByRef.type`).
 
-- **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
-  checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
-  it neither takes for a `T` nor subtracts from (`!is_int()` under `T of list<int>|int` leaves
-  the whole `T`), while PHPStan keeps such a value a `T` with a narrower bound, which is a `T`
-  where one is expected and inside invariant generics such as `Box<T>`. PHPStan narrows so only
-  where the template itself is tested, and drops `T` where a constant value or a constant array
-  is compared identical to one, so the design has to say which narrowings keep the parameter,
-  and the lattice needs "`T` with a narrower bound" rather than an intersection, before the
-  checker can follow it in either direction.
+- **A narrowed type parameter: decided, and not built** (2026-11-20; rewritten 2026-11-26).
+  §9, "A narrowed type parameter is the parameter still", says which test keeps the parameter
+  and in which of three forms (`T`, `T of int`, `T&Row`), so what was asked here is answered.
+  The checker does not follow the rule yet. In 0.8.0 a value of `T` that a test narrowed is
+  still an intersection (`T&int`, `T&Row`, `T&null`), which is no `T` where one is expected
+  and takes nothing away from a bound, and the findings §9 names as false are reported:
+  `P2202` at a `return $a` and `P2103` at an argument after `is_int($a)`, `$a instanceof Row`
+  or `$a === null`; `P2302` at an append after `!is_int($a)` under `T of list<int>|int`;
+  `P2105` at a member after `$a !== null` under `T of ?Row`; `P2402`, "always true", at
+  `if ($a)` under any `T`. PHPStan reports none of them. What stays open once the rule is
+  built is listed below ("What PHPStan knows of a narrowed type parameter and the checker
+  does not").
 
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
