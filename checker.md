@@ -217,6 +217,25 @@ A declaration's **effective type** is: the docblock type when it is a subtype of
 signature". `@phpstan-param` / `@phpstan-return` / `@phpstan-var` win over `@param` etc.; `@psalm-*`
 are accepted as aliases. `@template` without a bound is `mixed`.
 
+*2026-11-26: the docblock type and the native type are combined as PHPStan combines them
+(`TypehintHelper::decideType`), for a parameter, a return type, a property, a promoted
+constructor parameter and a constant. The docblock type is the type where it refines the native
+one, and each member of a native union that shares no value with it is added back:
+`@param list<string>` on `?array $xs` is `list<string>|null`, and `@param positive-int` on
+`int|string $n` is `int<1, max>|string`. Until then the docblock stood alone, so a `null` the
+declaration admits was refused (`return null`, a property's `null` default) and a use that
+forgets the `null` passed (`count($xs)`). "Shares no value" is PHPStan's answer, member by
+member of the docblock's type: two classes neither of which extends the other, neither being
+an interface, share none (a class has one parent), so `@param Foo` on `Foo|Bar` keeps `Bar`; an
+interface, which a subclass may implement, is not added back. Where the native type admits no
+`null`, the docblock's `null` is left out and reported (`P4002`); a parameter whose default is
+`null` is nullable first, as PHP reads `array $xs = null`. PHP's own declarations keep their
+docblocks as written: the stubs and the overlay stand for PHPStan's function map, whose types
+are whole. One branch of PHPStan's rule is not followed: an array docblock without a key on a
+native `iterable` stays an array, where PHPStan reads an iterable of its values. That is
+stricter (a `Traversable` passed for it is refused), and waits for an `iterable` narrowed by
+`instanceof \Traversable` to leave the array PHPStan's leaves.*
+
 ### 4.2 Loaders
 
 A `Loader` maps a fully-qualified name to a parsed declaration:
