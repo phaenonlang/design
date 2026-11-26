@@ -242,7 +242,9 @@ arguments (`pipe_optimization_009`).
 | `A \|> f(B, ?, C)`, otherwise | `A \|> (fn (T $p) => f(B, $p, C))` | the closure is called at once, so `B` and `C` run after `A`, as in 8.6 |
 | `f(B, ?)` outside a pipe, with every bound argument a literal, a constant or a variable | `fn (T $p) => f(B, $p)` | an arrow function captures variables by value when it is created |
 | `f(B, ?)` outside a pipe, with another bound argument (a call, a property, an operator) | refused: "assign it to a variable first, or target PHP 8.6" | lowering would call it at each invocation, or need a name the programmer did not write |
-| `f(B, ...)` | `fn (T2 $b, T3 $c = …) => f(B, $b, $c)`, the remaining parameters copied from the declaration; `fn (mixed ...$args) => f(B, ...$args)` for a variadic or internal function whose defaults are not expressible | same rules for the bound arguments |
+| `f(B, ...)` | `fn (T2 $b, T3 $c = …) => f(B, $b, $c)`, the remaining parameters copied from the declaration, where the callee is bound where the call is written (a function, a static method of a named class, `self::`, `parent::`, a private or final method, one of a final class or an enum, the same method for every class of the receiver's type) and each default is a literal, a constant of PHP's own, or a constant a `const` statement declares, written as the callee's file resolves it; otherwise `function (mixed ...$args) { /** @var array{0?: T2, 1?: T3, b?: T2, c?: T3} $args */ return f(B, ...$args); }`, the variadic `$args2`, `$args3`, … where `$args` is taken | same rules for the bound arguments; the fallback passes on what it is given, and the callee's own defaults take effect; it differs in `func_num_args()` and in the frame an error names |
+| `(f(B, ...))(X, Y)`, the `...` its one placeholder, after the bound arguments, its closure the fallback | `f(B, X, Y)`; with its defaults written, the closure above, called at once | 8.6 evaluates the callee and `B`, then `X` and `Y`, and calls `f` with them; against the fallback only the frame an error names differs |
+| `f(B, ...)` leaving a by-reference parameter where the closure passes on what it is given, not called at once | refused: "write a ? for each of $k, $out in place of the `...`" ("before the `...`" for a variadic, `k: ?` after a named argument), with "the method is bound when the call runs" for a late-bound callee | `mixed ...$args` passes by value and `&...$args` refuses literals; a closure dispatching on `func_num_args()` is not exact for a named argument that skips an optional one |
 | `f(b: ?)` | `fn (T $b) => f(b: $b)` | |
 
 `$p` stands for the called function's parameter name (§3), and `T` for its declared type, written
@@ -277,6 +279,22 @@ it is thrown before the call's other arguments are evaluated. Every other nullab
 keeps its null (`fn(?int $length) => mb_substr(…)`): dropping it where the callee accepts null
 would make the 8.5 output throw where the 8.6 output returns a value.
 
+*A default is the one the callee that runs reads (2026-11-19).* A constant in a default is
+resolved where the callee is declared, through its file's namespace and imports (a trait's for a
+method copied from one), and written fully qualified. A constant `define()` makes is not
+written, nor a global constant of the program's that an unqualified name in a namespace falls
+back to: a `define()` the program does not see may make the namespace's first. PHP's own
+constants, of the stubs and of extensions, are written, `\PHP_EOL`: a namespace's `define()` of
+one of their names is the one case that misreads. A callee bound when the call runs (a method of
+an object whose class is not final, of an interface, an abstract one, `static::`, a union whose
+members declare it each) keeps its own defaults: the closure passes on what it is given.
+
+*`#[\SensitiveParameter]` is kept (2026-11-19).* A closure's parameter carries the attribute
+where the callee's has it, and the fallback's variadic where a parameter it passes on does.
+Where the method that runs is chosen when the call runs, or named by `self::` or `parent::`,
+every parameter carries it: an override may add it in a class the program never reads. A trace
+through the closure shows less than 8.6's, never more.
+
 **A pipe folds** when PHP evaluates it as the call it makes: `A` goes by value, and the callee and
 the arguments written before the placeholder compute the same before `A` as after it. An argument
 does when it is a literal, a constant, a variable `A` does not write, a closure that captures none
@@ -303,8 +321,19 @@ array_values(array_filter(array_map(fn (User $u) => $u->email, $users)))
   multi-line argument list, a call around a single inner call staying on its line
   (`array_values(array_filter(` … `))`). Its lines map to the pipeline's first line
   (`line-map.md`).
-- **A run that cannot move stays a pipeline**: a comment between its stages or arguments, or a
-  multi-line string that would move sideways.
+- **A run the lowering cannot move stays a pipeline**: a comment between its stages or
+  arguments, a heredoc or a multi-line string that would move sideways, a callee broken across
+  lines. Whether it moves depends on the lowering's own edits too (an erased generic, a closure
+  written inside an argument, the lines of an expression body), so `phn check` asks the lowering
+  (`emit.UnfoldedBound`) and refuses what `phn build` refuses.
+- **A stage's bound arguments are computed where they stand when it folds**: nothing is refused
+  for them. In a stage written as a closure they are computed in the closure's scope, and what
+  reads or writes the function's scope is refused for 8.5 (`P1002`, "assign it to a variable
+  before the pipe"): an assignment, a variable passed by reference (or an element of it) or to a
+  callable whose type gives no parameter list, a closure capturing by reference,
+  `func_get_args()`, `func_num_args()`, `func_get_arg()`, `debug_backtrace()`, `__FUNCTION__`,
+  `__METHOD__`, an `include`, a `yield`. Bound outside a pipe, `__FUNCTION__` and `__METHOD__`
+  are refused too.
 
 ### 5.4 Pipes
 
@@ -388,10 +417,18 @@ when the proposal is voted, as any PHP addition is.*
 | Pipe diagnostics (2026-11-02) | A stage needing more than one argument is `P2101` and a non-callable right side `P2109`, as in any call; a by-reference parameter receiving the piped value is the new `P2114` | `A \|> f(...)` is the call `f(A)` and PHPStan reports both as for calls (`arguments.count`, `callable.nonCallable`). `P2112` says "is not a variable", wrong for `$xs \|> sort(...)`; PHPStan has its own identifier for it (`pipe.byRef`) |
 | A `void` stage feeding another (2026-11-02) | `P2205`, an error, not the warning §5.4 says | `$x \|> f(...) \|> g(...)` is the program `g(f($x))`, already `P2205`, and PHPStan reports both at level max (`function.void`): a warning would be more lenient than PHPStan |
 | Pipes typed as calls (2026-11-02) | A first-class callable or a partial application with one placeholder on the right side is checked as the call PHP turns it into, for functions, methods and static methods; any other right side as `($stage)(A)` | It is what `zend_compile_pipe` compiles, so inference, closures in bound arguments and by-reference parameters behave as at run time |
-| Refusals beyond §5.3's table (2026-11-02) | Also refused for 8.5 (`P1002`): a bound argument passed by reference; in a pipe, a bound argument that assigns; a bound variable named like a parameter of the closure; outside a pipe, a computed receiver or callee; `...` after a named argument when it would unpack | PHP binds by reference what an arrow function captures by value; an assignment in the closure changes its copy; renaming the parameter would add a name the programmer did not write (D9); `f(a: 1, ...$args)` is a compile error |
+| Refusals beyond §5.3's table (2026-11-02) | Also refused for 8.5 (`P1002`): a bound argument passed by reference; in a pipe's stage written as a closure (§5.3), a bound argument that reads or writes the function's scope; a bound variable named like a parameter of the closure; outside a pipe, a computed receiver or callee; `...` after a named argument when it would unpack | PHP binds by reference what an arrow function captures by value; an assignment in the closure changes its copy; renaming the parameter would add a name the programmer did not write (D9); `f(a: 1, ...$args)` is a compile error |
 | The direct pipe form (2026-11-02) | `A \|> f(B, ?, C)` becomes `f(B, A, C)` only for a named function or a static method of a named class, a left side on one line with nothing else lowered in it; otherwise the closure form, which is exact too | The emitter keeps every line's number; moving a multi-line left side into the call would shift lines, and a receiver evaluated before `A` could see what `A` changed |
 | Refined parameter types in a lowered closure (2026-11-02) | A parameter whose type says more than PHP declares (`list<int>`) makes the closure of a partial application outside a pipe `function (array $xs) use ($v) { /** @var list<int> $xs */ return f($xs, $v); }`. The closure a pipe calls at once has no `@var` and stays an arrow function: PHPStan types its parameter from the piped value, as it types the call the pipe folds to, and a `@var` there could only say less than that value or be refused as wider than its native type (2026-11-19). A piped value typed from explicit type arguments, which are erased, is the case this leaves to PHPStan's own inference | The output must pass PHPStan at level max, and PHPStan reads no docblock on a closure, only an inline `@var` in a function body. On one line PHPStan reads the first tag only, so a second refined parameter goes unread (vault `open-items`) |
 | Partial applications in constant expressions (2026-11-02) | Lowered to `static function (T $p) { return f(B, $p); }` | PHP 8.5 accepts static closures there and rejects arrow functions |
+| Defaults of a callee bound when the call runs (2026-11-19) | Not copied: the closure passes on what it is given; bound early only for a function, a static method of a named class, `self::`, `parent::`, and a private or final method, of a final class or an enum, the same method for every class of the receiver's type | 8.6 passes the defaults of the method that runs; `$i->m(…, ...)` on an interface passed the interface's |
+| Constants in defaults (2026-11-19) | Resolved in the callee's file; written when PHP's own or declared by `const`; a `define()`d constant and a global one of the program's that an unqualified name in a namespace falls back to are not | The program's: chosen by cost, two constructed closures in the goldens and none in the dogfood trees, where refusing only beside a `define()` of a computed name cannot see one outside a file's top level. PHP's own: exact but for a namespace's `define()` of their name, where the fallback would cost every `PHP_EOL` default its count in `func_num_args()` and its by-reference neighbours |
+| A by-reference parameter `...` leaves (2026-11-19) | `P1002` where the closure passes on what it is given and is not called at once, advising a `?` for each parameter before a variadic one | `mixed ...$args` passes by value, `&...$args` refuses literals, and a closure dispatching on `func_num_args()` passes its own stand-in for a parameter a named argument skips |
+| A pipe stage's arguments and the closure's scope (2026-11-19) | Refused only in a stage written as a closure; a stage that folds is not | A folded stage computes them in the function, as 8.6 does |
+| `phn check` and the lowering of a run (2026-11-19) | The checker asks the lowering, through `checker.Options.Unfolded`, which stages of a run it does not fold | The answer depends on the lowering's edits; a rule on the source alone refused runs the build folds, or passed runs it refuses |
+| A partial application called where it stands (2026-11-19) | `(f(B, ...))(X)` becomes `f(B, X)` where its closure would be the fallback, the checker deciding (`Partial.Direct`) and refusing nothing of a closure for it; with its defaults written, the closure stays | Exact against 8.6 but for `func_num_args()` and an error's frame, as the fallback it replaces; the copied-defaults closure counts the defaults as 8.6 does; PHPStan checks the call against the callee |
+| The fallback's arguments (2026-11-19) | An inline `@var array{0?: T, …, name?: T, …}` of the variadic, named `$args`, `$args2`, … clear of the closure's names; none when every parameter takes mixed, or when the closure is called at once with arguments | PHPStan refused `mixed` for typed parameters, and refuses a `@var` wider than the call it reads (`varTag.nativeType`) |
+| `#[\SensitiveParameter]` (2026-11-19) | Kept on the closure's parameter where the callee's has it; on every parameter where the method is chosen when the call runs or named by `self::` or `parent::` | PHP hides by the method that runs, which may be one the program never reads; showing less in a trace is the safe side |
 | PHPStan on 8.6 output (2026-11-02) | The emitter goldens run PHPStan on 8.5 output only when the source holds placeholders; the 8.6 output is checked with `php -l` under PHP 8.6 and by running both outputs | The parity PHPStan (2.2) does not parse PHP 8.6's placeholders yet |
 | Where the stubs come from (2026-11-02) | The embedded stubs are every `*.stub.php` of the newest supported release branch, `PHP-8.6`, written by the generator `stdlib/gen` (`go generate ./stdlib`), which reads php-src through `git archive` only. They had been a copy of `master` | A release branch is what users run; `master` already carries the next release (`connection_aborted(): bool`, readonly Reflection names, `IntlNumberFormatter`), which an 8.6 program would be typed against |
 | What the version table holds (2026-11-02) | Generated Go (`stdlib/versions_gen.go`): the functions, classes (interfaces, traits, enums), global constants, and the methods, class constants and enum cases of classes the floor already has, that 8.6 added; parameters added to existing functions and methods; the `#[\Deprecated]` attributes 8.6 added. Not private members, not the members of a new class, not php-src's test extensions (`zend_test`, `dl_test`, `skeleton`). PHP 8.6 removes no symbol | A new class's members come with it; a private member is no API. Deprecations are reported from the stubs' attribute whatever the target, so the table lists them for reference only |
