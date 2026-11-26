@@ -152,6 +152,10 @@ path, and by `unset`. A variable path is invalidated by assignment and by refere
 *Since 2026-11-09 (roadmap D26, §9) these predicates are how a Phaenon program tests a type: `is`
 and `as` are gone, and PHP's tests are the only ones.*
 
+*2026-11-20 (§9, "A narrowed type parameter is the parameter still"): a value of a type parameter
+is narrowed in its bound and stays the parameter, `T of int` or `T&Row`; the table's intersect and
+subtract are then those of the bound, and the cases where the parameter is lost are listed there.*
+
 ### 3.5 Flow analysis
 
 Abstract interpretation over the AST with an environment `var → type` plus "definitely assigned"
@@ -1235,6 +1239,131 @@ turned it into a test.
   (`instanceof T`, `T::class`, `new T()`). `P1007` is a code for syntax whose meaning is not
   designed yet; `P1001` stays the code of what was removed. A generic function or method, or
   the closure with concrete types, says what such a closure could.
+- **A narrowed type parameter is the parameter still** (2026-11-20; `generics.md` §3.2). A test
+  does not change a value, so a value of `T` that a test narrowed is a value of `T`. Before this
+  rule the checker made an intersection of it, `T&int`, `T&Row`, `T&null`, which was no `T`
+  where one was expected: a false `P2202` at a `return $a` and a false `P2103` at an argument
+  after `is_int($a)`, `$a instanceof Row` or `$a === null`. It took nothing away from a
+  parameter either: after `!is_int($a)` under `T of list<int>|int` the value was the whole `T`,
+  so an append to it was `P2302`, and a member after `$a !== null` under `T of ?Row` was
+  `P2105`. Truthiness read a parameter as an object: `if ($a)` was `P2402`, "always true", under
+  any `T`. PHPStan has none of these findings. An attempt to mend it in the lattice, with `X&T`
+  a subtype of `T` and what is taken away written `T&rest`, was withdrawn: the first made the
+  checker more lenient than PHPStan wherever it builds an intersection with a parameter and
+  PHPStan has none, the second lost the parameter in every invariant position. The rule below is
+  PHPStan's own, read from probes of PHPStan 2.3.4 (some 2,000 functions: a bound, a test, a
+  branch, a place that holds the value to `T`), and it is decided where a value is narrowed, not
+  where two types are compared.
+  - *Three forms.* A value of a type parameter is the parameter as declared, `T`; the
+    parameter with a narrower bound, `T of int`; or a meet, `T&Row`, the values of `T` that
+    are a `Row`. The type says which, and its bound is in each form what the value is known
+    to be. Whatever reads a parameter reads that bound: members, offsets, iteration, `?->`,
+    truthiness, operators. So `$a->id` after `$a !== null` reads a `Row`, `?->` on a
+    `T of ?Row` is no `P2307`, and `if ($a)` under `T of ?int` has two branches. A fourth
+    outcome is no form: the test leaves a type without the parameter.
+  - *Which test gives which* depends on the bound, and on whether the test takes a part of
+    the bound away or meets it with a type.
+
+    | The bound is | A part taken away: the false branch of a type test, `!== null`, `!== []`, `!== 'x'`, a truthy value, `> 0` | Met with a type: `is_*()`, `instanceof`, `=== null`, `=== 5`, `=== Suit::Hearts`, `in_array(…, true)`, a falsy value, an assert tag |
+    |---|---|---|
+    | several types: `list<int>\|int`, `?Row`, `int\|string` | `T of` the rest | `T of` the members met, each with the type: `T of int`, `T of Row`, `T of 5` |
+    | one type: none, `mixed`, `object`, a class, an enum, `int`, `string`, `bool`, a list | `T of` the rest where the lattice can write it (`T of non-empty-list<int>`, `T of int<1, max>`), `T` where it cannot (`mixed` without `int`, a class without a subclass, an enum without a case) | `T&X`: `T&Row`, `T&int`, `T&5`, `T&Suit::Hearts` |
+    | one array that is no list, a shape, `iterable` | the same | the array met, without `T`, where it is another array: `=== []`, `=== ['id' => 1]`, a falsy value, `array_is_list()`, `is_array()` on an iterable |
+
+    A test that refines the one type a bound is, and names no other, is a meet:
+    `count($a) > 0`, and a key found present by `array_key_exists()` or `isset()`, give
+    `T&non-empty-array<K, V>` on a general array or a list. On a shape an entry found present
+    is a narrower bound, `T of array{id: int, name: string}`, and a test of an entry's value
+    leaves the shape without `T`. A value already narrowed is narrowed again by the form it
+    has: `T of Animal`, what `!== null` leaves of `T of ?Animal`, has one type, so
+    `instanceof Dog` makes it `T&Dog`, and a meet stays a meet. The other operand of an
+    identity is narrowed by the same rule: `$x === $a` makes an `int $x` a `T of int` under
+    `T of int|string`, leaves `$x = ['a' => 1]` what it was under `T of array<string, int>`,
+    and makes a value that was written and is then found identical to a `T` a `T` again. A
+    `switch` on the value and an identity of two values of `T` narrow nothing, and `==`
+    narrows what it did (`== null`), by the same rule. A test spelled another way is the
+    same test: `assert()`, an early return, `match (true)`, a ternary, `?? throw`,
+    `@phpstan-assert`, a property or an offset as the path tested.
+  - *Where PHPStan loses the parameter, the checker loses it too.* Each such case is a
+    finding PHPStan draws on the compiled file, and the checker is never more lenient than
+    PHPStan there (roadmap D33). Beside the arrays of the table there are two. Identity with
+    `true`, also through `in_array($a, [true], true)`, under a bound of several types leaves
+    `true`, where `false` keeps `T`. And a bound of several types narrowed to a callable, a
+    `class-string` or a float literal alone is one PHPStan has no template type for: it
+    forgets the bound, and the value is `T of mixed`, refused where `T` is expected
+    (`return $a` after `$a !== null` under `T of callable|null`) and taken in an invariant
+    position. None of this is true of the value, which is the one that was tested; it is
+    what PHPStan 2.3.4 does, and the corpus holds each case. When a PHPStan release keeps the
+    parameter there, the parity run names the line as the checker's alone, and the case goes.
+  - *Subtyping.* A narrowed form is a `T` where the declared `T` is expected: returned,
+    given as an argument, in `list<T>` or a covariant argument. But for the forgotten bound,
+    that holds by how the form was made and asks nothing of the bounds. Against a narrowed
+    form the bounds decide: `T` is no `T of int`, and `T of int` is a `T&int`. Against any
+    other type a parameter is its bound, as before. In an invariant position, `Box<T>`, the
+    parameter with a narrower bound is the parameter, whatever the bound, and a meet is not:
+    `new Box($a)` is a `Box<T>` after `is_int($a)` under `T of list<int>|int`, and after
+    `$a instanceof Row` under `T of object` it is a `Box<T&Row>`, which is none. That is
+    PHPStan's rule, where two template types of one name and scope are one argument of an
+    invariant parameter and an intersection is another type. Both halves are needed: the
+    first is what the withdrawn attempt broke, the second is a finding PHPStan draws. Two
+    narrowed forms are equal when they are the same form with equal bounds. The declared
+    parameter is equal by its name alone, as before, so a bound that names its own parameter
+    is never walked.
+  - *Joins.* Where branches meet, each form is a member of the union, and the declared `T`
+    absorbs the forms of its own parameter. After `if ($a instanceof Row) { … }` under
+    `T of object` the value is `T`. After `if (is_int($a)) { … } else { … }` under
+    `T of list<int>|int` it is `T of int|T of list<int>`: a `T` where one is expected, and
+    no `T` in `Box<T>`, as in PHPStan. The ways a condition fails or holds are not branches:
+    after `!(A && B)` and after `A || B`, a value that was the parameter with a bound of
+    several types is the parameter with the union of the bounds its ways left, since PHPStan
+    narrows it by the whole condition (`T of ''|null` after `!(is_string($a) && $a !== '')`
+    under `T of ?string`).
+  - *Inference.* A type argument inferred from a narrowed value is the form, with the one
+    exception PHPStan makes where it generalizes a literal: `T of 5` gives `Box<int>`, the
+    parameter lost.
+  - *`class-string<T>`* follows its parameter: found a subclass by
+    `is_a($c, Dog::class, true)` or `is_subclass_of()`, it is `class-string<T&Dog>`, and
+    `new $c()` a `T&Dog`; found identical to `Dog::class` it is that literal, without `T`;
+    and `$a::class === Dog::class` narrows `$a` as `instanceof` does.
+  - *Printing.* In a message and in the editor's hover a form prints as what it is:
+    `T of int`, `T&Row`, `T of int|T of list<int>`. The declared parameter prints `T`, as
+    before. In a docblock the compiler writes from an inferred type (the `@var` of a lowered
+    closure, `php-versions.md` §5.3) the narrower bound has no spelling and is written `T`,
+    which is how PHPStan compares it there; a meet is written `T&\App\Row`, which PHPStan
+    reads as the intersection it inferred itself. No declaration holds a narrowed form, so
+    signatures, `@template` tags and erasure (`generics.md` §4.1) are untouched.
+  - *Writes.* A write into a narrowed value is a write into what it is known to be, and the
+    variable holds the array written afterwards, no longer `T`, as after a write into any
+    value of a type parameter (`generics.md` §3.2). `$a[] = 1` after `!is_int($a)` under
+    `T of list<int>|int` appends to a `list<int>`, and `return $a` is then `P2202` with the
+    write named, where PHPStan reports it too. A write into `T&array`, what `is_array($a)`
+    makes of an unbounded `T`, is the same. A property written on a narrowed object leaves
+    the value the form it had.
+  - *Stricter than PHPStan, as before the rule.* A meet with a literal in an invariant
+    position: where PHPStan infers `Box`'s argument it generalizes `5&T of int` to
+    `T of int`, and the checker keeps `Box<T&5>`, which is no `Box<T>`. Taking it would need
+    the bound the meet started from, which the form does not keep. And a general array
+    declared non-empty and found identical to a constant array, where PHPStan keeps
+    `array{a: 1}&T` and drops the parameter for the same bound once a test made it
+    non-empty. The parity run's table names both.
+  - *Built in this order.* The rule on writes comes first: without it a narrowed value that
+    is written stays `T`, and `return $a` after the write would pass where PHPStan reports
+    it. The meet of `string` with `callable` is mended before the rest, since a bound is
+    narrowed by the lattice's own meet and that one is `never` today (`is_callable($s)` on a
+    string is `P2402`, "always false"). Then the forms, with nothing producing them; what is
+    taken away; what is met; the refinements, the readers of a bound, and `class-string<T>`.
+    The corpus files are `narrowed-params.phn` (bounds, tests, and the places that hold a
+    value to `T`), `narrowed-params-joins.phn` and `narrowed-params-writes.phn`, each branch
+    holding a finding that would be missing were the branch dead, and each file held to
+    PHPStan in both directions.
+  - *Measured* on a prototype of the lattice change, since discarded, with the rule on
+    writes under it. Two expectations of the checker corpus change, the two false findings
+    that rule's table names: an append after `!is_int()`, and a written value found
+    identical to a `T`. Of the probe lines that draw a false finding without the rule, over
+    500 draw none; no line that PHPStan reports and the checker reported is passed; and the
+    one finding added on a line PHPStan passes came from a reader the prototype had not
+    adapted, a method looked up on each class of a bound that is an intersection. The six
+    Tequila trees report what they did.
 
 ## 10. Open questions
 
@@ -1420,3 +1549,27 @@ turned it into a test.
     held. An override that adds `null` is reported under a closed argument by the rule on the
     erased types (§9), where PHPStan passes it. Whether `T|null` for a closed `T`, under a native
     `mixed` on both sides, should pass is open.
+- **What PHPStan knows of a narrowed type parameter and the checker does not** (2026-11-20, §9,
+  "A narrowed type parameter is the parameter still"). Each stands as it stood before that
+  rule, and none is made worse by it:
+  - *A test of an entry's value under a general array bound.* `is_int($a['k'] ?? null)` or
+    `($a['k'] ?? null) === 1` under `T of array<string, mixed>` leaves PHPStan with the
+    array, the parameter lost, and `return $a` is `return.type` there. The checker narrows
+    the offset and not a general array (above, "What a test proves of an offset"), so the
+    value stays `T` and the return passes: more lenient than PHPStan.
+  - *A refinement a function makes.* `str_contains()`, `ctype_digit()` and `strlen($a) > 0`
+    on a `T of string`, `method_exists()` and `property_exists()` on a `T of object`, are
+    meets in PHPStan (`T of string&numeric-string`), no `T` in `Box<T>`. The checker narrows
+    nothing by them and has the whole `T` in an invariant position: more lenient there, and
+    nowhere else.
+  - *The false branch of `@phpstan-assert-if-true`.* PHPStan 2.3.4 takes the asserted type
+    away where the call answers false; the checker narrows that branch only where a tag
+    names it (`-if-false`). After `if (isInt($a)) { return $a; }` under `T of list<int>|int`
+    an append is still `P2302`: a false finding, and one a plain `list<int>|int` draws as
+    well, as `P2202` where the list is returned.
+  - *A subtracted type.* The lattice has no `mixed` without `int`, no `Animal` without
+    `Dog`, no `Suit` without a case under a parameter's bound, so what such a test takes
+    away leaves `T` whole. Nothing is refused for it.
+  - *The bound a meet started from.* A meet keeps what the value is known to be, not the
+    bound it had: enough for every rule of §9 but PHPStan's generalization of a literal in
+    an inferred type argument (`5&T of int` to `T of int`), where the checker stays stricter.
