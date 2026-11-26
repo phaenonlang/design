@@ -469,6 +469,21 @@ turned it into a test.
   and says which of the two it is; `@phpstan-ignore` and the whole-line forms go on silencing
   the line's other findings. Every mark of the checker corpus is held to php, which must
   refuse the compiled code for the reason the code names (`TestRefusedByPHP`).
+  **Nor a finding about an override the compiled file writes with another type than the
+  source** (2026-11-26). Where the native type an override writes does not fit the method it
+  overrides, the override-erasure rule (`generics.md` §4.3) compiles the type that fits, and
+  `P2502` is all that says so: the body is checked against the type the source writes, which
+  the compiled method does not have. Silenced, `(): iterable` over `(): array` compiled to
+  `(): array`, a compile error in PHP under a body that yields, from a build that reported
+  nothing; `(string $x)` over `(int $x)` compiled to `(int|string $x)`, whose body is handed
+  an int; `(): float` under `Bounded<int>` compiled to `(): int|string`, which no float
+  leaves. This is the second way code compiles to PHP doing something else than it reads,
+  and its `P4015` is worded as `P3003`'s. The mark is on the slot the rule rewrote, in a
+  static method and in a class declared when its code runs as anywhere else, since the
+  emitter rewrites those too. What compiles as written stays a comment's to accept: a type
+  that a docblock or Phaenon's syntax alone narrows, and a native type the erased
+  declaration admits though its type argument does not (`get(): string` under `Box<int>`,
+  whose compiled `get(): mixed` it fits).
 - **The overlay patches, it does not redeclare.** An overlay class merges into the stub or
   vendor class of the same name: its docblocks and the methods it lists win, the rest stays.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
