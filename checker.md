@@ -1263,11 +1263,32 @@ turned it into a test.
   - what a static call forgets of `$this`;
   - the rows after `unset($rows[$k]['name'])`;
   - a Traversable class read as the iterable its `@implements` says, where PHPStan reads its
-    `getIterator()`.
+    `getIterator()`;
+  - a value of `T of array<…>` held to `T` after a write PHPStan follows without losing `T` (a
+    key written in one straight line, an optional entry `unset()` takes from a shape bound;
+    returned, yielded, passed or assigned): the write and the place name the variable twice, and
+    nothing at the place tells the line from those PHPStan reports (`generics.md` §3.2).
 
   To tell them, a type would have to carry where it came from. The run's table names those
   the corpus has, beside what the emitter rewrites of the source (§9) and the false findings
   that wait for their fix.
+
+- **`@param-out`** (2026-11-20). The checker reads the tag at a call, as the type the argument
+  holds afterwards, and holds the function's body to nothing: a `T of list<int>` given by
+  reference, appended to and documented `@param-out T` passes, where PHPStan reports what the
+  parameter holds at the exit (`paramOut.type`). Until the body is held to the tag at each exit
+  the checker is more lenient than PHPStan there; none of the dogfood trees documents
+  `@param-out`.
+
+- **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
+  checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
+  it neither takes for a `T` nor subtracts from (`!is_int()` under `T of list<int>|int` leaves
+  the whole `T`), while PHPStan keeps such a value a `T` with a narrower bound, which is a `T`
+  where one is expected and inside invariant generics such as `Box<T>`. PHPStan narrows so only
+  where the template itself is tested, and drops `T` where a constant value or a constant array
+  is compared identical to one, so the design has to say which narrowings keep the parameter,
+  and the lattice needs "`T` with a narrower bound" rather than an intersection, before the
+  checker can follow it in either direction.
 
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
