@@ -484,16 +484,50 @@ turned it into a test.
   that a docblock or Phaenon's syntax alone narrows, and a native type the erased
   declaration admits though its type argument does not (`get(): string` under `Box<int>`,
   whose compiled `get(): mixed` it fits).
-  **A finding about code that throws only when it runs stays a comment's to accept**
-  (2026-11-27): a constant that refers to itself (`P2016`), a named argument that overwrites
-  another (`P2010`), a by-reference argument that is no variable (`P2112`, `P2114`). PHP
-  compiles and loads such a file, and the compiled code does what the source says, so
-  neither reason above holds: the comment accepts what the code does, which is what a
-  comment is for. Nor is there a line to draw around them. Most findings about types say
-  that a line throws when it runs, a `TypeError` under `strict_types`, and marking some of
-  them would be a list kept by hand. A mark could not be held to php either: a refusal is
-  shown by compiling the file or loading it (`TestRefusedByPHP`), while these throw only
-  where the line is reached.
+  **Nor a finding about a line that throws whenever it runs** (2026-11-27; decided, and not
+  built: §10). PHP compiles and loads such a file, so neither reason above holds. The reason
+  is the checker's own: Phaenon is stricter than PHP by design, and a comment accepts what
+  code does, which here is nothing but the throw, and a `throw` says that without a
+  finding. That PHP runs the file up to the line is no reason to write it. The mark is made
+  case by case, where all three hold:
+  - *The line throws on every run that reaches it*, an `Error` of PHP's. A notice or a
+    warning after which the code goes on is no throw.
+  - *That is certain from the syntax and the declarations alone*, never from a type the
+    checker inferred or a docblock states, which may be wrong where the code is right.
+  - *The declaration is PHP's or the project's own.* A vendor package's is that of the
+    version installed, and a library that supports two versions of a dependency rightly
+    writes a call that only the other one runs.
+
+  The first members, each as php answers it:
+  - a constant that refers to itself, directly or through others (`P2016`);
+  - a named argument that overwrites the argument before it, and a name no parameter has
+    where the callee takes no variadic arguments (`P2010`);
+  - a by-reference argument PHP refuses: a literal, a constant, an operator's result, an
+    assignment, a cast, a `match`, a `clone` (`P2112`);
+  - a piped value passed by reference (`P2114`).
+
+  Not marked, and a comment's to accept as before: a call's result or a `new` passed by
+  reference (`P2112` too), which PHP passes with a notice, as in `end(explode('.', $name))`;
+  and each of the above where the callee is declared in a vendor package.
+
+  Most findings about types say that a line throws when it runs, a `TypeError` under
+  `strict_types`, and they stay silenceable: they rest on types, and a test that hands a
+  wrong value to see it refused is valid code. So this is a list kept by judgment, and a
+  member is added with the reason why no valid program writes it. Too few arguments to a
+  function the checker knows is such a candidate, not taken yet.
+
+  **The mark is an extra check** (below, *Extra checks are a kind of finding*). The finding
+  is a parity finding and is reported in both modes. With `"extra-checks": false` a comment
+  silences it as it silences PHPStan's finding of the same line. That is also the way out
+  should the checker be wrong about a line: a false finding that nothing silences would
+  stop a build with nothing to do about it. For the same reason a mark waits for the
+  finding under it to be right: `$xs |> array_multisort(...)` was reported as `P2114` when
+  this was decided, though PHP runs it.
+
+  Every mark of the checker corpus is held to php by running the line, which must throw the
+  `Error` the message names, as `TestRefusedByPHP` holds the others to php by loading the
+  file. A native comment that names the code of such a finding on its line is `P4015`, in
+  a third wording.
 - **The overlay patches, it does not redeclare.** An overlay class merges into the stub or
   vendor class of the same name: its docblocks and the methods it lists win, the rest stays.
   That is how `ReflectionClass<T>` and PHPUnit's narrowing assertions are described.
@@ -1509,6 +1543,15 @@ turned it into a test.
   where PHPStan reads the argument's type. And a by-reference parameter without a tag is not
   held to its declared type (`parameterByRef.type`).
 
+- **A line that throws whenever it runs: decided, and not built** (2026-11-27). §9 takes a
+  finding about such a line out of a comment's reach, as an extra check. Until it is built a
+  comment silences `P2016`, `P2010`, `P2112` and `P2114` like any finding. The build marks
+  the members §9 lists, adds the test that runs each mark of the corpus under php, the third
+  wording of `P4015`, and the switch's reading. It comes after `array_multisort()` and the
+  other functions whose parameters are by reference only where they can be are read as PHP
+  reads them, so that no mark stands on a false `P2114` or `P2112`. Open beside it: which
+  other findings are members (too few arguments to a known function; `new` of an abstract
+  class, an interface or an enum), each to be weighed for a valid program that writes it.
 - **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
   checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
   it neither takes for a `T` nor subtracts from (`!is_int()` under `T of list<int>|int` leaves
