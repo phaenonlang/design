@@ -1410,6 +1410,9 @@ turned it into a test.
     becoming an array of `int<0, max>` keys. A write into a value of a type parameter bounded
     by an array leaves the array written (`generics.md` §3.2), so an append to a `T of
     list<int>` documented `@param-out T` is reported: the tag to write is the bound.
+    The variable of a `catch` that is reached is a write as well. A variadic parameter is
+    held by the values of the array it holds, since its type describes one argument; where
+    it holds anything but an array its references are gone, and nothing is held.
   - *Where the body ends*, a parameter that may still hold the value it was passed must hold a
     `T`. The places are PHPStan's: the last statement, or, when that is an `if`, the last
     statement of each branch, and the `if` itself when it has no `else`. A statement after
@@ -1472,6 +1475,35 @@ turned it into a test.
   The corpus file is `param-out-php-writers.phn`. One finding came to the dogfood trees with
   it, a `(string)` cast of what `openssl_pkey_export()` wrote, which is `mixed` to PHPStan
   too.
+- **A by-reference parameter is held to its declared type** (2026-11-27; `P2214`). A
+  by-reference parameter that no `@param-out` documents is held, inside its own function or
+  method, to its own type: the declaration as the docblock refines it. PHPStan holds it so
+  (`parameterByRef.type`), with the tip to add a `@param-out`. Until then
+  `function f(int &$n): void { $n = 'x'; }` passed, and its callers read an int where the
+  function had written a string.
+  - *The writes are `P2213`'s*, handed over the same way, and the finding names the declared
+    type, the type written and the two remedies: a value of the type, or a `@param-out` that
+    says what the parameter holds afterwards. A value is held as strictly as a tag holds it:
+    PHPStan's benevolent `(int|float)`, what a division of two ints gives, is no `int`
+    there.
+  - *Not held*: where the body ends, which PHPStan holds to a tag alone; a closure or an
+    arrow function; an untyped parameter and one declared `mixed`.
+  - *A read of a held parameter is not widened while it holds a value of its type.* Every
+    read of a reference loses its literals and ranges, since another holder may have written
+    it, and PHPStan widens nothing. A parameter held to a type, by its declaration or by a
+    `@param-out`, is read as what the flow says it holds, where that is of its declared type
+    and widening would leave it; so is a closure's by-reference use of one. A set declared
+    `array<string, true>` and written
+    `$seen[$key] = true` stays one, and the literals of a shape stay. Otherwise the read is
+    widened as before: the parameter was written another type, which that write was reported
+    for.
+  - *False findings that come with it*, held in the parity run's table until their cause is
+    mended. Arithmetic on a parameter declared a range, `$count++` or `$count = $count + 1`
+    on an `int<0, max>`: the lattice's arithmetic on a range is `int`, where PHPStan computes
+    the range (§10). And the second write under a variable key on a list of shapes, the
+    first having left an array of int keys where PHPStan keeps the list.
+  The corpus file is `by-ref-parameter-type.phn`, each case held to PHPStan in both
+  directions. The dogfood trees report what they did.
 
 ## 10. Open questions
 
@@ -1526,8 +1558,7 @@ turned it into a test.
   users' properties are the trait's, and held to a user's tag that one reading reported code
   PHPStan passes (`$out = clone $this` under a user's `@param-out Copyable`). A tag that
   names a template of the parent's method reads `mixed` at a call through the override,
-  where PHPStan reads the argument's type. And a by-reference parameter without a tag is not
-  held to its declared type (`parameterByRef.type`).
+  where PHPStan reads the argument's type.
 
 - **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
   checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
