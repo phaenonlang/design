@@ -156,6 +156,11 @@ and `as` are gone, and PHP's tests are the only ones.*
 is narrowed in its bound and stays the parameter, `T of int` or `T&Row`; the table's intersect and
 subtract are then those of the bound, and the cases where the parameter is lost are listed there.*
 
+*2026-11-27 (§9): an `-if-true` or `-if-false` tag also holds negated in the branch it does not
+name, the exact `=T` form excepted; `$x::class === Foo::class`, and `get_class($x)` compared so,
+is a predicate that makes `$x` a `Foo` where it holds and takes nothing away where it does not;
+and no test narrows the result of a call whose side effects are certain.*
+
 ### 3.5 Flow analysis
 
 Abstract interpretation over the AST with an environment `var → type` plus "definitely assigned"
@@ -643,7 +648,8 @@ turned it into a test.
   names; `array_map` over several arrays gives its callback one value of each; `array_filter`
   keeps what its callback's condition (or a predicate such as `is_string(...)`) narrows to.
   **Narrowing:** `is_string($data[$field] ?? null)` with `$field` one of a few literals narrows
-  each offset; destructuring reads narrowed offsets; a method or static call with constant or
+  each offset (since 2026-11-27 the offset as written alone: "An offset a shape might lack",
+  below); destructuring reads narrowed offsets; a method or static call with constant or
   variable arguments is a path (`assertNotNull($e->last(X::class))`), `$events[$i]` too, dropped
   when the variable is assigned; `assertTrue($cond)` applies the condition; a `/** @var */`
   before any statement retypes the variable; a by-reference closure use is also what the body
@@ -789,6 +795,112 @@ turned it into a test.
   (`strings.md` §6); without the literal it narrows nothing, since `mb_internal_encoding()` decides
   at run time. PHPStan has no `bytes`, so parity is not at stake there. A leftover `is` or `as` is
   `P1001`, and `P3011` and `P3012` are retired.
+- **A conditional guard tag holds negated in the other branch** (2026-11-27). A call's
+  `@phpstan-assert-if-true` tag narrowed the branch where the call answers true and left the
+  other one as it was, where PHPStan takes the asserted type away
+  (`Assertions::getAssertsIfFalse()`), and takes an `-if-false` tag's type away where the call
+  answers true. So `if (isInt($a)) { return [$a]; } return $a;` under `list<int>|int` was
+  `P2202` at the second `return`, which PHPStan passes.
+  - *Each `-if-true` tag holds negated where its call answers false, and each `-if-false` tag
+    where it answers true*, on a function, a method, a static method and `$this` alike; a
+    negated tag (`!T`) leaves the part that is a `T` there. Several tags hold together, each
+    negated, as PHPStan joins them. A branch is narrowed from what it holds already, so that
+    a tag and the other branch's negated one on the same argument meet.
+  - *Not negated* are the exact `=T` form, which PHPStan never negates, and the overlay's tags
+    of PHP's own functions, which stand in for PHPStan's extensions: `class_exists()` and its
+    kin narrow nothing where they answer false.
+  - *The type is taken away as PHPStan takes it*, member by member, with two exceptions that
+    keep the checker from narrowing further than PHPStan does. A union of arrays one of which
+    is a general array is one array to PHPStan, which the asserted type takes away whole or
+    not at all, so such arrays stay together. And where nothing would be left, the call
+    always answers as the tag names, which PHPStan reports at the call: the argument keeps
+    its type rather than become `never`.
+  - *Through `?->`* a call answers false where it ran and answered false and where its
+    receiver was null, which it does not tell apart. PHPStan narrows the branch where it
+    answers true, by the `-if-true` tags and the negated `-if-false` ones, the receiver there
+    one that ran it, and leaves the other as it was, the `-if-false` tags' own branch
+    included, and so does the checker.
+  - *A call made as a statement answers nothing.* It applied its `-if-true` tags as if it had
+    answered true; it now applies its unconditional tags alone, as PHPStan does there, and a
+    use that relied on such a tag after the call is reported.
+  - *The bare spellings* `@assert`, `@assert-if-true` and `@assert-if-false`, which PHPStan
+    passes over, are read like the prefixed ones (§3.4) and negated alike: for a bare tag the
+    checker narrows where PHPStan does not.
+  The cases are in `guards.phn`, each held to PHPStan: every form of tag, several tags,
+  members and `$this`, `?->` and a call as a statement. The six dogfood trees report what
+  they did.
+- **An object whose class equals `Dog::class` is a `Dog`** (2026-11-27). A comparison of
+  `$x::class` or `get_class($x)` with a class written `Dog::class` (`self::class` and
+  `parent::class` too), with `===` or `==`, on either side, narrows `$x` to that class where
+  they are equal, the other branch with `!=` and `!==`; so do a `switch` case and `in_array()`
+  over such classes with its strict flag. PHPStan narrows the object so. Until then the
+  comparison narrowed nothing but in a `match` arm, and
+  `if ($a::class === Dog::class) { $a->bark(); }` on an `Animal $a` was `P2006`, a method
+  `Animal` lacks.
+  - *Where they differ nothing is taken away*, as PHPStan takes nothing away: an object that
+    is not exactly a `Cat` may be a subclass of `Cat`. A `match` arm no longer takes its class
+    away from the arms after it either, which wrongly removed a subclass of a class that is
+    not final.
+  - *What narrows nothing*, as in PHPStan: a class name in a string, another object's class,
+    a `class-string` value and `static::class`. Nor does a class not known, whose name is the
+    one finding (`P2001`): `$b::class === Missing::class` is no longer reported as always
+    false beside it, as the name PHPStan reads there may be any class's. A call on the object
+    under such a comparison is judged against the declared class, where PHPStan narrows to
+    the class not known and reports the call on it, on the same line.
+  - *In a trait's body* `self::class` narrows to the trait's own type, the `self` of its
+    signatures.
+  - *Two comparisons are no longer always false.* `static::class` and `$this::class` may be
+    any subclass's name, so their comparison with a subclass written `Kid::class` is not. And
+    `$x::class` of an `$x` a docblock refines is the class PHP holds `$x` to: `@param Dog $a`
+    over a native `Animal` does not make `$a::class === Cat::class` always false, as PHPStan
+    with `treatPhpDocTypesAsCertain` off does not report it ("Docblock types are not
+    certain", above).
+  The corpus file is `class-identity-narrows.phn`, plain PHP held to PHPStan as written; no
+  line is known that one reports and the other passes.
+- **The result of a call with certain side effects is not remembered** (2026-11-27; `P2103`).
+  A test of `$lexer->next()`, a method tagged `@phpstan-impure`, was remembered as a test of
+  any method's result is, so that the next call read as narrowed: in
+  `if (is_int($lexer->next())) { takesNumber($lexer->next()); }` the second call was taken for
+  an `int` and passed, where PHPStan reports `int|string given`. PHPStan remembers no value of
+  a call whose side effects are certain (`DefaultNarrowingHelper::isSubjectValueRemembered()`),
+  and remembers that of a call that only may have them. A path that reads the result of a
+  method with certain side effects is no longer narrowed, by a test of PHP's or by a guard's
+  tag, nor is a member or an offset of such a result. A narrowed result of such a call, used
+  again, is reported now, as PHPStan reports it.
+  - *Such a method* is one tagged `@phpstan-impure`, or one of PHP's own that PHPStan lists
+    with side effects though it returns a value (`SplFileObject::fgetc()`). A method whose
+    docblock says nothing of purity, `{@inheritDoc}` or a `@return` alone, or that has none,
+    takes it from the one declaration PHPStan merges its docblock with
+    (`ResolvedPhpDocBlock::mergePureTags()`), read the same way: the parent's method where it
+    resolves a docblock, else the first interface's that does, so that a parent's `@return`
+    alone keeps an interface's `@phpstan-impure` out. A `@phpstan-pure` of its own says no.
+  - *On a union receiver* the side effects are certain only where the method of every class
+    has them.
+  - *Remembered as before* are an untagged method's result, and a call made with `?->`, which
+    PHPStan narrows through its plain twin.
+  The cases are in `call-invalidation.phn`, each held to PHPStan; no difference is known.
+- **A value a reported test made `never` draws no second finding** (2026-11-27). A test
+  reported as always true, `$item instanceof Item` for an `Item`, leaves its other branch
+  with a value that cannot be. The test is reported there (`P2306`, `P2402`), and the checker
+  reported what that branch did with the value as well: an offset read or written (`P2302`),
+  a `foreach` over it and an unpacking (`P2303`), a call (`P2109`), a clone (`P2310`) and a
+  property written (`P2105`), a second finding of the one mistake ("One mistake, one
+  diagnostic", above), where PHPStan reports none.
+  - *The mark.* Where a test is reported as always true or always false, the variables and
+    paths it narrowed to `never` in a branch are marked there, and a closure created in the
+    branch keeps the mark on what it captures. Such a value draws none of those findings. Its
+    offset, a property and a call's result still read as `mixed`, as PHPStan reads them, so
+    that echoing one is reported as PHPStan reports it, and a destructuring or a `foreach`
+    over it gives `never`.
+  - *Only the test's own finding marks anything, and only what that test made `never`.* A
+    value another test of the condition made `never`, `$x !== null` in
+    `is_int($n) && $x !== null`, keeps its findings, and a test reported in a closure within
+    the condition marks nothing outside it. So does any value that is `never` where no test
+    was reported so, which the checker's own reading may have made so (a reference kept in
+    an array, which it does not follow): they may be the only findings on a real mistake.
+  The rule removes findings only, and only in branches already reported as unable to run.
+  The corpus file is `never-values.phn`, each case held to PHPStan, the reference kept in an
+  array among them; no difference is known.
 - **An override is held to every declaration it overrides, and to Phaenon's types** (2026-11-13,
   completed 2026-11-15; `P2502`, PHPStan's `method.childParameterType` and
   `method.childReturnType`). A method is compared with the nearest declaration up its parent
@@ -999,8 +1111,46 @@ turned it into a test.
     and `$r[array_key_first($r)]` on a variable that cannot be empty. A variable holding
     `array_keys()` is not followed, nor an assignment a condition compares with null, as
     PHPStan follows neither. `array_key_exists($k, $r)` with such a key says the array has
-    one of the keys, and `isset($r[$k])` narrows the offset as written as well as each
-    literal's.
+    one of the keys, and `isset($r[$k])` narrows the offset as written (until 2026-11-27
+    each literal's as well: below).
+  - *A test of an offset a variable names narrows that offset alone* (2026-11-27). A test of
+    `$row[$field]`, with `$field` one of a few literal keys, wrote the narrowed union into
+    every offset `$field` may name: in
+    `foreach (['name', 'age'] as $field) { if ($row[$field] === null) … }` the string under
+    `name` became `int|string`, and `return $row['name']` after the loop was a false `P2202`.
+    PHPStan narrows the expression as written: which of the offsets was tested is not known,
+    and each holds what it held. The test narrows `$row[$field]` alone, and where `$field` is
+    one literal, the one offset it names, as if written.
+
+    Where a `foreach` over a list of literal keys ends, PHPStan, which runs such a loop once
+    for each of them, has each offset narrowed as the test narrowed it, and so does the
+    checker: what the test leaves of each offset is kept under a mark of its own, which a
+    write under the array drops and a join keeps only where every way to it made the test,
+    and which a test made before the loop does not leave. A guard that throws keeps
+    `$row['name']` a string after the loop; one that continues leaves it as it was. A key the
+    lattice holds as a short range of ints, `[0, 1]`'s `int<0, 1>`, is read there as the
+    literals in it.
+
+    A way out through `break` leaves the loop in an iteration that tested its own key and
+    those before it. Where nothing wrote `$field` since the iteration began, it holds that
+    iteration's key, so the earliest key its type at the `break` admits, however a test
+    narrowed it (`===`, `!==` in the other branch, `||`, `&&`, `in_array()`), is the earliest
+    iteration the `break` is taken in, and the offsets of the keys up to it are narrowed.
+    Where `$field` was written on the way, by an assignment, a step, an `unset()` or a
+    by-reference argument, or its type admits the first key, the first key's offset alone
+    is. `==` narrows the variable there as `===` does where it compares as `===` does:
+    strings that are not numeric, or ints.
+
+    Two differences stay, and the parity run's lists name their lines. After a `break` under
+    `in_array($field, ['b'], true)` the offset of `'b'` is narrowed, where PHPStan, which
+    does not decide `in_array()` in each key's run, takes the `break` in any and reports the
+    offset: more lenient than PHPStan and sound, since `$field`, unwritten since the
+    iteration began, is `'b'` there, and `$row['b']` was tested on the way. And where the
+    `break` follows a test of a copy of the key
+    (`$copy = $field; if ($copy === 'c') { break; }`) or a by-reference argument of the key,
+    the first key's offset alone is narrowed, where PHPStan narrows those of the keys up to
+    the one whose iteration takes the `break`: a false finding on a later key's offset after
+    the loop. The cases are in `inference.phn`.
   - *A change takes out of a remembered test what it makes stale, and no more* (2026-11-17).
     `$ok = isset($a['k']) && $x !== null;` followed by `sort($a)`, `$a['j'] = 5`,
     `unset($a['j'])` or `unset($a)` dropped everything `$ok` implied, so `$x->m()` under
@@ -1677,11 +1827,6 @@ turned it into a test.
     meets in PHPStan (`T of string&numeric-string`), no `T` in `Box<T>`. The checker narrows
     nothing by them and has the whole `T` in an invariant position: more lenient there, and
     nowhere else.
-  - *The false branch of `@phpstan-assert-if-true`.* PHPStan 2.3.4 takes the asserted type
-    away where the call answers false; the checker narrows that branch only where a tag
-    names it (`-if-false`). After `if (isInt($a)) { return $a; }` under `T of list<int>|int`
-    an append is still `P2302`: a false finding, and one a plain `list<int>|int` draws as
-    well, as `P2202` where the list is returned.
   - *A subtracted type.* The lattice has no `mixed` without `int`, no `Animal` without
     `Dog`, no `Suit` without a case under a parameter's bound, so what such a test takes
     away leaves `T` whole. Nothing is refused for it.
