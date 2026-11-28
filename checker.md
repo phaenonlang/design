@@ -217,6 +217,25 @@ A declaration's **effective type** is: the docblock type when it is a subtype of
 signature". `@phpstan-param` / `@phpstan-return` / `@phpstan-var` win over `@param` etc.; `@psalm-*`
 are accepted as aliases. `@template` without a bound is `mixed`.
 
+*2026-11-26: the docblock type and the native type are combined as PHPStan combines them
+(`TypehintHelper::decideType`), for a parameter, a return type, a property, a promoted
+constructor parameter and a constant. The docblock type is the type where it refines the native
+one, and each member of a native union that shares no value with it is added back:
+`@param list<string>` on `?array $xs` is `list<string>|null`, and `@param positive-int` on
+`int|string $n` is `int<1, max>|string`. Until then the docblock stood alone, so a `null` the
+declaration admits was refused (`return null`, a property's `null` default) and a use that
+forgets the `null` passed (`count($xs)`). "Shares no value" is PHPStan's answer, member by
+member of the docblock's type: two classes neither of which extends the other, neither being
+an interface, share none (a class has one parent), so `@param Foo` on `Foo|Bar` keeps `Bar`; an
+interface, which a subclass may implement, is not added back. Where the native type admits no
+`null`, the docblock's `null` is left out and reported (`P4002`); a parameter whose default is
+`null` is nullable first, as PHP reads `array $xs = null`. PHP's own declarations keep their
+docblocks as written: the stubs and the overlay stand for PHPStan's function map, whose types
+are whole. One branch of PHPStan's rule is not followed: an array docblock without a key on a
+native `iterable` stays an array, where PHPStan reads an iterable of its values. That is
+stricter (a `Traversable` passed for it is refused), and waits for an `iterable` narrowed by
+`instanceof \Traversable` to leave the array PHPStan's leaves.*
+
 ### 4.2 Loaders
 
 A `Loader` maps a fully-qualified name to a parsed declaration:
@@ -1318,9 +1337,10 @@ turned it into a test.
   (`instanceof T`, `T::class`, `new T()`). `P1007` is a code for syntax whose meaning is not
   designed yet; `P1001` stays the code of what was removed. A generic function or method, or
   the closure with concrete types, says what such a closure could.
-- **A narrowed type parameter is the parameter still** (2026-11-20; `generics.md` §3.2). A test
-  does not change a value, so a value of `T` that a test narrowed is a value of `T`. Before this
-  rule the checker made an intersection of it, `T&int`, `T&Row`, `T&null`, which was no `T`
+- **A narrowed type parameter is the parameter still** (2026-11-20; `generics.md` §3.2; not
+  built yet, §10). A test does not change a value, so a value of `T` that a test narrowed is a
+  value of `T`. Before this rule the checker made an intersection of it, `T&int`, `T&Row`,
+  `T&null`, which was no `T`
   where one was expected: a false `P2202` at a `return $a` and a false `P2103` at an argument
   after `is_int($a)`, `$a instanceof Row` or `$a === null`. It took nothing away from a
   parameter either: after `!is_int($a)` under `T of list<int>|int` the value was the whole `T`,
@@ -1443,6 +1463,40 @@ turned it into a test.
     one finding added on a line PHPStan passes came from a reader the prototype had not
     adapted, a method looked up on each class of a bound that is an intersection. The six
     Tequila trees report what they did.
+- **A division and a power are typed as PHPStan types them** (2026-11-26). A division or a
+  power with a float operand is a float, as PHP computes it: `$f / 2` and `(float) $a / $b`
+  were `int|float`, refused wherever an int is not coerced to a float. Of two plain ints,
+  `$a / $b` and `$a ** $b` are PHPStan's *benevolent* `int|float`, which the lattice now marks
+  and messages write `(int|float)`. Until then `$a ** $b` was an `int`, which no float the
+  power may be was held against, and `$a / $b` an ordinary `int|float`, refused where an int
+  is declared though PHPStan passes it.
+  - *Accepted where one of its members is*: as an argument, a return, a property, and among
+    the values of an array or a shape, each such union decided where the comparison reaches
+    it. Not inside a class's type argument, which PHPStan holds as a template. *Held as an
+    ordinary union where a type is held*, as a `@param-out` is.
+  - *Where the mark goes* is PHPStan's. It stays through `+`, `-`, `*`, `**`, unary minus
+    and the steps, beside a literal, a range or another such union; a division of it by a
+    plain int, or of a plain int by it, is ordinary (`$total / $users / $days`). Where two
+    ways meet and one holds an ordinary `int|float`, the union is ordinary. It stays through
+    a template, a callback's return and a read through a reference, and a type parameter
+    bounded by `int` or `float` is inferred as the member its bound takes.
+  - *Written to a property PHP declares `int` or `float`*, the value is remembered as that
+    member, as PHPStan remembers it. So that this draws no "always false", a type test of a
+    property or an offset the function itself wrote or narrowed reports nothing until a call
+    may have changed it, which is PHPStan's rule for any expression whose type its scope
+    holds (`ImpossibleCheckTypeHelper::isSpecified`), and not about arithmetic alone.
+  - *`abs()`, `pow()` and `array_sum()`* follow: the absolute value of the argument's type;
+    a power as `**`; the sum of the values of an array written out, with `0` for one that may
+    be empty.
+  - *Where the checker differs.* It computes with no range, so a plain int divided by a
+    literal or a range is an ordinary union here and benevolent in PHPStan (stricter). The
+    other way it is more lenient, and known: where both operands are plain ints to the
+    checker and ranges to PHPStan, as the results of `time()` and `mb_strlen()` are, the
+    division is benevolent here and ordinary there; the way out is the ranges in the overlay.
+    A power with an exponent certainly below zero, and an int to a float exponent, stay the
+    float PHP computes. And an object passed to a function keeps what the flow knew of its
+    properties, where PHPStan forgets it, so a type test after such a call is not reported
+    (§10).
 - **A function's body is held to its `@param-out` types** (2026-11-26; `P2213`). A by-reference
   parameter documented `@param-out T` is held to `T` inside its own function or method, as
   PHPStan holds it (`paramOut.type`); until then the checker read the tag at a call alone, as
@@ -1464,10 +1518,11 @@ turned it into a test.
   - *Not held*, because PHPStan does not hold them: a `return` before the last statement
     anywhere else, and the bodies of closures and arrow functions.
   - *Handed over unchecked*: a parameter a reference is taken to, or that is `static` or
-    `global`, and one passed to a function of PHP's own that writes it and has no
-    `@param-out` in the overlay (§10). Moving an array's pointer, `array_walk()` with a
-    callback that takes the value by value and `array_multisort()` write nothing held to the
-    tag.
+    `global`, and one passed to `settype()` or, where it may hold an object or a resource, to
+    a function of PHP's own with side effects that reads it, which PHPStan forgets as well.
+    Any other function of PHP's own writes what its `@param-out` says, held to the tag at the
+    call, or reads the parameter and writes nothing ("What PHP's own functions write",
+    below).
   - *Inherited* (2026-11-26). A by-reference parameter whose own docblock has no `@param-out`
     takes the tag of the method it overrides, as PHPStan merges one docblock into another:
     from one declaration, the one PHPStan takes the docblock from (the first that has a
@@ -1484,8 +1539,47 @@ turned it into a test.
   The corpus file is `param-out-body.phn`, each form held to PHPStan in both directions; the
   parity run names the lines where PHPStan reports the value passed in for a statement every
   way out of which writes the parameter. None of the dogfood trees documents `@param-out`.
+- **What PHP's own functions write** (2026-11-26). A by-reference argument of a function of
+  PHP's own holds, once the call returns, what PHPStan 2.3.4 leaves in it, for a caller
+  anywhere and not only in a body held to a `@param-out`. Until then it kept the type it had,
+  but for the twenty parameters the overlay had tagged: after `parse_str($s, $out)` a caller
+  read whatever `$out` held before. PHPStan's signature map has two kinds of by-reference
+  parameter, and the checker follows it for each of the 213 in the stubs.
+  - *One that creates its variable* carries a `@param-out` in the overlay
+    (`stdlib/overlay/writes.php`): the type of PHPStan's stub or of its extension, and
+    `mixed` where it has neither, whatever PHP is known to write there. `mixed` is the
+    oracle's answer, and a narrower tag would pass code PHPStan reports; the overlay takes a
+    better type when PHPStan does.
+  - *One the function reads* is no write: the argument keeps its type. Where PHPStan writes
+    it back all the same, so does the checker. `sort()`, `rsort()`, `usort()` and `shuffle()`
+    leave a list, non-empty where the array was. The sorts that keep the keys leave them, a
+    list's as `int<0, max>`. `array_pop()` and `array_shift()` keep the keys, and take the
+    last or the first entry from a shape. `array_splice()` leaves what PHPStan's
+    `spliceArray()` makes of the array, but for an offset or a length past the end, which it
+    reads as PHP does. `array_walk()` with a closure that takes the value by reference
+    leaves the values the closure leaves where it returns, ends or stops, as PHPStan gathers
+    them: a throw inside a `try` is no such place, and each is taken after the `finally`
+    blocks it leaves through.
+  - *What `preg_match()` writes* is a list where the pattern is known at the call and names
+    no group, under flags known there: PHP numbers the groups without a gap. A named group,
+    a backtracking verb that carries a name, which adds the key `'MARK'`, and a pattern the
+    checker cannot read as PHP will (an escape PHP decodes in a double-quoted string) keep
+    the keys `int|string`. PHPStan reads the pattern into a shape, group by group; the
+    checker does not, so under `PREG_UNMATCHED_AS_NULL` every value may be null where
+    PHPStan knows which groups are optional: stricter there, never more lenient.
+  The corpus file is `param-out-php-writers.phn`. One finding came to the dogfood trees with
+  it, a `(string)` cast of what `openssl_pkey_export()` wrote, which is `mixed` to PHPStan
+  too.
 
 ## 10. Open questions
+
+- **An object passed to a call keeps what was known of its properties** (2026-11-26).
+  After `$o->s = 'x'; mutate($o);` the checker still has `$o->s` as `'x'`, and
+  `$o->s === 'y'` is `P2305`, "always false", though `mutate()` may have written it; PHPStan
+  forgets the properties of an argument, as it forgets `$this`'s after a method call, which
+  the checker does too. A false finding in ordinary code, and since a type test of a written
+  property reports nothing (§9, "A division and a power …"), also a leniency: `is_string($o->s)`
+  after such a call is reported by PHPStan and not here.
 
 - **Which findings are extra checks** (roadmap D33). The inventory was what the parity run
   found as the lines the checker flags and PHPStan does not; each is now a language rule by
@@ -1528,12 +1622,10 @@ turned it into a test.
   that wait for their fix.
 
 - **`@param-out`** (2026-11-26). The body is held to the tag (§9). The checker is still more
-  lenient than PHPStan in these places. A function of PHP's own that writes its by-reference
-  argument and has no `@param-out` in the overlay hands the parameter over unchecked, where
-  PHPStan types what it writes: `parse_str()`, `similar_text()`, `shuffle()`,
-  `array_splice()`, `array_walk()` with a callback that takes the value by reference,
-  `stream_socket_client()`, `flock()` and the `openssl_*` functions; the way out is an overlay
-  tag for each, from the types PHPStan's function map gives them. A trait's body is not held
+  lenient than PHPStan in these places. Of what PHP's own functions write (§9), `settype()`
+  leaves the argument its type where PHPStan has the converted one, and `array_splice()`,
+  `array_shift()` and `array_push()` on a shape with optional or unsealed entries leave a
+  general array where PHPStan keeps the entries. A trait's body is not held
   to a tag that a class using the trait inherits (§9, *Inherited*): PHPStan checks the body
   in the context of each such class and reports a write that breaks that class's tag, while
   the checker checks a trait's body once, as the trait, where `$this`, `static` and the
@@ -1552,15 +1644,18 @@ turned it into a test.
   reads them, so that no mark stands on a false `P2114` or `P2112`. Open beside it: which
   other findings are members (too few arguments to a known function; `new` of an abstract
   class, an interface or an enum), each to be weighed for a valid program that writes it.
-- **A narrowed type parameter** (2026-11-20). A test that narrows a value of `T` gives the
-  checker an intersection (`T&null`, `T&array`, a written array found identical to a `T`), which
-  it neither takes for a `T` nor subtracts from (`!is_int()` under `T of list<int>|int` leaves
-  the whole `T`), while PHPStan keeps such a value a `T` with a narrower bound, which is a `T`
-  where one is expected and inside invariant generics such as `Box<T>`. PHPStan narrows so only
-  where the template itself is tested, and drops `T` where a constant value or a constant array
-  is compared identical to one, so the design has to say which narrowings keep the parameter,
-  and the lattice needs "`T` with a narrower bound" rather than an intersection, before the
-  checker can follow it in either direction.
+- **A narrowed type parameter: decided, and not built** (2026-11-20; rewritten 2026-11-26).
+  §9, "A narrowed type parameter is the parameter still", says which test keeps the parameter
+  and in which of three forms (`T`, `T of int`, `T&Row`), so what was asked here is answered.
+  The checker does not follow the rule yet. In 0.8.0 a value of `T` that a test narrowed is
+  still an intersection (`T&int`, `T&Row`, `T&null`), which is no `T` where one is expected
+  and takes nothing away from a bound, and the findings §9 names as false are reported:
+  `P2202` at a `return $a` and `P2103` at an argument after `is_int($a)`, `$a instanceof Row`
+  or `$a === null`; `P2302` at an append after `!is_int($a)` under `T of list<int>|int`;
+  `P2105` at a member after `$a !== null` under `T of ?Row`; `P2402`, "always true", at
+  `if ($a)` under any `T`. PHPStan reports none of them. What stays open once the rule is
+  built is listed below ("What PHPStan knows of a narrowed type parameter and the checker
+  does not").
 
 - **Shapes vs classes**: PHPStan's array shapes are rich (optional keys, unsealed `...`). M2
   supports sealed shapes with optional keys; unsealed shapes are read and treated as `array<K, V>`.
