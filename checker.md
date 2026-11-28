@@ -949,6 +949,39 @@ turned it into a test.
   declared. PHPStan's other refusals by call form (a separator that is no string before an
   array, a string alone) are not modelled yet. The lowering that showed the gap is in
   `php-versions.md` §5.3.
+- **An offset of a list that a test of `count()` proves is there** (2026-11-28; `P2202`,
+  `P2201`). `for ($i = 0; $i < count($rows); $i++) { $rows[$i]['n'] = 1; }` left `$rows` an
+  array of int keys and no list, so returning it as the list it was declared was `P2202` and
+  a property holding it `P2201`, where PHPStan passes: the flow did not know that the offset
+  is there. The checker records the offsets PHPStan proves as it records the offset of
+  `isset()`, a path that holds the list's value type, and a write at such an offset keeps the
+  list. Nothing changes at an offset no test proved.
+  - *The offsets* are PHPStan's (`BinaryOpHandler`, `AssignHandler`,
+    `ForHandler::inferForLoopExpressions`): where `$i < count($list)` or `count($list) > $i`
+    holds, `$list` a list and `$i` an int that is not negative and no constant, the guard that
+    returns where it fails included (`if ($i < 0 || $i >= count($list)) { return; }`); where
+    `$i < count($list) - $n` or `$i <= count($list) - $n` holds, `$n` at least 1; after
+    `$k = count($list) - 1` as a statement, `$list` a list that cannot be empty; and in the
+    body of `for ($i = 0; $i < count($a); $i++)`, `$a` a variable holding a list, from the
+    loop's syntax alone. `sizeof()` counts as `count()`. A count kept in a variable before
+    the loop proves nothing, as in PHPStan. A `count()` given a mode proves nothing either,
+    where PHPStan's first rule takes one: such a write is reported as before.
+  - *What forgets one*: a write of the list (`array_pop()`, `array_shift()`,
+    `array_splice()`, `unset()`, a reassignment, a by-reference argument) or of the index
+    (`$i++`, `$i--`, a reassignment, a reference). A narrowing of the list that gives the
+    offset another value type forgets it too, since the narrowed list says what the entry
+    is; one that leaves the value type as it was, a second `count()` check, `is_array()`,
+    the list not empty, keeps it. PHPStan keeps the older type of the entry there and
+    refuses what that type refuses, `$sum += $xs[$i]` after an assertion that `$xs` is a
+    `list<int>`, which is not true of what PHP holds; the parity run's lists name those
+    lines.
+  - *Left as it was*: a counter known not to be negative only through its range, a `while`
+    with `$i = 0` before it or a `for` from 1, and a `for` over `count($this->rows)`, which
+    PHPStan passes (§10, "A write through an entry of a list"); a list of nullable values,
+    where a write at a proved offset still loses the list.
+  The corpus file is `offset-proved-by-count.phn`, both directions, with the list, the index
+  and both changed between the test and the write. The six dogfood trees report what they
+  did; they hold no write of this kind.
 - **`unset()` of an offset types the array as PHPStan does** (2026-11-16; `P2103`, `P2201`,
   `P2206`, `P2313`). `collections.md` §2.2 has a list become a map at `unset($xs[$i])`; the
   compiler left it a list, so the list went on to a `list<T>` parameter where PHPStan reports
@@ -1638,6 +1671,18 @@ turned it into a test.
   here. The write through a reference between two variables is seen since 2026-11-17 (§9);
   one through a reference to an offset, or through a closure's `use (&$a)`, is not, by PHPStan
   either.*
+- **A write through an entry of a list** (2026-11-28). Where a test of `count()` proves the
+  offset, the list is kept (§9). Two things stay. A loop counter has no range of its own, so
+  `$i = 0; while ($i < count($rows)) { $rows[$i]['n'] = 1; $i++; }`, a `for` from 1 and a
+  `for` over `count($this->rows)` still lose the list, where PHPStan, which gives the
+  counter `int<0, max>`, passes: false findings, open until the lattice computes with int
+  ranges. And at an offset nothing proves, PHPStan reads the
+  entry as its value or the array PHP creates there: after `$tasks[$i]['state'] = 'done'`
+  it reports the list where it is held to its declared type, an entry that may lack `id`,
+  and passes once a second write completes the entry. The checker reports the same code
+  for another reason, that the list is lost, and goes on reporting it after the second
+  write, which PHPStan passes. Following PHPStan there needs the offsets above known
+  first, or the created array is reported in every loop that `count()` bounds.
 - **What an included file does to the scope** (2026-11-17, roadmap D32). `include` and `require`
   inside a function run the file in the function's scope: it reads and may write the local
   variables. The checker types the function as if the statement touched none of them, so what
