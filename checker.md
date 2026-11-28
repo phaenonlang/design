@@ -1420,10 +1420,11 @@ turned it into a test.
   - *Not held*, because PHPStan does not hold them: a `return` before the last statement
     anywhere else, and the bodies of closures and arrow functions.
   - *Handed over unchecked*: a parameter a reference is taken to, or that is `static` or
-    `global`, and one passed to a function of PHP's own that writes it and has no
-    `@param-out` in the overlay (§10). Moving an array's pointer, `array_walk()` with a
-    callback that takes the value by value and `array_multisort()` write nothing held to the
-    tag.
+    `global`, and one passed to `settype()` or, where it may hold an object or a resource, to
+    a function of PHP's own with side effects that reads it, which PHPStan forgets as well.
+    Any other function of PHP's own writes what its `@param-out` says, held to the tag at the
+    call, or reads the parameter and writes nothing ("What PHP's own functions write",
+    below).
   - *Inherited* (2026-11-26). A by-reference parameter whose own docblock has no `@param-out`
     takes the tag of the method it overrides, as PHPStan merges one docblock into another:
     from one declaration, the one PHPStan takes the docblock from (the first that has a
@@ -1440,6 +1441,37 @@ turned it into a test.
   The corpus file is `param-out-body.phn`, each form held to PHPStan in both directions; the
   parity run names the lines where PHPStan reports the value passed in for a statement every
   way out of which writes the parameter. None of the dogfood trees documents `@param-out`.
+- **What PHP's own functions write** (2026-11-26). A by-reference argument of a function of
+  PHP's own holds, once the call returns, what PHPStan 2.3.4 leaves in it, for a caller
+  anywhere and not only in a body held to a `@param-out`. Until then it kept the type it had,
+  but for the twenty parameters the overlay had tagged: after `parse_str($s, $out)` a caller
+  read whatever `$out` held before. PHPStan's signature map has two kinds of by-reference
+  parameter, and the checker follows it for each of the 213 in the stubs.
+  - *One that creates its variable* carries a `@param-out` in the overlay
+    (`stdlib/overlay/writes.php`): the type of PHPStan's stub or of its extension, and
+    `mixed` where it has neither, whatever PHP is known to write there. `mixed` is the
+    oracle's answer, and a narrower tag would pass code PHPStan reports; the overlay takes a
+    better type when PHPStan does.
+  - *One the function reads* is no write: the argument keeps its type. Where PHPStan writes
+    it back all the same, so does the checker. `sort()`, `rsort()`, `usort()` and `shuffle()`
+    leave a list, non-empty where the array was. The sorts that keep the keys leave them, a
+    list's as `int<0, max>`. `array_pop()` and `array_shift()` keep the keys, and take the
+    last or the first entry from a shape. `array_splice()` leaves what PHPStan's
+    `spliceArray()` makes of the array, but for an offset or a length past the end, which it
+    reads as PHP does. `array_walk()` with a closure that takes the value by reference
+    leaves the values the closure leaves where it returns, ends or stops, as PHPStan gathers
+    them: a throw inside a `try` is no such place, and each is taken after the `finally`
+    blocks it leaves through.
+  - *What `preg_match()` writes* is a list where the pattern is known at the call and names
+    no group, under flags known there: PHP numbers the groups without a gap. A named group,
+    a backtracking verb that carries a name, which adds the key `'MARK'`, and a pattern the
+    checker cannot read as PHP will (an escape PHP decodes in a double-quoted string) keep
+    the keys `int|string`. PHPStan reads the pattern into a shape, group by group; the
+    checker does not, so under `PREG_UNMATCHED_AS_NULL` every value may be null where
+    PHPStan knows which groups are optional: stricter there, never more lenient.
+  The corpus file is `param-out-php-writers.phn`. One finding came to the dogfood trees with
+  it, a `(string)` cast of what `openssl_pkey_export()` wrote, which is `mixed` to PHPStan
+  too.
 
 ## 10. Open questions
 
@@ -1484,12 +1516,10 @@ turned it into a test.
   that wait for their fix.
 
 - **`@param-out`** (2026-11-26). The body is held to the tag (§9). The checker is still more
-  lenient than PHPStan in these places. A function of PHP's own that writes its by-reference
-  argument and has no `@param-out` in the overlay hands the parameter over unchecked, where
-  PHPStan types what it writes: `parse_str()`, `similar_text()`, `shuffle()`,
-  `array_splice()`, `array_walk()` with a callback that takes the value by reference,
-  `stream_socket_client()`, `flock()` and the `openssl_*` functions; the way out is an overlay
-  tag for each, from the types PHPStan's function map gives them. A trait's body is not held
+  lenient than PHPStan in these places. Of what PHP's own functions write (§9), `settype()`
+  leaves the argument its type where PHPStan has the converted one, and `array_splice()`,
+  `array_shift()` and `array_push()` on a shape with optional or unsealed entries leave a
+  general array where PHPStan keeps the entries. A trait's body is not held
   to a tag that a class using the trait inherits (§9, *Inherited*): PHPStan checks the body
   in the context of each such class and reports a write that breaks that class's tag, while
   the checker checks a trait's body once, as the trait, where `$this`, `static` and the
