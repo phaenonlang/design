@@ -778,6 +778,54 @@ turned it into a test.
     (`IsSubclassOfFunctionTypeSpecifyingExtension`): `$allow_string` defaults to true there and
     to false for `is_a()`, so a string it answers true for is `class-string<Foo>`. Read as
     `is_a()`, the string narrowed to `never`, and an array keyed by it held nothing.
+- **`is_callable()` meets a string or an array as PHPStan does** (2026-11-27; `P2402`). The
+  lattice met a string, an array, a shape and an iterable with `callable` as types of different
+  kinds, which is `never`: `is_callable($handler)` on a `string` was "always false", and the
+  code it guarded went unchecked. A string may name a function and an array may be
+  `[$object, 'method']`, so the meet is now PHPStan's. The code in such a branch is checked
+  from now on, and what it holds may be reported where nothing was before.
+  - *What the true branch holds.* A string is a `callable-string` the test proved, never
+    empty and never a number. A `class-string` stays one, since the lattice intersects
+    objects alone. `array<K, V>` is the array form of a callable, a list of an object or a
+    string and of a string, each entry met with `V`, and nothing where `V` holds no string. A
+    shape whose keys are 0 and 1 is that list, marked callable, and any other shape nothing.
+    An iterable is the array form or a `Traversable` that is callable. An object of a class
+    final by its keyword and without `__invoke()` is no callable, and a case of an enum with
+    `__invoke()` is one; a class marked `@final` in its docblock may have a subclass that is
+    callable, as PHPStan has it. A `Closure` is no iterable, string or array.
+  - *Where a form is taken.* A `callable-string` is taken where a callable of any signature is
+    expected, and neither form where a `Closure` is. A two-entry list is still taken where a
+    callable is expected.
+  - *What a docblock's `callable-string` proves* is nothing to a comparison, through a join
+    too, as PHPStan does not take the docblock as certain ("Docblock types are not certain",
+    above); one that `is_callable()` proved is never `''` and never a number.
+  - *The false branch* keeps a two-entry list unless it is known to be a callable, as
+    PHPStan's `ConstantArrayType::isCallable()` knows it: the method a literal names exists on
+    the object's class, or is static on the class a literal names. A method a final class
+    lacks makes the test always false, a class final by its docblock included, as PHPStan's
+    `ObjectType::hasMethod()` has it. A test is always true only where its false branch is
+    left with nothing, and an array written in the call, `is_callable([$o, 'm'])`, is never
+    always true, as PHPStan reads that one as a test of the method.
+  - *`$f(...)`* of a callable is a `Closure` with the callable's signature; of a string or an
+    array that names a function or a method the checker knows, a `Closure` with that one's
+    signature, the receiver's type arguments applied; of a `'Class::method'` string that names
+    a method that is not static, or of another callable-string or callable array, a `Closure`.
+    It was typed as `$f` itself, so returning it where a `Closure` is declared was `P2202`.
+  - *Where the checker differs*, each place named in the parity run's lists. It is more
+    lenient than PHPStan in three. `is_callable([$m, 'anything'])` on a final class that lacks
+    the method and has `__call()` is left uncertain, since PHP calls `__call()` for the name,
+    where PHPStan, which does not count `__call()`, has the test always false. A
+    `class-string` in the array is left uncertain, where PHPStan decides
+    `is_callable([static::class, 'create'])` always true. And a `callable-string` a test
+    proved is taken where a `non-falsy-string` is expected, which the checker reads as a
+    `non-empty-string`, where PHPStan refuses it: `'0'` names no function. It reports two
+    kinds of line PHPStan passes. A `class-string` that `is_callable()` found callable is
+    refused where a `callable` is expected: PHPStan has `callable&class-string` there, and the
+    lattice keeps the `class-string`. And a `callable-string` a docblock declares is not taken
+    where a `non-empty-string` is expected, as before the rule: the lattice holds no
+    non-emptiness of one it was not shown, so that the docblock decides no comparison.
+  The corpus file is `is-callable.phn`, each case held to PHPStan in both directions. The six
+  dogfood trees report what they did.
 - **Type tests are PHP's own** (2026-11-09, roadmap D26, `generics.md` §11.5). With `is` and `as`
   gone, the predicates of §3.4 are the only type tests, and the checker narrows through them as
   PHPStan does. A guard of the programmer's own is a function or method with `@phpstan-assert`,
@@ -1384,8 +1432,9 @@ turned it into a test.
   - *Built in this order.* The rule on writes comes first: without it a narrowed value that
     is written stays `T`, and `return $a` after the write would pass where PHPStan reports
     it. The meet of `string` with `callable` is mended before the rest, since a bound is
-    narrowed by the lattice's own meet and that one is `never` today (`is_callable($s)` on a
-    string is `P2402`, "always false"). Then the forms, with nothing producing them; what is
+    narrowed by the lattice's own meet and that one was `never` (`is_callable($s)` on a
+    string was `P2402`, "always false") until 2026-11-27 ("`is_callable()` meets a string or
+    an array as PHPStan does", above). Then the forms, with nothing producing them; what is
     taken away; what is met; the refinements, the readers of a bound, and `class-string<T>`.
     The corpus files are `narrowed-params.phn` (bounds, tests, and the places that hold a
     value to `T`), `narrowed-params-joins.phn` and `narrowed-params-writes.phn`, each branch
