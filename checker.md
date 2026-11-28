@@ -512,11 +512,154 @@ turned it into a test.
   `treatPhpDocTypesAsCertain: false`, Tequila's setting everywhere; the parity harness runs
   PHPStan with it. The type flow still uses the refined type: a ternary whose condition the
   refined types decide takes one branch, as in PHPStan.
+  *Since 2026-11-27* that last sentence holds for a type test alone,
+  `$x instanceof Foo ? 1 : 2` under `@param Foo $x`. A ternary on a test of truthiness has the
+  types of both branches, as one on a comparison had, since the branch the refined type would
+  rule out stays reachable (below); PHPStan's type is the one branch there.
+  - *What PHP guarantees a call of its own function returns* (2026-11-27; `P2305`, `P2402`) is
+    its declared type, unerased, and the range PHPStan's function map gives it. The checker
+    took the type it inferred for such a call as certain whenever the function's declared and
+    documented return types agreed, which made certain every result its own reading sharpens
+    from the arguments: `max()` and `min()`, `abs()` of an int, a folded `intdiv()`. So
+    `$n = max(1, $m); if ($n <= 0)` was "always false", and the body after it unreachable,
+    though PHP declares `max()` to return `mixed` and PHPStan decides a comparison by the
+    native types alone. A declared `true` or `false` stays one: `usort(…) === false`,
+    `file_put_contents(…) === true` and `fgets(…) === true` are reported always false, as
+    PHPStan reports them. PHPStan's function map is native to it, and where the overlay
+    documents the declared `int` as a range or the declared `string` as a `class-string`, the
+    map's, that is guaranteed too: `count()` and `strlen()` are `int<0, max>`, and
+    `count($xs) < 0` is reported always false where it passed before; `abs()` is documented
+    `int<0, max>|float` and `get_class()` a `class-string` in the overlay, as the map has
+    them. Other refinements of the overlay, a list, `bytes`, a condition on the arguments,
+    stay the checker's reading, and a function's `@return` range stays a docblock's, which
+    decides nothing. A first-class callable or a partial application of the function is the
+    `Closure` it is. Still more lenient than PHPStan: the map's ranges and refinements that
+    the overlay does not document decide nothing, as before, those of `mb_strlen()`, `ord()`,
+    `time()`, `strpos()` and the like, and `strtoupper()`'s `uppercase-string`. The corpus
+    file is `comparison-of-inferred-range.phn`.
+  - *A test of truthiness asks for the type PHP guarantees* (2026-11-27; `P2402`), as a
+    comparison did. Under `@param int<1, max> $a` over `int $a`, `$a ? 1 : 2` and `if ($a)`
+    were "always true", and so was `if ($xs)` under a documented non-empty list or shape;
+    PHPStan decides the test by the native type, which leaves both open, since a PHP caller
+    may pass 0 or `[]`. The rule holds wherever the test stands, an `if`, a ternary, `!`, an
+    operand of `&&` or `||`, `?:`, a loop's condition, and of a parameter, a property or a
+    method's result. An object, a literal array, a value assigned from a literal and an int
+    a native comparison narrowed decide it as before. The last condition of an `if`/`elseif`
+    chain, an `elseif` with no `else` or one that only throws, is not reported always true,
+    as PHPStan does not report it; the code after the chain is still unreachable where the
+    chain always returns.
+  - *A test narrows the type PHP guarantees* (2026-11-27), as PHPStan narrows the native type,
+    beside the type the flow holds. A comparison, a test of truthiness and `in_array()` over
+    a list of values narrow it by the bound and the values as typed: under
+    `@param int<0, max> $a` over `int $a`, `$a > 0` makes PHP's `int` an `int<1, max>`, and
+    `if ($a)` after it stays reported, as PHPStan reports it; under `@param positive-int $a`,
+    the outer test of `if ($a) { if ($a) … }` stays open and the inner one is reported. A
+    property and an offset a docblock refines are narrowed the same way: after
+    `if (!$this->ids) { return; }` with `@var non-empty-list<int>` over `array`,
+    `if ($this->ids)` is reported. The narrowed PHP type is kept as a member of the path, so
+    that whatever forgets the path, a write, a call that may change the object, a join of
+    ways that do not both narrow it, forgets it too.
+
+    Every other test that changes what is known of a value's truthiness narrows PHP's type
+    by the type it specifies: `isset()` and `empty()`, `if ($x = …)`, a comparison with `[]`
+    loose or strict on either side, `count()` compared with `===` or ordered,
+    `array_key_exists()`, `is_a()`, `gettype()` and `== null`. `count()` and
+    `array_key_exists()` make a PHP type that is `mixed` what they leave of the documented
+    type, as PHPStan computes the type they specify from it: a `list<int>` an inline `@var`
+    declares is a `non-empty-list<int>` where `count()` is above 0, while a value documented
+    as `mixed` stays `mixed`, `count($m) === 0` leaving it an empty array or a `Countable`,
+    which is truthy. A value loosely unlike the empty array is found truthy only where every
+    member of its types is an array, as PHPStan decides: `0`, `0.0`, `''` and `'0'` are
+    unlike `[]` as well. A strict comparison with a value the documented type cannot hold
+    takes nothing from PHP's type where it fails, `$a !== 0` of a documented `int<1, max>`,
+    as PHPStan specifies nothing there; and `== null` of a value of a type parameter takes
+    the falsy values from PHP's type where it does not hold, not the truthy ones where it
+    holds, as PHPStan does. A verdict PHP's type decides names that type: after `$a !== []`
+    on a documented `list<int>` the message says `non-empty-array`.
+  - *What a test of truthiness found is kept on each way* (2026-11-27). A variable an inline
+    `@var` declares holds what the tag says and nothing PHP guarantees, as PHPStan's native
+    type of it is `mixed`: after `/** @var list<string> $errors */ $errors = [];`,
+    `if ($errors)` is open. PHPStan narrows that `mixed` by the test, to `mixed~falsy`, and so
+    decides the same test again; no type of the lattice spells that, nor a string that is
+    not `'0'`. What a test of truthiness found of a variable or a path, truthy or falsy, is
+    kept on each way instead while the value is unchanged, its type the same and no write of
+    it, of an offset of it or by reference since; a truthy one only where PHPStan's narrowed
+    native type is truthy, not of a float or an iterable, from which it takes neither `0.0`
+    nor the empty array. `if ($errors) { if ($errors) … }` and, under `@var non-empty-string`
+    over `string`, `if ($this->name) { if ($this->name) … }` decide the inner test, as
+    PHPStan decides it. So a test of truthiness repeated on an unchanged string or `mixed`
+    value is reported now: `if ($s) { echo $s ? 1 : 2; }` is `P2402`.
+
+    What a test kept of a path, its PHP type and what it found, goes with any change of the
+    path's own type: the write that sets it, of an instance's property or a static one
+    however it is spelled, an offset written, appended or unset, and whatever forgets it, a
+    call that may change it among them. A write gives the path the PHP type of what was
+    written, as PHPStan's native type has it after the write, where an assignment gives a
+    variable one: `self::$map = []` makes it empty, `$this->queue[] = 1` non-empty, and the
+    lazy initialisation `if (!self::$names) { self::$names = load(); if (!self::$names) … }`
+    decides nothing. A step or a compound assignment gives it the result where the path and
+    the operand were certain before, `self::$count++` after `!self::$count` being 1. No
+    verdict is given of a value on a way that cannot run.
+  - *Where the checker still differs* (2026-11-27). It is more lenient than PHPStan in four
+    places. A by-reference argument leaves a path its declared PHP type, though PHPStan
+    reads the out types of PHP's own functions as native:
+    `if (self::$names) { sort(self::$names); if (self::$names) … }` is not decided, where
+    PHPStan decides it. The verdict kept on each way stands in for `mixed~falsy`, and where it
+    does not reach, a repeated test PHPStan decides is passed. A range PHP's type was narrowed
+    to is lost at a step or a sum, so `if ($a > 0) { $a++; if ($a) … }` under
+    `@param int<0, max> $a` is open where PHPStan has it always true (§10, "Arithmetic on an
+    int range"). And of the 5,832 generated cases built for the rule on narrowed type
+    parameters, twelve lines with a type parameter that PHPStan reports and the checker
+    reported are passed, against 916 false findings that went. One false finding is kept: a
+    documented non-empty array that flows through a ternary, a spread or a `match` is still
+    decided from its docblock, so that `$ys = $c ? $xs : $xs; if ($ys)` under
+    `@param non-empty-list<int> $xs` is "always true".
+  The corpus file is `truthiness-of-a-documented-type.phn`, plain PHP held to PHPStan as
+  written. The six dogfood trees report what they did.
 - **`@var` narrows, never widens** (2026-10-29). Above an assignment, the tag's type must be a
   subtype of what PHP declares for the value (PHPStan's `varTag.nativeType`); a literal value must
   fit the tag instead. Above any other statement, `@var T $x` retypes `$x` for what follows; above
   a `return`, an unnamed `@var T` types the returned value. A `@var` on a promoted constructor
   parameter types the parameter and the property (`phn migrate` lifts it into the declaration).
+  *Since 2026-11-27 (`P2212`)* the tag is held to the value as PHPStan's `VarTagTypeRuleHelper`
+  holds it, in three ways, above an assignment and above a `return` alike. Until then `null`
+  and a named constant, which the parser leaves as names, were values whose PHP type the tag
+  must narrow, so that `/** @var string|null $last */ $last = null;` was reported; any other
+  literal, a class's constant and `new` were held to the tag accepting them, which reported
+  `[]` under `@var non-empty-list<int>`, a shape literal under a tag with a key more and
+  `new Base()` under a narrowing `@var Child`, and passed an enum's case under its enum and a
+  class's constant `[1, 2]` under `list<int>`.
+  - *An array literal, a constant fetch (`null`, `true`, `false`, a named constant) and a
+    scalar written out* only have to share a value with the tag. `[]` is any array. Another
+    array literal is compared entry by entry with a shape, each key of it one the tag has
+    and its value one that may hold the tag's, and with any other array by its keys and its
+    values together, nested arrays the same way: `[1, 'a']` passes under `list<int>`,
+    `['id' => '', 'name' => 0]` does not under `array{id: int, name: string}`, nor
+    `['a' => ['x' => 1]]` under `array<string, list<int>>`. A key of the tag the literal
+    lacks is no difference to PHPStan, so `['a' => 1]` passes under
+    `array{a: int, b: string}`.
+  - *`new`, its type arguments left out, and a class's constant* are held as PHPStan's
+    widening check holds them. An iterable tag over an iterable value must name a class the
+    value may be, one it is, extends or implements, or an interface it may come to
+    implement, and the tag's values must be ones the value's hold: a final collection that
+    implements `IteratorAggregate<int, User>` passes under `@var \IteratorAggregate<int, User>`,
+    the bare `@var \IteratorAggregate`, whose values are `mixed`, does not, nor
+    `@var \ArrayIterator` over `new \ArrayObject()`. A constant scalar only has to share a
+    value with the tag. Anything else, an enum's case among them, must be narrowed by the
+    tag.
+  - *Any other value* is held to its PHP type, which the tag must narrow, as before. For a
+    call of one of PHP's own functions that type is the one PHP guarantees ("Docblock types
+    are not certain", above), its range included, as PHPStan holds the tag: `@var int` over
+    `count()` or `strlen()` and `@var int|float` over `abs()` are reported. A range only the
+    checker infers, where PHP gives the value no type of its own (a ternary, a `match`, an
+    offset of a local array, a docblock's range among them), is no guarantee the tag is held
+    to, nor is a single integer, as before.
+  - *New findings a project will meet*, each as PHPStan reports it: `@var Suit` over
+    `Suit::Hearts`, `@var Base` over `new Child()`, `@var float` over `0`, `@var list<int>`
+    over a class's constant `[1, 2]`, and the tags over `count()`, `strlen()` and `abs()`
+    above.
+  The corpus file is `var-tag-over-null.phn`, plain PHP held to PHPStan in both directions; no
+  difference is known.
 - **Extensions come from `php`** (2026-10-29). The embedded stubs are php-src's; the classes,
   functions and constants of every other extension the local `php` has loaded — ext-mongodb,
   redis, amqp, apcu — are generated from its reflection, once per extension version, PHP version
@@ -1588,6 +1731,15 @@ turned it into a test.
 - **Constant evaluation**: `const A = B::C + 1` — the checker evaluates literal arithmetic over
   int/float/string/bool/null and arrays; anything else types as the declared type. Enough for
   enum backing values and most constant tables.
+- **Arithmetic on an int range** (2026-11-27). The lattice computes with a value it knows and
+  with no range: a literal stepped is the next one, while a range stepped, or added to, is a
+  plain `int`, where PHPStan computes the range (`int<0, 5>` stepped is `int<1, 6>`). The
+  result is too wide, which is wrong in both directions. A value held to a declared range
+  after such a step is reported where PHPStan passes it, a false finding:
+  `$count++; return $count;` under `@param non-negative-int $count` for a `non-negative-int`
+  return is `P2202`. And a test the computed range would decide is passed where PHPStan
+  reports it (§9, "Docblock types are not certain"). A decision of §9 that meets this says
+  so and refers here. Open until the lattice computes with ranges.
 - **`@internal`, `@deprecated`**: parsed and stored; reporting deprecated calls is a warning behind
   `--deprecations` (default on in `check`, off in `build`).
 - **Speed**: parsing all of `vendor/` for a Symfony project is ~5–10k files; the loaders are lazy
