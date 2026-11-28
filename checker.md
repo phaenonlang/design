@@ -930,6 +930,64 @@ turned it into a test.
   declared. PHPStan's other refusals by call form (a separator that is no string before an
   array, a string alone) are not modelled yet. The lowering that showed the gap is in
   `php-versions.md` §5.3.
+- **A callback of PHP's own functions is typed from the call** (2026-11-27; `P2103`, PHPStan's
+  `argument.type`). Three functions hand their callback what the call's other arguments
+  decide, and the overlay's one signature for each refused code that PHP runs and PHPStan
+  passes. Each is read as PHPStan's extension for the function reads it.
+  - *`array_walk()` passes its third argument on*, after the value and the key. The overlay
+    typed the callback `callable(V, K): mixed`, so a closure that takes the argument was
+    refused: `array_walk($xs, function (int &$v, string $k, int $add): void { … }, 3)` was
+    `P2103`. The callback is `callable(V, K): mixed`, and `callable(V, K, A): mixed` where the
+    call gives the argument, by position or by its name, `A` the argument's type. A third
+    parameter is held to the argument, and an untyped one takes its type; a callback that
+    needs a third parameter where the argument is not given stays refused, as PHP throws an
+    `ArgumentCountError` there. `V` and `K` are what iterating the walked value gives, read
+    from it and not inferred. They were type parameters the callback's own parameters could
+    choose, so that walking an object that is no `Traversable` accepted a callback that wants
+    a `string` key, where PHPStan has `mixed` for both and refuses it: that call is reported
+    now. A `Traversable` gives its key and value types, and an array or object given as a
+    union gives what its arrays give. An unpacked argument leaves the call as the overlay
+    declares it. `array_walk_recursive()` passes the argument on as well; its stub's
+    `callable` says nothing of what the callback receives, and nothing is held of it, as in
+    PHPStan.
+  - *`array_map()` takes `null` for its callback.* PHP declares the callback `?callable`:
+    `array_map(null, $a, $b)` zips its arrays and `array_map(null, $a)` gives the array back.
+    The overlay typed it `callable(V): R` without the null, so every call that passes `null`
+    was `P2103`, and what it returned was a list of `mixed`. The callback is
+    `(callable(V): R)|null`, and what a call with a `null` callback returns follows PHPStan's
+    extension: the array itself where one is given, and where several are, a list of tuples
+    that hold a value of each array by position, each of which may be `null`, PHP's filler
+    where an array is shorter than another, unless every array is known to be as long as the
+    others (sealed shapes of one size, or one variable given each time). The list is
+    non-empty where the first array is. A callback that may be `null` maps the values or gives
+    the array back, and PHPStan, sure of neither, has the values `mixed`, the keys and the
+    list kept: so does the checker, which read the mapped values before. Whether the callback
+    may be `null` is read from the type the call gave it, whatever expression it is. In one
+    place the checker is stricter: for a sealed shape or a constant array PHPStan maps the
+    values through such a callback all the same, `list{int, int}` to `array{string, string}`,
+    where the checker keeps them `mixed`, which is what PHP may return.
+  - *`preg_replace_callback()` hands a closure the offsets.* Under `PREG_OFFSET_CAPTURE` the
+    callback receives each match paired with its offset, and the overlay typed it
+    `array<int|string, string>` whatever the flags: in a closure written at the call
+    `$m[0][1]` read as a string, and `is_array($m[0])` was `P2402`, "always false". Where the
+    call's flags are known and have `PREG_OFFSET_CAPTURE`, and the pattern is a string
+    written at the call, a closure given as the callback receives the matches as
+    `preg_match()` fills `$matches` under the flag ("What PHP's own functions write", below):
+    each a pair of the match and its offset, a list where the pattern names no group, and
+    under `PREG_UNMATCHED_AS_NULL` as well a value that may be null, the whole match's
+    included, as PHPStan's `PregReplaceCallbackClosureTypeExtension` types the closure. A
+    first-class callable or a callable string is held to the declared type, as PHPStan holds
+    it, and `preg_replace_callback_array()`'s callbacks are typed by nothing but the closures'
+    own parameters, as in PHPStan. One false finding stays: `PREG_UNMATCHED_AS_NULL` alone
+    makes `null` the groups that may take no part in a match, which PHPStan reads from the
+    pattern and the checker cannot yet, so the callback keeps the declared type there, and a
+    test of a group against `null` is still reported as always false.
+  - *A callable among the members of a union is written in parentheses* in a message, as the
+    docblocks the emitter writes and PHPStan's messages have it: `(callable(int): string)|null`,
+    where `callable(int): string|null` read as a callable that may return null.
+  The cases are in `array-walk-argument.phn`, `arrays-functions.phn` and `inference.phn`, each
+  held to PHPStan. The six dogfood trees report what they did, two messages of tq-cli in the
+  new spelling.
 - **`unset()` of an offset types the array as PHPStan does** (2026-11-16; `P2103`, `P2201`,
   `P2206`, `P2313`). `collections.md` §2.2 has a list become a map at `unset($xs[$i])`; the
   compiler left it a list, so the list went on to a `list<T>` parameter where PHPStan reports
@@ -1462,6 +1520,41 @@ turned it into a test.
     leaves the values the closure leaves where it returns, ends or stops, as PHPStan gathers
     them: a throw inside a `try` is no such place, and each is taken after the `finally`
     blocks it leaves through.
+  - *One that prefers a reference* (2026-11-27; `P2112`) is by reference for a variable and
+    by value for anything else. php-src's stub tags both parameters of `array_multisort()`
+    `@prefer-ref`: PHP passes a variable by reference and any other argument, a constant, a
+    literal or a call's result, by value and without a notice, which is how the function
+    takes its arrays and, between them, the sort orders and flags. The checker read the
+    parameters as by reference alone, and `array_multisort($data, SORT_DESC, $rows)` was
+    `P2112`. The tag is read into the parameter. An argument bound to such a parameter goes by
+    reference where it is a variable, a property, a static property or an offset outside a
+    nullsafe chain, and by value otherwise; the left side of `|>` is a value there, which PHP
+    passes without the `Error` a parameter by reference alone raises. A value is held to the
+    parameter's type, as PHPStan holds every argument of `array_multisort()`, whose function
+    map has the parameters by value: `array_multisort($data, 'desc')` is `P2103`. A variable
+    keeps its type after the call, as before. The closure that `array_multisort(...)` makes
+    keeps the parameters as PHP declares them, so a call of it takes a value too. `extract()`
+    is the other function with such a parameter; FFI's static methods prefer a reference for
+    parameters declared by value, which changes nothing for them. A parameter by reference
+    alone, `sort()`'s, still needs a variable. The corpus file is `prefer-ref.phn`.
+  - *Through a closure* (2026-11-27), a call leaves what PHPStan reads from the closure's
+    parameter alone, since a closure has no reflection of its callee to PHPStan. A call of a
+    closure value retyped a variable passed by reference to the parameter's declared type:
+    after `$sort = sort(...); $sort($xs);` a `list<int>` was an `array<int>`, and a later use
+    a false `P2103`. The parameters of a closure's type now carry what PHPStan reads from
+    them. A by-reference parameter of PHP's own that reads its argument, as PHPStan's function
+    map has it (a sort, `end()`, `array_splice()`), leaves the argument as it was, where a
+    direct call of the function leaves what it always did; `Closure::fromCallable('sort')` is
+    read as `sort(...)` is. One made from a declaration documented `@param-out` leaves the
+    tag's type, so a use that wants the type from before the call is reported, as PHPStan
+    reports it. Any other keeps what a call of the closure left before, the parameter's type,
+    where PHPStan leaves `mixed`: the checker is the more lenient on a later use. It is left
+    so because PHPStan types the operands of an expression in the scope from before it, so
+    that `$f($o) . $o` reads the old `$o`, and a `mixed` written back would be reported
+    there, where PHPStan passes. A tag that names a type parameter of the callee is left so
+    too. In a message a union is written with each spelling once, so that two closures of
+    one signature that differ only in what a by-reference parameter leaves are not printed
+    twice. The corpus file is `callable-by-reference.phn`.
   - *What `preg_match()` writes* is a list where the pattern is known at the call and names
     no group, under flags known there: PHP numbers the groups without a gap. A named group,
     a backtracking verb that carries a name, which adds the key `'MARK'`, and a pattern the
