@@ -1450,9 +1450,37 @@ turned it into a test.
     checker and ranges to PHPStan, as the results of `time()` and `mb_strlen()` are, the
     division is benevolent here and ordinary there; the way out is the ranges in the overlay.
     A power with an exponent certainly below zero, and an int to a float exponent, stay the
-    float PHP computes. And an object passed to a function keeps what the flow knew of its
-    properties, where PHPStan forgets it, so a type test after such a call is not reported
-    (§10).
+    float PHP computes.
+- **An object given to a call with side effects is forgotten** (2026-11-26). An object passed
+  to a function or a method that may change it comes back with what the flow knew of it
+  forgotten, as PHPStan forgets it. Until then the checker forgot `$this`'s members after a
+  method call on it and the method-call paths under an argument, and kept an argument's
+  properties: after `$o->s = 'x'; mutate($o);` a comparison of `$o->s` with `'y'` was `P2305`,
+  "always false", and after `if ($o->ref !== null) { log($o); }` the property was still no
+  `null`, where PHPStan reports its use.
+  - *A callee has side effects* where PHPStan says so: a function or method declared or
+    documented to return `void`; one tagged `@phpstan-impure` or `@impure`, and not Psalm's
+    `@psalm-impure`, which PHPStan does not read; and a function or method of
+    PHP's own that PHPStan lists with side effects though it returns a value
+    (`get_object_vars()`, `array_push()`, `DateTime::modify()`), embedded as
+    `stdlib/sideeffects.txt` from PHPStan's `functionMetadata.php`. A callee that returns a
+    value and has no tag forgets nothing, nor does a constructor, a method returning `$this`
+    or `static` (a fluent setter), a closure or callable held in a variable, or a first-class
+    callable.
+  - *Forgotten* is everything under the argument: its properties, the paths under them, its
+    offsets and the method calls on it. `$this` given also forgets the static properties
+    read through `self`, `static` and `parent`.
+  - *Kept* are the argument's own type and nullability, its readonly properties, and the
+    paths beside it: `consumeItem($o->item)` forgets `$o->item->name` and keeps `$o->state`.
+    An argument passed by reference, spread or held in an array forgets nothing this way,
+    and an alias of the object is not followed, as PHPStan follows none.
+  - *Where the checker differs*: a closure whose `use ($o)` body writes a property, then
+    called, forgets in PHPStan and not here; a static property of the own class reached by
+    its class name is kept when `$this` is given, where PHPStan forgets it; a readonly
+    property deeper than the argument, and an argument of a class the checker does not know,
+    are forgotten where PHPStan keeps them.
+  The corpus cases are in `call-invalidation.phn`. None of the dogfood trees uses a narrowed
+  property after handing its object to a `void` callee.
 - **A function's body is held to its `@param-out` types** (2026-11-26; `P2213`). A by-reference
   parameter documented `@param-out T` is held to `T` inside its own function or method, as
   PHPStan holds it (`paramOut.type`); until then the checker read the tag at a call alone, as
@@ -1528,14 +1556,6 @@ turned it into a test.
   too.
 
 ## 10. Open questions
-
-- **An object passed to a call keeps what was known of its properties** (2026-11-26).
-  After `$o->s = 'x'; mutate($o);` the checker still has `$o->s` as `'x'`, and
-  `$o->s === 'y'` is `P2305`, "always false", though `mutate()` may have written it; PHPStan
-  forgets the properties of an argument, as it forgets `$this`'s after a method call, which
-  the checker does too. A false finding in ordinary code, and since a type test of a written
-  property reports nothing (§9, "A division and a power …"), also a leniency: `is_string($o->s)`
-  after such a call is reported by PHPStan and not here.
 
 - **Which findings are extra checks** (roadmap D33). The inventory was what the parity run
   found as the lines the checker flags and PHPStan does not; each is now a language rule by
