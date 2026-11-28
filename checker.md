@@ -541,6 +541,52 @@ turned it into a test.
   user declares nullable) is not reported as impossible, because the trait's code serves both;
   PHPStan, analysing per user, reports it in that user's context. Static properties through
   `self::` and `static::` are not looked through yet (vault `open-items`).
+  *`self`, `static` and `parent` name the class using the trait* (2026-11-27; `P2107`, `P2011`).
+  PHP resolves them in a trait to the class that uses it, and PHPStan reads the trait's
+  members in the context of each such class. Until then `new self()` in a trait's body was
+  reported as instantiating the trait and every use of `parent` as the trait having no
+  parent, and a trait's method, copied into the class that uses it, kept `self` as the
+  trait: with `same(self $o): self` brought in by a trait, `$named->same($named)` was reported
+  as passing a `Named` where the trait was expected.
+  - *Seen from a caller*, a member copied into the class using the trait reads `self` as
+    that class: a method's parameters, return and `@phpstan-self-out`, a property's type and
+    a constant's, native or documented, with `self` inside a type argument, a callable's
+    signature or a nullable type, and `static` and `$this`. A trait used by a trait passes
+    the reading on, and an alias or `insteadof` takes the method as copied.
+  - *The body*, checked once for all the classes using the trait (those whose own method
+    replaces the one checked aside), reads `self`, `static`, `$this`, `self::class`,
+    `static::class` and the type of `new self` as the trait's own type, as its signatures and
+    properties read `self`, so that `return find(self::class, $id)` for `?self` and the
+    singleton `self::$instance ??= new static()` hold.
+  - *`new self` and `new static`* make the class using the trait: an abstract one is
+    reported for `new self`, an enum for both, and the arguments are checked against its
+    constructor, the first user's where they differ. A trait no class uses runs nowhere, and
+    its `new self` is not judged. `__CLASS__` is some class's name, as PHPStan types it;
+    `is_a()` and `is_subclass_of()` narrow by several names.
+  - *`parent`* is the parents of the classes using the trait in `new parent`, calls,
+    constants, static properties, `::class` and `instanceof`; such a class without a parent
+    is reported by name, where PHPStan reports `class.noParent` in its context.
+  - *A value of the trait's type* is accepted where a type that every class using the trait
+    is, is expected, and is final where every one is: `$registry->add(new self())` into an
+    interface each user implements passes. One way only: no class is the trait, so another
+    user's object is not taken for `self`, and `instanceof` a trait is never true in plain
+    code, as in PHP.
+  - *A type test of the trait's own type is decided for no user*, as PHPStan decides none of
+    `$this instanceof Loggable` in a trait. A strict comparison is decided where every user
+    decides it alike: `self::class === Other::class` for an `Other` no user is stays always
+    false. `static` and `$this` name the class or a subclass, so a `class-string` of either
+    may be a subclass's name.
+  - *Two wider readings were tried and withdrawn.* `self::class` as the using class inside
+    the body, with the trait's own signatures left the trait, drew false findings in finder
+    and `equals()` traits. A trait and its users standing for one another in the lattice
+    reported `assert($this instanceof Model)` in traits and accepted too much.
+  - *Left as it was.* `self::class` in the body is read as the trait's name where its value
+    counts: an array keyed by the using classes' names and read with it, `$names[self::class]`,
+    is a false `P2313`, and a `match (self::class)` over those names without a `default` a
+    false `P2304`. And on a trait no class uses PHPStan reports `trait.unused`, a finding
+    about unused code that the checker does not make.
+  The corpus files are `trait-self-parent.phn` and `self-in-trait-signature.phn`, plain PHP
+  held to PHPStan as written. The six dogfood trees report what they did.
 - **A readonly property is initialised by its constructor** (2026-11-06, `P2515`, PHPStan's
   `property.uninitializedReadonly`, `MissingReadOnlyPropertyAssignRule`). A readonly property of
   a class — every property of a `readonly class`, and those a trait brings — that has no default
@@ -697,6 +743,65 @@ turned it into a test.
   hole of the same kind for index access. A string key read back from an array (`foreach`,
   `array_keys`) is never a decimal integer, so the common re-keying loops are sound as they
   are; a later analysis rule (M6) may flag string keys that come from input if the hole bites.
+- **A string literal's type holds the value PHP gives it** (2026-11-27; `P2305`). A
+  double-quoted string decoded `\n`, `\t`, `\r`, `\\`, `\"` and `\$` alone, so `"\x41"` was
+  typed `'\x41'`, and comparing it with `'A'` was reported as always false, where PHP holds
+  `"A"` and PHPStan types the literal `'A'`. A literal is decoded as PHP's scanner decodes it
+  (`zend_scan_escape_string`): `\v`, `\e` and `\f`, one or two hex digits after `\x`, one to
+  three octal digits and `\u{…}` as well, an unknown escape kept as written, a `b` prefix
+  dropped.
+  - *A heredoc or a nowdoc of text alone*, which PHP's parser takes for a constant string, is
+    typed as the literal it holds, as PHPStan types it, where it was a `non-empty-string`:
+    its lines lose the closing marker's indentation, and a heredoc's escapes are decoded but
+    `\"`, which it keeps. A comparison such a literal decides is reported now, as PHPStan
+    reports it.
+  - *Whatever reads a literal's value reads it through the one decoder*: types, array keys
+    and offsets, `match` arms, class and callable names, and the pattern `preg_match()` reads
+    ("What PHP's own functions write", below).
+  - *A quoted string of a docblock*, a literal type or a shape's key, is read as phpdoc-parser
+    reads it: a double-quoted one decodes the escapes of PHP's strings but `\$`, a
+    single-quoted one `\\` and `\'` alone. Before, `\"` was decoded in a single-quoted string
+    too, and a shape's key not at all. A docblock shape that writes one key twice, `'A'` and
+    `"\x41"`, has one entry with the last type, as PHPStan reads it.
+  - *In a message* a literal that holds a control character is printed in double quotes with
+    its escapes, `"a\tb"`, as PHPStan describes it, instead of with the raw character, which
+    an emitted docblock cannot hold. A literal is cut as PHPStan's
+    `ConstantStringType::describe()` cuts it, at 20 characters and the end of a word, with an
+    ellipsis, so that a heredoc of a hundred kilobytes compared with `'x'` is not written out
+    whole; one shaped as a namespaced class's name stays whole, as PHPStan keeps a
+    class-string literal. Types compared, keyed or written into code are printed whole.
+  The corpus file is `string-escapes.phn`, each case held to PHPStan, and 47 decoded values
+  were compared with `php` itself; no difference is known. The six dogfood trees report what
+  they did.
+- **`++` and `--` take the operands PHPStan's rule allows** (2026-11-27; `P2301`, PHPStan's
+  `InvalidIncDecOperationRule` on PHP 8.5). `++` and `--` were refused on any operand with
+  `null` among its members, so `$n++` with `?int $n` was reported, where PHP makes `null` 1
+  and PHPStan allows it. The operands are an `int`, a `float`, a numeric string, a `GMP`, a
+  `SimpleXMLElement` or a `BcMath\Number`, and `null` for `++`; a `SimpleXMLElement` and a
+  `BcMath\Number` were refused before as well. A step is typed as PHPStan types it, as the
+  sum or the difference with 1 where `null` counts as 0: a nullable int stepped either way is
+  an `int`, a nullable float incremented is `1|float`, and `null` decremented stays `null`.
+  - *New strictness.* A decrement of `null`, alone or in a nullable type, leaves it `null`,
+    which PHP warns of and PHPStan refuses: it is reported, `null` alone included, which
+    passed before, and the message names the decrement, "cannot decrement int|null: a
+    decrement of null has no effect". `mixed` is refused either way, as PHPStan refuses it,
+    where it passed. Stepped, it is PHPStan's benevolent `(int|float)`, which an `int`
+    parameter takes, where it stayed `mixed` and was reported there. `bool`, an array and an
+    object are refused either way.
+  - *Two findings stay.* A ranged int stepped is a plain `int`, as the lattice does no
+    arithmetic on ranges (§10, "Arithmetic on an int range"): under
+    `@param non-negative-int|null $count`, `$count++; return $count;` for a
+    `non-negative-int|null` return was refused at the step and is `P2202` at the `return`
+    now, where PHPStan has `int<1, max>`; the form without `null` was `P2202` there before
+    too, and a property documented `non-negative-int|null` is `P2201` at its step. They are
+    false findings, which the parity run's table names. And a constant, a property or a
+    static call of an unknown class is typed `mixed`, not as the error a reported expression
+    gives ("One mistake, one diagnostic", above), so `$x = \Nope\Thing::CONST; $x++;` draws
+    "cannot increment or decrement mixed" beside the unknown class, as `$x . 'a'` drew
+    "mixed cannot be converted to string" before.
+  The corpus file is `steps.phn`, beside `string-steps.phn` for the steps of a string, each
+  case held to PHPStan but the three lines of the ranged int. The six dogfood trees report
+  what they did.
 - **Offsets and iteration on what may have neither** (2026-11-02, tq-cli's tests). An offset
   read, write, append or `unset` on `mixed`, and an offset read on `object`, `iterable` or a
   type parameter bounded by nothing, `mixed` or `object`, is `P2302`; destructuring `mixed` is
@@ -1463,10 +1568,13 @@ turned it into a test.
     them: a throw inside a `try` is no such place, and each is taken after the `finally`
     blocks it leaves through.
   - *What `preg_match()` writes* is a list where the pattern is known at the call and names
-    no group, under flags known there: PHP numbers the groups without a gap. A named group,
-    a backtracking verb that carries a name, which adds the key `'MARK'`, and a pattern the
-    checker cannot read as PHP will (an escape PHP decodes in a double-quoted string) keep
-    the keys `int|string`. PHPStan reads the pattern into a shape, group by group; the
+    no group, under flags known there: PHP numbers the groups without a gap. A named group
+    and a backtracking verb that carries a name, which adds the key `'MARK'`, keep the keys
+    `int|string`. Until 2026-11-27 so did a pattern that might hold an escape the checker
+    had not decoded, and a constant's backreference, `'/(\d)\1/'`, was taken for one; the
+    pattern is now the value PHP gives the literal ("A string literal's type holds the value
+    PHP gives it", above), and that guard is gone.
+    PHPStan reads the pattern into a shape, group by group; the
     checker does not, so under `PREG_UNMATCHED_AS_NULL` every value may be null where
     PHPStan knows which groups are optional: stricter there, never more lenient.
   The corpus file is `param-out-php-writers.phn`. One finding came to the dogfood trees with
